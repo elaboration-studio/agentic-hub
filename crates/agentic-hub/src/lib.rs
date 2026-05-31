@@ -6,15 +6,31 @@
 
 mod commands;
 mod error;
+mod watcher;
+
+use agentic_core::settings::Settings;
+use tauri::Manager;
+use watcher::WatcherState;
 
 /// Build and run the Tauri application.
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .manage(WatcherState::default())
+        .setup(|app| {
+            // Start the source watcher on launch when enabled in settings.
+            let enabled = Settings::load().map(|s| s.watcher_enabled).unwrap_or(true);
+            if enabled {
+                app.state::<WatcherState>().start(app.handle().clone());
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::cmd_load_settings,
             commands::cmd_save_settings,
+            commands::cmd_set_watcher_enabled,
+            commands::cmd_rescan_resync,
             commands::cmd_scan,
             commands::cmd_inspect,
             commands::cmd_add_source,

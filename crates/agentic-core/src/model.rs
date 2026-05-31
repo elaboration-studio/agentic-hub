@@ -385,6 +385,20 @@ pub struct ApplySuiteResult {
     pub suite: SuiteDefinition,
 }
 
+/// The suite last applied to a workspace for one tool. Lets the watcher
+/// re-patch a workspace's hard copies from fresh source content on change.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceApply {
+    pub tool_id: ToolId,
+    pub suite_id: String,
+}
+
 /// A remembered per-project workspace directory (workspace scope).
 #[cfg_attr(
     feature = "ts-export",
@@ -398,6 +412,11 @@ pub struct WorkspaceTarget {
     pub label: String,
     pub dir: PathBuf,
     pub last_used_at: String,
+    /// Per-tool last-applied suite, recorded on each workspace patch. The
+    /// watcher replays these to keep the workspace in sync. Defaults to empty
+    /// for entries written before this field existed.
+    #[serde(default)]
+    pub last_applied: Vec<WorkspaceApply>,
 }
 
 /// Persisted workspace-target state (`~/.agentic-hub/state.json`).

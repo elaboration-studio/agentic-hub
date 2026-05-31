@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{CoreError, Result};
 use crate::managed_copy::now_iso8601;
-use crate::model::{WorkspaceTarget, WorkspaceTargetsState};
+use crate::model::{ToolId, WorkspaceApply, WorkspaceTarget, WorkspaceTargetsState};
 use crate::paths::home_dir;
 
 const LRU_CAP: usize = 12;
@@ -92,6 +92,7 @@ impl WorkspaceTargetStore {
                     label,
                     dir: canonical.clone(),
                     last_used_at: now.clone(),
+                    last_applied: Vec::new(),
                 });
                 id
             }
@@ -127,6 +128,20 @@ impl WorkspaceTargetStore {
         state.workspace_targets.retain(|t| t.id != id);
         if state.workspace_active_id.as_deref() == Some(id) {
             state.workspace_active_id = state.workspace_targets.first().map(|t| t.id.clone());
+        }
+        self.write(&state)
+    }
+
+    /// Record the suite last applied to a workspace for one tool (upsert by
+    /// tool). No-op if the workspace id is unknown. The watcher replays these.
+    pub fn record_apply(&self, id: &str, tool: ToolId, suite_id: &str) -> Result<()> {
+        let mut state = self.read()?;
+        if let Some(t) = state.workspace_targets.iter_mut().find(|t| t.id == id) {
+            t.last_applied.retain(|a| a.tool_id != tool);
+            t.last_applied.push(WorkspaceApply {
+                tool_id: tool,
+                suite_id: suite_id.to_string(),
+            });
         }
         self.write(&state)
     }
@@ -194,6 +209,33 @@ mod tests {
     fn set_active_rejects_unknown() {
         let (_d, store) = store();
         assert!(store.set_active("nope").is_err());
+    }
+
+    #[test]
+    fn record_apply_upserts_per_tool() {
+        let (_d, store) = store();
+        let ws = tempfile::tempdir().unwrap();
+        let t = store.add(ws.path()).unwrap();
+
+        store.record_apply(&t.id, ToolId::Codex, "suite-a").unwrap();
+        store.record_apply(&t.id, ToolId::Claude, "suite-b").unwrap();
+        // Re-applying the same tool replaces, never duplicates.
+        store.record_apply(&t.id, ToolId::Codex, "suite-c").unwrap();
+
+        let stored = store
+            .read()
+            .unwrap()
+            .workspace_targets
+            .into_iter()
+            .find(|x| x.id == t.id)
+            .unwrap();
+        assert_eq!(stored.last_applied.len(), 2);
+        let codex = stored
+            .last_applied
+            .iter()
+            .find(|a| a.tool_id == ToolId::Codex)
+            .unwrap();
+        assert_eq!(codex.suite_id, "suite-c");
     }
 
     #[test]

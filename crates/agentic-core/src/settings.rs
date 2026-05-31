@@ -77,7 +77,15 @@ pub struct Settings {
     /// `~/.agentic-suites.json` (migration-parity default).
     #[serde(default)]
     pub suites_path: Option<PathBuf>,
+    /// When on, the desktop shell watches the source roots and auto-reconciles
+    /// projections on change. Defaults to on (the manual Rescan button is gone).
+    #[serde(default = "default_true")]
+    pub watcher_enabled: bool,
     pub tools: ToolsSettings,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl ToolSettings {
@@ -141,6 +149,7 @@ impl Default for Settings {
             sources: Vec::new(),
             shared_root: expand_tilde("~/.agentic"),
             suites_path: None,
+            watcher_enabled: true,
             tools: ToolsSettings::default(),
         }
     }
@@ -279,6 +288,8 @@ mod tests {
             .ends_with(".codex/AGENTS.md"));
         assert!(s.tools.claude.skills_path.ends_with(".claude/skills"));
         assert!(s.tools.cursor.instructions_path.is_none());
+        // Watcher ships on; the manual Rescan button is replaced by the toggle.
+        assert!(s.watcher_enabled);
         assert!(s
             .tools
             .openclaw
@@ -369,6 +380,25 @@ mod tests {
         loaded.save_to(&path).unwrap();
         let reloaded = Settings::load_from(&path).unwrap();
         assert_eq!(reloaded, loaded);
+    }
+
+    #[test]
+    fn legacy_config_without_watcher_flag_defaults_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        // A config written before the watcher flag existed.
+        fs::write(
+            &path,
+            r#"{ "sharedRoot": "/tmp/agentic", "tools": {
+                "codex": {"enabled": true, "skillsPath": "/c/skills", "agentsPath": "/c/agents", "rulesPath": "/c/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "claude": {"enabled": true, "skillsPath": "/cl/skills", "agentsPath": "/cl/agents", "rulesPath": "/cl/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "cursor": {"enabled": true, "skillsPath": "/cu/skills", "agentsPath": "/cu/agents", "rulesPath": "/cu/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "openclaw": {"enabled": false, "skillsPath": "/o/skills", "agentsPath": "/o/agents", "rulesPath": "/o/rules", "instructionsPath": null, "hooksEnabled": false, "hooksFile": null}
+            } }"#,
+        )
+        .unwrap();
+        let loaded = Settings::load_from(&path).unwrap();
+        assert!(loaded.watcher_enabled, "absent flag defaults to on");
     }
 
     #[test]

@@ -32,6 +32,15 @@ export const loadSettings = (): Promise<Settings> => invoke("cmd_load_settings")
 export const saveSettings = (settings: Settings): Promise<void> =>
   invoke("cmd_save_settings", { settings });
 
+export const setWatcherEnabled = (enabled: boolean): Promise<void> =>
+  invoke("cmd_set_watcher_enabled", { enabled });
+
+export const rescanResync = (): Promise<void> => invoke("cmd_rescan_resync");
+
+/// Fired by the watcher (and the resync fallback) after projections change.
+export const onSourcesChanged = (cb: () => void): Promise<UnlistenFn> =>
+  listen("sources-changed", () => cb());
+
 export const scan = (sources: SourceConfig[]): Promise<ScanResult> =>
   invoke("cmd_scan", { input: { sources } });
 

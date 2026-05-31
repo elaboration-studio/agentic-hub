@@ -16,6 +16,7 @@ pub mod managed_copy;
 pub mod model;
 pub mod paths;
 pub mod planner;
+pub mod reconcile;
 pub mod rule_sync;
 pub mod scanner;
 pub mod settings;
@@ -33,10 +34,11 @@ pub use model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncError,
     HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome,
     ScanError, ScanResult, SuiteDefinition, SuiteValidationResult, SyncHooksResult,
-    SyncRulesResult, ToolCapabilityState, ToolId, WorkspacePatchResult, WorkspaceTarget,
-    WorkspaceTargetsState,
+    SyncRulesResult, ToolCapabilityState, ToolId, WorkspaceApply, WorkspacePatchResult,
+    WorkspaceTarget, WorkspaceTargetsState,
 };
 pub use planner::{build_plan, inspect_tool};
+pub use reconcile::{reconcile_all, reconcile_tool, ReconcileToolOutcome};
 pub use scanner::{scan, scan_all};
 pub use settings::{Settings, SourceConfig, ToolSettings, ToolsSettings};
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
