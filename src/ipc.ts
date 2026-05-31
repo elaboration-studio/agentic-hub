@@ -75,8 +75,9 @@ export const plan = (
   toolId: ToolId,
   items: CapabilityItem[],
   desiredEnabledByItemId: DesiredMap,
+  force = false,
 ): Promise<PlannedOperation[]> =>
-  invoke("cmd_plan", { input: { toolId, items, desiredEnabledByItemId } });
+  invoke("cmd_plan", { input: { toolId, items, desiredEnabledByItemId, force } });
 
 export const apply = (operations: PlannedOperation[]): Promise<ApplyResult> =>
   invoke("cmd_apply", { operations });

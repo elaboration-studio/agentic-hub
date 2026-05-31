@@ -240,6 +240,8 @@ match (state, desired):
     (ForeignFile, false) -> no-op (real file already not ours)
 ```
 
+**Confirmed take-over (`force`).** `build_plan` takes a `force` flag (default `false`). When the user explicitly confirms an Apply-time warning, `force` is `true` and `(ForeignFile, true)` becomes a take-over instead of a skip: `ReplaceLink` / `ReplaceManagedCopy` carrying `force: true`. The applier then deletes the blocking real file/dir before projecting. This is the *only* path that removes a real file, and it is always user-initiated and confirmed — the "never overwrite a real file silently" rule still holds. The watcher and suite/workspace applies always pass `force = false`.
+
 After the per-item pass, the planner runs the **projection-target collision pass** — a generalization of the original flat-layout pass. It groups ops by `(tool, target_path)`; for any group with more than one op, items are sorted by source priority (then `item_id` for determinism), the first wins, and the rest become `skip_conflict` with a reason naming the winning source. This covers both cross-source target clashes and the Claude flat-layout basename case (see Claude Flat Layout below).
 
 ## Stage 5: Apply

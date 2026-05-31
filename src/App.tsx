@@ -73,6 +73,10 @@ export function App() {
   const [scope, setScope] = useState<Scope>("global");
   const [route, setRoute] = useState<Route>(routeFromHash);
   const [watching, setWatching] = useState(true);
+  const [conflictPrompt, setConflictPrompt] = useState<{
+    rows: ConflictRow[];
+    resolve: (takeOver: boolean) => void;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     setStatus("loading");
@@ -183,34 +187,57 @@ export function App() {
     if (data) setDesired(seedDesired(data.result));
   }, [data]);
 
-  const applyChanges = useCallback(async () => {
-    if (!data) return;
-    setApplying(true);
-    setProgress(null);
-    setError("");
-    try {
-      const modifiedTools = new Set<ToolId>();
-      for (const k of pendingKeys) modifiedTools.add(k.split("::")[0] as ToolId);
-      for (const tool of tools) {
-        if (!modifiedTools.has(tool.id)) continue;
-        const desiredByItem: DesiredMap = {};
-        for (const item of data.items) {
-          const k = key(tool.id, item.id);
-          if (k in desired) desiredByItem[item.id] = desired[k];
-        }
-        const ops = await plan(tool.id, data.items, desiredByItem);
-        if (ops.length > 0) await apply(ops);
-        await syncRules(tool.id, data.items, desiredByItem);
-        await syncHooks(tool.id, data.items, desiredByItem);
-      }
-      await refresh();
-    } catch (e) {
-      setError(messageOf(e));
-    } finally {
-      setApplying(false);
+  // Run the plan -> apply -> sync pipeline for every tool with pending edits.
+  // `takeOver` authorizes the destructive resolution of `foreign_file` targets.
+  const runApply = useCallback(
+    async (takeOver: boolean) => {
+      if (!data) return;
+      setApplying(true);
       setProgress(null);
+      setError("");
+      try {
+        const modifiedTools = new Set<ToolId>();
+        for (const k of pendingKeys) modifiedTools.add(toolOfKey(k));
+        for (const tool of tools) {
+          if (!modifiedTools.has(tool.id)) continue;
+          const desiredByItem: DesiredMap = {};
+          for (const item of data.items) {
+            const k = key(tool.id, item.id);
+            if (k in desired) desiredByItem[item.id] = desired[k];
+          }
+          const ops = await plan(tool.id, data.items, desiredByItem, takeOver);
+          if (ops.length > 0) await apply(ops);
+          await syncRules(tool.id, data.items, desiredByItem);
+          await syncHooks(tool.id, data.items, desiredByItem);
+        }
+        await refresh();
+      } catch (e) {
+        setError(messageOf(e));
+      } finally {
+        setApplying(false);
+        setProgress(null);
+      }
+    },
+    [data, desired, pendingKeys, tools, refresh],
+  );
+
+  // Surface a confirmation when enabling items whose tool target is blocked by
+  // a real file; taking over deletes that file. Other edits apply regardless.
+  const applyChanges = useCallback(() => {
+    if (!data) return;
+    const rows = detectConflicts(pendingKeys, desired, currentMap, data.items, tools);
+    if (rows.length === 0) {
+      void runApply(false);
+      return;
     }
-  }, [data, desired, pendingKeys, tools, refresh]);
+    setConflictPrompt({
+      rows,
+      resolve: (takeOver) => {
+        setConflictPrompt(null);
+        void runApply(takeOver);
+      },
+    });
+  }, [data, pendingKeys, desired, currentMap, tools, runApply]);
 
   return (
     <div className="app">
@@ -284,10 +311,90 @@ export function App() {
           pending={pendingKeys.length}
           applying={applying}
           progress={progress}
-          onApply={() => void applyChanges()}
+          onApply={() => applyChanges()}
           onReset={resetDesired}
         />
       )}
+      {conflictPrompt && (
+        <ConflictDialog
+          rows={conflictPrompt.rows}
+          onTakeOver={() => conflictPrompt.resolve(true)}
+          onSkip={() => conflictPrompt.resolve(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface ConflictRow {
+  toolLabel: string;
+  name: string;
+  targetPath: string;
+}
+
+// `key()` is `${tool}::${itemId}`; itemId itself never contains "::".
+function toolOfKey(k: string): ToolId {
+  return k.slice(0, k.indexOf("::")) as ToolId;
+}
+
+// Items the user is enabling whose tool target is blocked by a real file.
+function detectConflicts(
+  pendingKeys: string[],
+  desired: DesiredMap,
+  currentMap: Map<string, ToolCapabilityState>,
+  items: CapabilityItem[],
+  tools: ToolDef[],
+): ConflictRow[] {
+  const rows: ConflictRow[] = [];
+  for (const k of pendingKeys) {
+    if (!desired[k]) continue;
+    const cur = currentMap.get(k);
+    if (!cur || cur.state !== "foreign_file") continue;
+    const toolId = toolOfKey(k);
+    const tool = tools.find((t) => t.id === toolId);
+    const item = items.find((it) => it.id === cur.itemId);
+    rows.push({
+      toolLabel: tool?.label ?? toolId,
+      name: item?.name ?? cur.itemId,
+      targetPath: cur.targetPath,
+    });
+  }
+  return rows;
+}
+
+function ConflictDialog(props: {
+  rows: ConflictRow[];
+  onTakeOver: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal modal-danger">
+        <h2>Real files block {props.rows.length} target{props.rows.length === 1 ? "" : "s"}</h2>
+        <p className="modal-lead">
+          A real file or folder already exists where these capabilities would be
+          projected. Taking over <strong>deletes</strong> the existing file/folder
+          and replaces it. This cannot be undone.
+        </p>
+        <ul className="conflict-list">
+          {props.rows.map((r, i) => (
+            <li key={i}>
+              <span className="conflict-where">
+                {r.name} <span className="src-hint">in {r.toolLabel}</span>
+              </span>
+              <code className="conflict-path">{r.targetPath}</code>
+            </li>
+          ))}
+        </ul>
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={props.onSkip}>
+            Skip these
+          </button>
+          <button className="btn btn-danger" onClick={props.onTakeOver}>
+            Delete &amp; take over
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

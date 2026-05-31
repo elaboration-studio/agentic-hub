@@ -11,4 +11,10 @@ export type PlannedOperation = { tool: ToolId, itemId: string,
  * The tool's base directory for this item's kind (skills/agents/rules dir).
  * Carried so the applier can locate the per-root managed-copy manifest.
  */
-targetRoot: string, targetPath: string, sourcePath: string | null, kind: OperationKind, reason: string, };
+targetRoot: string, targetPath: string, sourcePath: string | null, kind: OperationKind, reason: string, 
+/**
+ * User-authorized destructive take-over: the applier may delete a real
+ * (non-managed) file/dir at the target before projecting. Set only for a
+ * confirmed `foreign_file` resolution; always `false` for normal ops.
+ */
+force: boolean, };

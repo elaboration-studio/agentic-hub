@@ -7,6 +7,7 @@ for how releases are built and published.
 
 - Empty-start scaffold: a first-run empty state bootstraps a bundled demo shared root (skills, agents, rules, hooks) in one click so a fresh install is usable immediately.
 - Open files: a per-row actions menu opens a capability's original file in a configurable preferred editor (System default / VS Code / Cursor / custom), reveals it in Finder, and opens the file each enabled tool actually references — all through validated Rust commands using `tauri-plugin-opener`.
+- Resolve "real file blocks this target" (`foreign_file`) conflicts: when you enable a capability whose tool target already holds a real file or folder, Apply now warns and, on explicit confirmation, deletes the blocking file/folder and projects. Without confirmation the conflict is still skipped — real files are never overwritten silently. The watcher and suite/workspace applies never take over.
 
 ## [0.1.0] — 2026-05-31
 
