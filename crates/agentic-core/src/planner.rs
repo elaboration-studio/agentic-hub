@@ -165,6 +165,7 @@ pub fn build_plan(
     items: &[CapabilityItem],
     adapter: &ResolvedAdapter,
     desired_enabled: &HashMap<String, bool>,
+    force: bool,
 ) -> Vec<PlannedOperation> {
     let mut ops: Vec<PlannedOperation> = Vec::new();
     for item in items {
@@ -182,7 +183,7 @@ pub fn build_plan(
         };
         let desired = desired_enabled.get(&item.id).copied().unwrap_or(false);
         let managed = matches!(mode, ProjectionMode::FileSync);
-        if let Some(op) = diff_op(item, &state, root, desired, managed) {
+        if let Some(op) = diff_op(item, &state, root, desired, managed, force) {
             ops.push(op);
         }
     }
@@ -196,6 +197,7 @@ fn diff_op(
     target_root: &Path,
     desired: bool,
     managed: bool,
+    force: bool,
 ) -> Option<PlannedOperation> {
     use LinkState::{Broken, Disabled, Enabled, ForeignFile, ForeignLink, Stale};
     use OperationKind::{
@@ -203,6 +205,8 @@ fn diff_op(
         ReplaceManagedCopy, SkipConflict,
     };
 
+    // A confirmed take-over: replace the blocking real file/dir from source.
+    let mut takeover = false;
     let (kind, reason, with_source) = match (state.state, desired) {
         (Enabled, true) | (Disabled, false) | (ForeignFile, false) => return None,
         (Enabled, false) => (
@@ -257,7 +261,22 @@ fn diff_op(
             "Projection owned by another source; not removing",
             false,
         ),
-        (ForeignFile, true) => (SkipConflict, "A real file blocks projection", false),
+        (ForeignFile, true) => {
+            if force {
+                takeover = true;
+                (
+                    if managed {
+                        ReplaceManagedCopy
+                    } else {
+                        ReplaceLink
+                    },
+                    "Take over target, replacing a real file",
+                    true,
+                )
+            } else {
+                (SkipConflict, "A real file blocks projection", false)
+            }
+        }
     };
 
     Some(PlannedOperation {
@@ -268,6 +287,7 @@ fn diff_op(
         source_path: with_source.then(|| item.source_path.clone()),
         kind,
         reason: reason.to_string(),
+        force: takeover,
     })
 }
 
@@ -485,10 +505,69 @@ mod tests {
         desired.insert(agent.id.clone(), true);
         desired.insert(rule.id.clone(), true); // markdown rule: not planned here
 
-        let ops = build_plan(&[agent.clone(), rule], &adapter, &desired);
+        let ops = build_plan(&[agent.clone(), rule], &adapter, &desired, false);
         assert_eq!(ops.len(), 1, "rule excluded from build_plan");
         assert_eq!(ops[0].kind, OperationKind::CreateLink);
         assert_eq!(ops[0].item_id, agent.id);
+        assert_eq!(ops[0].source_path.as_ref(), Some(&source));
+    }
+
+    #[test]
+    fn foreign_file_link_takeover_only_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/foo.md");
+        write(&source, "agent body");
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
+        // A real (user-owned) file occupies the target -> ForeignFile.
+        let target = adapter.target_path_for(&agent).unwrap();
+        write(&target, "user owned");
+        assert_eq!(inspect_symlink(&agent, &target).0, LinkState::ForeignFile);
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+
+        // Without force: surfaced as a skip, nothing destructive.
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::SkipConflict);
+        assert!(!ops[0].force);
+        assert!(ops[0].source_path.is_none());
+
+        // With force: a take-over ReplaceLink carrying the source + force flag.
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, true);
+        assert_eq!(ops[0].kind, OperationKind::ReplaceLink);
+        assert!(ops[0].force);
+        assert_eq!(ops[0].source_path.as_ref(), Some(&source));
+    }
+
+    #[test]
+    fn foreign_file_managed_takeover_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/agent.md");
+        write(&source, "agent body");
+        let agents_dir = dir.path().join("cursor-agents");
+        // Cursor agents project as managed copies (file_sync).
+        let adapter = adapter_with(ToolId::Cursor, |s| {
+            s.tools.cursor.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "agent.md", source.clone());
+        let target = adapter.target_path_for(&agent).unwrap();
+        // A real file with no manifest entry -> ForeignFile.
+        write(&target, "user owned");
+        assert_eq!(
+            inspect_managed_copy(&agent, &target, &agents_dir).0,
+            LinkState::ForeignFile
+        );
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, true);
+        assert_eq!(ops[0].kind, OperationKind::ReplaceManagedCopy);
+        assert!(ops[0].force);
         assert_eq!(ops[0].source_path.as_ref(), Some(&source));
     }
 
@@ -514,7 +593,7 @@ mod tests {
         desired.insert(a.id.clone(), true);
         desired.insert(b.id.clone(), true);
 
-        let ops = build_plan(&[a, b], &adapter, &desired);
+        let ops = build_plan(&[a, b], &adapter, &desired, false);
         // Claude skills project as managed copies, so the winner is a create-copy.
         let creates = ops
             .iter()

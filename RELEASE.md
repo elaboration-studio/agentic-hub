@@ -3,6 +3,10 @@
 Notable changes per release. Newest first. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for how releases are built and published.
 
+## [Unreleased]
+
+- Resolve "real file blocks this target" (`foreign_file`) conflicts: when you enable a capability whose tool target already holds a real file or folder, Apply now warns and, on explicit confirmation, deletes the blocking file/folder and projects. Without confirmation the conflict is still skipped — real files are never overwritten silently. The watcher and suite/workspace applies never take over.
+
 ## [0.1.0] — 2026-05-31
 
 First public build. Agentic Hub manages shared agentic capabilities — skills,

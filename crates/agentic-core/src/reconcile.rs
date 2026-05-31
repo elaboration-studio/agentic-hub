@@ -115,7 +115,8 @@ pub fn reconcile_tool(
     let states = states_for_tool(items, &adapter);
     let desired = compute_reconcile_desired(items, &states, prev_known_ids);
 
-    let ops = planner::build_plan(items, &adapter, &desired);
+    // The watcher reconciles non-destructively; never take over real files.
+    let ops = planner::build_plan(items, &adapter, &desired, false);
     let apply = applier::apply(&ops, |_, _, _, _| {});
     let rules = api::sync_rules(items, settings, tool, &desired);
     let hooks = api::sync_hooks(items, settings, tool, &desired);
@@ -259,7 +260,7 @@ mod tests {
     fn enable(items: &[CapabilityItem], settings: &Settings, tool: ToolId, id: &str) {
         let mut desired = HashMap::new();
         desired.insert(id.to_string(), true);
-        let ops = api::plan(items, settings, tool, &desired);
+        let ops = api::plan(items, settings, tool, &desired, false);
         api::apply(&ops);
     }
 

@@ -76,11 +76,17 @@ fn run(op: &PlannedOperation) -> Result<Effect, Fail> {
             Ok(Effect::Created)
         }
         ReplaceLink => {
-            if !is_symlink_or_managed_copy(target, &op.target_root) {
-                return Err(Fail::Conflict);
-            }
             let source = source(op)?;
-            fs::remove_file(target).map_err(Fail::Io)?;
+            if op.force {
+                // Confirmed take-over: remove any real file/dir/symlink first.
+                managed_copy::remove_existing(target).map_err(Fail::Io)?;
+            } else {
+                if !is_symlink_or_managed_copy(target, &op.target_root) {
+                    return Err(Fail::Conflict);
+                }
+                fs::remove_file(target).map_err(Fail::Io)?;
+            }
+            ensure_parent(target)?;
             symlink(&source, target)?;
             Ok(Effect::Replaced)
         }
@@ -192,6 +198,7 @@ mod tests {
             source_path: source,
             kind,
             reason: String::new(),
+            force: false,
         }
     }
 
@@ -254,6 +261,80 @@ mod tests {
         assert_eq!(res.errors.len(), 1);
         assert_eq!(res.errors[0].code, "conflict_real_file_at_target");
         assert!(real.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn force_replace_link_takes_over_real_file_and_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/foo.md");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "body").unwrap();
+
+        // Real file at the target.
+        let target = dir.path().join("out/foo.md");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "user owned").unwrap();
+
+        let mut forced = op(OperationKind::ReplaceLink, target.clone(), Some(source.clone()));
+        forced.force = true;
+        let res = apply(&[forced], |_, _, _, _| {});
+        assert_eq!(res.replaced, 1);
+        assert!(res.errors.is_empty());
+        assert!(is_symlink(&target));
+
+        // Real directory at the target is also taken over.
+        let target_dir = dir.path().join("out/bar");
+        fs::create_dir_all(target_dir.join("nested")).unwrap();
+        let mut forced_dir = op(OperationKind::ReplaceLink, target_dir.clone(), Some(source.clone()));
+        forced_dir.force = true;
+        let res = apply(&[forced_dir], |_, _, _, _| {});
+        assert_eq!(res.replaced, 1);
+        assert!(is_symlink(&target_dir));
+    }
+
+    #[test]
+    fn replace_link_without_force_refuses_real_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/foo.md");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "body").unwrap();
+        let target = dir.path().join("out/foo.md");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "user owned").unwrap();
+
+        let res = apply(
+            &[op(OperationKind::ReplaceLink, target.clone(), Some(source))],
+            |_, _, _, _| {},
+        );
+        assert_eq!(res.errors.len(), 1);
+        assert_eq!(res.errors[0].code, "conflict_real_file_at_target");
+        // The real file is untouched.
+        assert_eq!(fs::read_to_string(&target).unwrap(), "user owned");
+    }
+
+    #[test]
+    fn force_replace_managed_copy_takes_over_real_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "# skill").unwrap();
+
+        let root = dir.path().join("out");
+        let target = root.join("skill");
+        // Real user dir at the target.
+        fs::create_dir_all(target.join("mine")).unwrap();
+
+        let mut forced = op(OperationKind::ReplaceManagedCopy, target.clone(), Some(source));
+        forced.target_root = root.clone();
+        forced.force = true;
+        let res = apply(&[forced], |_, _, _, _| {});
+        assert_eq!(res.refreshed, 1);
+        assert!(res.errors.is_empty());
+        assert!(target.join("SKILL.md").is_file());
+        // The user's pre-existing content is gone (destructive take-over).
+        assert!(!target.join("mine").exists());
+        assert!(managed_copy::read_entry(&root, &target).is_some());
     }
 
     #[test]

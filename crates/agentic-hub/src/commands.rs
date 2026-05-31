@@ -164,6 +164,10 @@ pub struct PlanInput {
     pub tool_id: ToolId,
     pub items: Vec<CapabilityItem>,
     pub desired_enabled_by_item_id: HashMap<String, bool>,
+    /// Confirmed destructive take-over of `foreign_file` targets. Defaults to
+    /// `false`; the UI sets it only after the user confirms the warning dialog.
+    #[serde(default)]
+    pub force: bool,
 }
 
 #[tauri::command]
@@ -174,6 +178,7 @@ pub async fn cmd_plan(input: PlanInput) -> IpcResult<Vec<PlannedOperation>> {
         &settings,
         input.tool_id,
         &input.desired_enabled_by_item_id,
+        input.force,
     ))
 }
 
