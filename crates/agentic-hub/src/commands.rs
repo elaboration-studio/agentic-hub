@@ -2,11 +2,18 @@
 //! here — only payload marshalling and error mapping. The read-only MVP surface:
 //! settings load/save, scan, inspect, and source add/remove.
 
+use std::collections::HashMap;
+
 use agentic_core::api::{self, InspectResult};
-use agentic_core::model::{CapabilityItem, ScanResult};
+use agentic_core::applier;
+use agentic_core::managed_copy::now_iso8601;
+use agentic_core::model::{
+    ApplyError, ApplyResult, CapabilityItem, PlannedOperation, ScanResult, SyncRulesResult, ToolId,
+};
 use agentic_core::paths::expand_tilde;
 use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
 
 use crate::error::IpcError;
 
@@ -93,4 +100,82 @@ pub async fn cmd_remove_source(input: RemoveSourceInput) -> IpcResult<Settings> 
     }
     settings.save()?;
     Ok(settings)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanInput {
+    pub tool_id: ToolId,
+    pub items: Vec<CapabilityItem>,
+    pub desired_enabled_by_item_id: HashMap<String, bool>,
+}
+
+#[tauri::command]
+pub async fn cmd_plan(input: PlanInput) -> IpcResult<Vec<PlannedOperation>> {
+    let settings = Settings::load()?;
+    Ok(api::plan(
+        &input.items,
+        &settings,
+        input.tool_id,
+        &input.desired_enabled_by_item_id,
+    ))
+}
+
+/// Per-operation progress event emitted during `cmd_apply`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyProgressEvent {
+    pub apply_id: String,
+    pub operation_index: u32,
+    pub total_operations: u32,
+    pub operation: PlannedOperation,
+    pub success: bool,
+    pub error: Option<ApplyError>,
+}
+
+#[tauri::command]
+pub async fn cmd_apply(
+    app: AppHandle,
+    operations: Vec<PlannedOperation>,
+) -> IpcResult<ApplyResult> {
+    let apply_id = now_iso8601();
+    let total = operations.len() as u32;
+    let result = applier::apply(&operations, |index, _, op, err| {
+        let _ = app.emit(
+            "apply-progress",
+            ApplyProgressEvent {
+                apply_id: apply_id.clone(),
+                operation_index: index as u32,
+                total_operations: total,
+                operation: op.clone(),
+                success: err.is_none(),
+                error: err.cloned(),
+            },
+        );
+    });
+    Ok(result)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncRulesInput {
+    pub tool_id: ToolId,
+    pub items: Vec<CapabilityItem>,
+    pub desired_enabled_by_item_id: HashMap<String, bool>,
+}
+
+#[tauri::command]
+pub async fn cmd_sync_rules(input: SyncRulesInput) -> IpcResult<SyncRulesResult> {
+    let settings = Settings::load()?;
+    Ok(api::sync_rules(
+        &input.items,
+        &settings,
+        input.tool_id,
+        &input.desired_enabled_by_item_id,
+    ))
 }

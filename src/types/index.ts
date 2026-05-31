@@ -5,9 +5,17 @@
 export type { AdapterStatus } from "./generated/AdapterStatus";
 export type { CapabilityItem } from "./generated/CapabilityItem";
 export type { CapabilityKind } from "./generated/CapabilityKind";
+export type { ApplyError } from "./generated/ApplyError";
+export type { ApplyProgressEvent } from "./generated/ApplyProgressEvent";
+export type { ApplyResult } from "./generated/ApplyResult";
 export type { InspectResult } from "./generated/InspectResult";
 export type { IpcError } from "./generated/IpcError";
 export type { LinkState } from "./generated/LinkState";
+export type { OperationKind } from "./generated/OperationKind";
+export type { PlannedOperation } from "./generated/PlannedOperation";
+export type { RuleSyncError } from "./generated/RuleSyncError";
+export type { RuleSyncOutcome } from "./generated/RuleSyncOutcome";
+export type { SyncRulesResult } from "./generated/SyncRulesResult";
 export type { ScanError } from "./generated/ScanError";
 export type { ScanResult } from "./generated/ScanResult";
 export type { Settings } from "./generated/Settings";

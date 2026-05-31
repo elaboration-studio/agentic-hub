@@ -290,3 +290,89 @@ tr.invalid .cap-name {
   background: #21162e;
   border-color: #45295e;
 }
+
+.toggle {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.toggle:hover {
+  border-color: #3a3f4c;
+}
+
+.toggle.on {
+  background: #0f2417;
+  border-color: #1c4a30;
+}
+
+.toggle.mod {
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+
+.toggle.warn {
+  border-color: #5b4520;
+}
+
+.warn-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.actionbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 -6px 18px #00000040;
+}
+
+.pending {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.actionbar-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #3a3f4c;
+}
+
+.btn-ghost:disabled,
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

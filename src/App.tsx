@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { inspect, loadSettings, scan } from "./ipc";
+import {
+  apply,
+  inspect,
+  loadSettings,
+  onApplyProgress,
+  plan,
+  scan,
+  syncRules,
+  type DesiredMap,
+} from "./ipc";
 import type {
   AdapterStatus,
   CapabilityItem,
@@ -28,13 +37,14 @@ const KIND_LABEL: Record<CapabilityKind, string> = {
   hook: "Hooks",
 };
 
-const STATE_META: Record<LinkState, { label: string; tone: string }> = {
-  enabled: { label: "Enabled", tone: "ok" },
-  disabled: { label: "Off", tone: "muted" },
-  broken: { label: "Broken", tone: "danger" },
-  stale: { label: "Stale", tone: "warn" },
-  foreign_file: { label: "Foreign file", tone: "alien" },
-  foreign_link: { label: "Foreign link", tone: "alien" },
+// Current states that are "abnormal" — surfaced as a dot on the toggle.
+const ABNORMAL: Record<LinkState, string | null> = {
+  enabled: null,
+  disabled: null,
+  broken: "Broken link",
+  stale: "Stale copy",
+  foreign_file: "A real file blocks this target",
+  foreign_link: "Owned by another source",
 };
 
 type Status = "loading" | "ready" | "error";
@@ -46,12 +56,23 @@ interface Loaded {
   result: InspectResult;
 }
 
-const stateKey = (tool: ToolId, itemId: string) => `${tool}::${itemId}`;
+const key = (tool: ToolId, itemId: string) => `${tool}::${itemId}`;
+
+function seedDesired(result: InspectResult): DesiredMap {
+  const map: DesiredMap = {};
+  for (const s of result.states) {
+    map[key(s.tool, s.itemId)] = s.state === "enabled";
+  }
+  return map;
+}
 
 export function App() {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string>("");
   const [data, setData] = useState<Loaded | null>(null);
+  const [desired, setDesired] = useState<DesiredMap>({});
+  const [applying, setApplying] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const refresh = useCallback(async () => {
     setStatus("loading");
@@ -61,13 +82,10 @@ export function App() {
       const { items, errors } = await scan(settings.sources);
       const result = await inspect(items, settings.tools);
       setData({ settings, items, scanErrors: errors, result });
+      setDesired(seedDesired(result));
       setStatus("ready");
     } catch (e) {
-      const message =
-        e && typeof e === "object" && "message" in e
-          ? String((e as { message: unknown }).message)
-          : String(e);
-      setError(message);
+      setError(messageOf(e));
       setStatus("error");
     }
   }, []);
@@ -75,6 +93,75 @@ export function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const unlisten = onApplyProgress((e) =>
+      setProgress({ done: e.operationIndex + 1, total: e.totalOperations }),
+    );
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  const currentMap = useMemo(() => {
+    const map = new Map<string, ToolCapabilityState>();
+    if (data) {
+      for (const s of data.result.states) map.set(key(s.tool, s.itemId), s);
+    }
+    return map;
+  }, [data]);
+
+  const pendingKeys = useMemo(
+    () =>
+      Object.keys(desired).filter((k) => {
+        const cur = currentMap.get(k);
+        return cur ? desired[k] !== (cur.state === "enabled") : false;
+      }),
+    [desired, currentMap],
+  );
+
+  const toggle = useCallback(
+    (tool: ToolId, itemId: string) => {
+      const k = key(tool, itemId);
+      if (!currentMap.has(k)) return;
+      setDesired((d) => ({ ...d, [k]: !d[k] }));
+    },
+    [currentMap],
+  );
+
+  const resetDesired = useCallback(() => {
+    if (data) setDesired(seedDesired(data.result));
+  }, [data]);
+
+  const applyChanges = useCallback(async () => {
+    if (!data) return;
+    setApplying(true);
+    setProgress(null);
+    setError("");
+    try {
+      const modifiedTools = new Set<ToolId>();
+      for (const k of pendingKeys) {
+        modifiedTools.add(k.split("::")[0] as ToolId);
+      }
+      for (const tool of TOOLS) {
+        if (!modifiedTools.has(tool.id)) continue;
+        const desiredByItem: DesiredMap = {};
+        for (const item of data.items) {
+          const k = key(tool.id, item.id);
+          if (k in desired) desiredByItem[item.id] = desired[k];
+        }
+        const ops = await plan(tool.id, data.items, desiredByItem);
+        if (ops.length > 0) await apply(ops);
+        await syncRules(tool.id, data.items, desiredByItem);
+      }
+      await refresh();
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setApplying(false);
+      setProgress(null);
+    }
+  }, [data, desired, pendingKeys, refresh]);
 
   return (
     <div className="app">
@@ -85,13 +172,13 @@ export function App() {
         loading={status === "loading"}
       />
       <main className="content">
-        {status === "error" && <Banner tone="danger">Failed to load: {error}</Banner>}
+        {status === "error" && <Banner tone="danger">{error}</Banner>}
         {status === "loading" && !data && <Banner tone="muted">Scanning sources…</Banner>}
         {data && (
           <>
-            <SourceList settings={data.settings} items={data.items} />
+            <SourceList settings={data.settings} />
             {data.scanErrors.length > 0 && (
-              <details className="scan-errors" open>
+              <details className="scan-errors">
                 <summary>{data.scanErrors.length} scan notice(s)</summary>
                 <ul>
                   {data.scanErrors.map((err, i) => (
@@ -102,10 +189,25 @@ export function App() {
                 </ul>
               </details>
             )}
-            <Matrix items={data.items} result={data.result} />
+            <Matrix
+              items={data.items}
+              currentMap={currentMap}
+              adapterStatuses={data.result.adapterStatuses}
+              desired={desired}
+              onToggle={toggle}
+            />
           </>
         )}
       </main>
+      {pendingKeys.length > 0 && (
+        <ActionBar
+          pending={pendingKeys.length}
+          applying={applying}
+          progress={progress}
+          onApply={() => void applyChanges()}
+          onReset={resetDesired}
+        />
+      )}
     </div>
   );
 }
@@ -135,7 +237,7 @@ function Header(props: {
   );
 }
 
-function SourceList(props: { settings: Settings; items: CapabilityItem[] }) {
+function SourceList(props: { settings: Settings }) {
   const sources =
     props.settings.sources.length > 0
       ? props.settings.sources.map((s) => ({ label: s.label, path: s.path }))
@@ -155,22 +257,18 @@ function SourceList(props: { settings: Settings; items: CapabilityItem[] }) {
   );
 }
 
-function Matrix(props: { items: CapabilityItem[]; result: InspectResult }) {
-  const stateMap = useMemo(() => {
-    const map = new Map<string, ToolCapabilityState>();
-    for (const s of props.result.states) {
-      map.set(stateKey(s.tool, s.itemId), s);
-    }
-    return map;
-  }, [props.result.states]);
-
+function Matrix(props: {
+  items: CapabilityItem[];
+  currentMap: Map<string, ToolCapabilityState>;
+  adapterStatuses: AdapterStatus[];
+  desired: DesiredMap;
+  onToggle: (tool: ToolId, itemId: string) => void;
+}) {
   const adapterMap = useMemo(() => {
     const map = new Map<ToolId, AdapterStatus>();
-    for (const a of props.result.adapterStatuses) {
-      map.set(a.tool, a);
-    }
+    for (const a of props.adapterStatuses) map.set(a.tool, a);
     return map;
-  }, [props.result.adapterStatuses]);
+  }, [props.adapterStatuses]);
 
   if (props.items.length === 0) {
     return <Banner tone="muted">No capabilities found in the configured sources.</Banner>;
@@ -204,8 +302,10 @@ function Matrix(props: { items: CapabilityItem[]; result: InspectResult }) {
                 key={kind}
                 kind={kind}
                 rows={rows}
-                stateMap={stateMap}
+                currentMap={props.currentMap}
                 adapterMap={adapterMap}
+                desired={props.desired}
+                onToggle={props.onToggle}
               />
             );
           })}
@@ -218,8 +318,10 @@ function Matrix(props: { items: CapabilityItem[]; result: InspectResult }) {
 function KindGroup(props: {
   kind: CapabilityKind;
   rows: CapabilityItem[];
-  stateMap: Map<string, ToolCapabilityState>;
+  currentMap: Map<string, ToolCapabilityState>;
   adapterMap: Map<ToolId, AdapterStatus>;
+  desired: DesiredMap;
+  onToggle: (tool: ToolId, itemId: string) => void;
 }) {
   return (
     <>
@@ -237,17 +339,30 @@ function KindGroup(props: {
           <td className="col-src">{item.sourceLabel}</td>
           {TOOLS.map((t) => {
             const adapter = props.adapterMap.get(t.id);
-            if (adapter && !adapter.available) {
+            const k = key(t.id, item.id);
+            const cur = props.currentMap.get(k);
+            if ((adapter && !adapter.available) || !cur) {
               return (
                 <td key={t.id} className="cell">
                   <span className="dash">—</span>
                 </td>
               );
             }
-            const st = props.stateMap.get(stateKey(t.id, item.id));
+            const on = props.desired[k] ?? false;
+            const modified = on !== (cur.state === "enabled");
+            const abnormal = ABNORMAL[cur.state];
             return (
               <td key={t.id} className="cell">
-                {st ? <StateBadge state={st.state} /> : <span className="dash">·</span>}
+                <button
+                  className={`toggle${on ? " on" : ""}${modified ? " mod" : ""}${
+                    abnormal ? " warn" : ""
+                  }`}
+                  title={`current: ${cur.state}${abnormal ? ` — ${abnormal}` : ""}`}
+                  onClick={() => props.onToggle(t.id, item.id)}
+                >
+                  {on ? "✓" : ""}
+                  {abnormal && <span className="warn-dot" />}
+                </button>
               </td>
             );
           })}
@@ -257,11 +372,42 @@ function KindGroup(props: {
   );
 }
 
-function StateBadge(props: { state: LinkState }) {
-  const meta = STATE_META[props.state];
-  return <span className={`badge badge-${meta.tone}`}>{meta.label}</span>;
+function ActionBar(props: {
+  pending: number;
+  applying: boolean;
+  progress: { done: number; total: number } | null;
+  onApply: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="actionbar">
+      <span className="pending">
+        {props.pending} pending change{props.pending === 1 ? "" : "s"}
+        {props.applying && props.progress
+          ? ` · applying ${props.progress.done}/${props.progress.total}`
+          : props.applying
+            ? " · applying…"
+            : ""}
+      </span>
+      <div className="actionbar-buttons">
+        <button className="btn-ghost" onClick={props.onReset} disabled={props.applying}>
+          Reset
+        </button>
+        <button className="btn" onClick={props.onApply} disabled={props.applying}>
+          Apply
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function Banner(props: { tone: "danger" | "muted"; children: ReactNode }) {
   return <div className={`banner banner-${props.tone}`}>{props.children}</div>;
+}
+
+function messageOf(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e) {
+    return String((e as { message: unknown }).message);
+  }
+  return String(e);
 }

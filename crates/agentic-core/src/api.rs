@@ -4,11 +4,18 @@
 //! they stay unit-testable against a tempdir. The shell layer only does payload
 //! marshalling and error mapping. See `docs/tech/modules/tauri-ipc-contract.md`.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
-use crate::adapter_registry::{self, ResolvedAdapter};
-use crate::model::{CapabilityItem, ScanResult, ToolCapabilityState, ToolId};
+use crate::adapter_registry::{self, ProjectionMode, ResolvedAdapter};
+use crate::applier;
+use crate::model::{
+    ApplyResult, CapabilityItem, CapabilityKind, PlannedOperation, RuleSyncOutcome, ScanResult,
+    SyncRulesResult, ToolCapabilityState, ToolId,
+};
 use crate::planner;
+use crate::rule_sync;
 use crate::scanner;
 use crate::settings::Settings;
 
@@ -81,6 +88,68 @@ fn availability(adapter: &ResolvedAdapter) -> Option<String> {
         return Some("Tool is disabled in settings".to_string());
     }
     None
+}
+
+/// Build the operation plan for one tool against fresh disk state. Markdown
+/// rules and hooks are excluded (handled by [`sync_rules`] / hook sync).
+pub fn plan(
+    items: &[CapabilityItem],
+    settings: &Settings,
+    tool: ToolId,
+    desired_enabled: &HashMap<String, bool>,
+) -> Vec<PlannedOperation> {
+    let adapter = adapter_registry::resolve(settings, tool);
+    planner::build_plan(items, &adapter, desired_enabled)
+}
+
+/// Apply a batch of operations with a no-op progress sink. The Tauri shell uses
+/// [`applier::apply`] directly so it can emit per-op progress events.
+pub fn apply(ops: &[PlannedOperation]) -> ApplyResult {
+    applier::apply(ops, |_, _, _, _| {})
+}
+
+/// Sync the markdown managed-rule block for one tool from the desired set.
+/// No-op for tools without an instruction file (e.g. Cursor, whose rules are
+/// symlinked and planned through [`plan`]).
+pub fn sync_rules(
+    items: &[CapabilityItem],
+    settings: &Settings,
+    tool: ToolId,
+    desired_enabled: &HashMap<String, bool>,
+) -> SyncRulesResult {
+    let adapter = adapter_registry::resolve(settings, tool);
+    let Some(instructions) = adapter.instructions_path.clone() else {
+        return SyncRulesResult {
+            outcome: RuleSyncOutcome::NoOp,
+            errors: vec![],
+        };
+    };
+    if adapter.projection_mode_for(CapabilityKind::Rule)
+        != Some(ProjectionMode::MarkdownSectionSync)
+    {
+        return SyncRulesResult {
+            outcome: RuleSyncOutcome::NoOp,
+            errors: vec![],
+        };
+    }
+
+    let enabled: Vec<&CapabilityItem> = items
+        .iter()
+        .filter(|it| {
+            it.kind == CapabilityKind::Rule && desired_enabled.get(&it.id).copied().unwrap_or(false)
+        })
+        .collect();
+
+    match rule_sync::sync_markdown_rules(&instructions, &enabled) {
+        Ok(outcome) => SyncRulesResult {
+            outcome,
+            errors: vec![],
+        },
+        Err(e) => SyncRulesResult {
+            outcome: RuleSyncOutcome::NoOp,
+            errors: vec![e],
+        },
+    }
 }
 
 #[cfg(test)]

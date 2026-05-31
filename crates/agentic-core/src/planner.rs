@@ -2,12 +2,15 @@
 //! each scanned item against fresh disk state. No filesystem writes. The plan
 //! and apply stages build on top of this. See `ARCHITECTURE.projection.md`.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::adapter_registry::{ProjectionMode, ResolvedAdapter};
 use crate::managed_copy;
-use crate::model::{CapabilityItem, CapabilityKind, LinkState, ToolCapabilityState};
+use crate::model::{
+    CapabilityItem, CapabilityKind, LinkState, OperationKind, PlannedOperation, ToolCapabilityState,
+};
 use crate::rule_sync::{self, BlockState};
 
 /// Inspect every applicable item for one tool. Hook items are skipped — their
@@ -125,6 +128,150 @@ fn inspect_markdown_rule(instructions: &Path, relative_path: &Path) -> LinkState
             } else {
                 LinkState::Disabled
             }
+        }
+    }
+}
+
+/// Diff desired-vs-current and emit the per-item operations for one tool, then
+/// resolve projection-target collisions. Only `link_sync` and `file_sync` items
+/// are planned here; markdown rules and hooks flow through their own sync paths.
+/// State is re-inspected internally from fresh disk state.
+pub fn build_plan(
+    items: &[CapabilityItem],
+    adapter: &ResolvedAdapter,
+    desired_enabled: &HashMap<String, bool>,
+) -> Vec<PlannedOperation> {
+    let mut ops: Vec<PlannedOperation> = Vec::new();
+    for item in items {
+        let Some(mode) = adapter.projection_mode_for(item.kind) else {
+            continue;
+        };
+        if !matches!(mode, ProjectionMode::LinkSync | ProjectionMode::FileSync) {
+            continue;
+        }
+        let Some(state) = inspect_item(item, adapter) else {
+            continue;
+        };
+        let desired = desired_enabled.get(&item.id).copied().unwrap_or(false);
+        let managed = matches!(mode, ProjectionMode::FileSync);
+        if let Some(op) = diff_op(item, &state, desired, managed) {
+            ops.push(op);
+        }
+    }
+    resolve_target_collisions(&mut ops);
+    ops
+}
+
+fn diff_op(
+    item: &CapabilityItem,
+    state: &ToolCapabilityState,
+    desired: bool,
+    managed: bool,
+) -> Option<PlannedOperation> {
+    use LinkState::{Broken, Disabled, Enabled, ForeignFile, ForeignLink, Stale};
+    use OperationKind::{
+        CreateLink, CreateManagedCopy, RemoveLink, RemoveManagedCopy, ReplaceLink,
+        ReplaceManagedCopy, SkipConflict,
+    };
+
+    let (kind, reason, with_source) = match (state.state, desired) {
+        (Enabled, true) | (Disabled, false) | (ForeignFile, false) => return None,
+        (Enabled, false) => (
+            if managed {
+                RemoveManagedCopy
+            } else {
+                RemoveLink
+            },
+            "Disable",
+            false,
+        ),
+        (Disabled, true) => (
+            if managed {
+                CreateManagedCopy
+            } else {
+                CreateLink
+            },
+            "Enable",
+            true,
+        ),
+        (Broken, true) => (
+            if managed {
+                ReplaceManagedCopy
+            } else {
+                ReplaceLink
+            },
+            "Repair broken projection",
+            true,
+        ),
+        (Broken, false) => (
+            if managed {
+                RemoveManagedCopy
+            } else {
+                RemoveLink
+            },
+            "Remove broken projection",
+            false,
+        ),
+        (Stale, true) => (ReplaceManagedCopy, "Refresh stale copy from source", true),
+        (Stale, false) => (RemoveManagedCopy, "Remove stale copy", false),
+        (ForeignLink, true) => (
+            if managed {
+                ReplaceManagedCopy
+            } else {
+                ReplaceLink
+            },
+            "Take over projection owned by another source",
+            true,
+        ),
+        (ForeignLink, false) => (
+            SkipConflict,
+            "Projection owned by another source; not removing",
+            false,
+        ),
+        (ForeignFile, true) => (SkipConflict, "A real file blocks projection", false),
+    };
+
+    Some(PlannedOperation {
+        tool: state.tool,
+        item_id: item.id.clone(),
+        target_path: state.target_path.clone(),
+        source_path: with_source.then(|| item.source_path.clone()),
+        kind,
+        reason: reason.to_string(),
+    })
+}
+
+fn writes_target(kind: OperationKind) -> bool {
+    matches!(
+        kind,
+        OperationKind::CreateLink
+            | OperationKind::ReplaceLink
+            | OperationKind::CreateManagedCopy
+            | OperationKind::ReplaceManagedCopy
+    )
+}
+
+/// Group writing ops by target; for any clash, the lowest `item_id` wins and the
+/// rest become `skip_conflict`. Covers cross-source clashes and Claude's flat
+/// basename collisions deterministically.
+fn resolve_target_collisions(ops: &mut [PlannedOperation]) {
+    let mut groups: HashMap<PathBuf, Vec<usize>> = HashMap::new();
+    for (i, op) in ops.iter().enumerate() {
+        if writes_target(op.kind) {
+            groups.entry(op.target_path.clone()).or_default().push(i);
+        }
+    }
+    for idxs in groups.into_values() {
+        if idxs.len() < 2 {
+            continue;
+        }
+        let mut sorted = idxs;
+        sorted.sort_by(|&a, &b| ops[a].item_id.cmp(&ops[b].item_id));
+        let winner = ops[sorted[0]].item_id.clone();
+        for &i in sorted.iter().skip(1) {
+            ops[i].kind = OperationKind::SkipConflict;
+            ops[i].source_path = None;
+            ops[i].reason = format!("Target path already taken by '{winner}'");
         }
     }
 }
@@ -281,5 +428,67 @@ mod tests {
             PathBuf::from("/src/hooks/auto-format-after-edit"),
         );
         assert!(inspect_tool(std::slice::from_ref(&hook), &adapter).is_empty());
+    }
+
+    #[test]
+    fn build_plan_enable_creates_link_and_skips_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/foo.md");
+        write(&source, "agent");
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
+        let rule = item(
+            CapabilityKind::Rule,
+            "general/precise.mdc",
+            dir.path().join("src/precise.mdc"),
+        );
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+        desired.insert(rule.id.clone(), true); // markdown rule: not planned here
+
+        let ops = build_plan(&[agent.clone(), rule], &adapter, &desired);
+        assert_eq!(ops.len(), 1, "rule excluded from build_plan");
+        assert_eq!(ops[0].kind, OperationKind::CreateLink);
+        assert_eq!(ops[0].item_id, agent.id);
+        assert_eq!(ops[0].source_path.as_ref(), Some(&source));
+    }
+
+    #[test]
+    fn build_plan_claude_flat_collision_first_id_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join("claude-skills");
+        let adapter = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.skills_path = skills_dir.clone();
+        });
+        // Two skills with different nesting but the same basename -> same flat target.
+        let a = item(
+            CapabilityKind::Skill,
+            "alpha/shared",
+            dir.path().join("src/a/shared"),
+        );
+        let b = item(
+            CapabilityKind::Skill,
+            "beta/shared",
+            dir.path().join("src/b/shared"),
+        );
+        let mut desired = HashMap::new();
+        desired.insert(a.id.clone(), true);
+        desired.insert(b.id.clone(), true);
+
+        let ops = build_plan(&[a, b], &adapter, &desired);
+        let creates = ops
+            .iter()
+            .filter(|o| o.kind == OperationKind::CreateLink)
+            .count();
+        let skips = ops
+            .iter()
+            .filter(|o| o.kind == OperationKind::SkipConflict)
+            .count();
+        assert_eq!(creates, 1, "one wins the flat target");
+        assert_eq!(skips, 1, "the other is a skip_conflict");
     }
 }

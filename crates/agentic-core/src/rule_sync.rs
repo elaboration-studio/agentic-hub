@@ -6,10 +6,16 @@
 //! Markers are preserved verbatim from the VS Code extension for migration
 //! parity. See `docs/tech/modules/rule-projection-sync.md`.
 
+use std::fs;
 use std::path::Path;
+
+use crate::model::{CapabilityItem, RuleSyncError, RuleSyncOutcome};
+use crate::paths::tildify;
 
 pub const BLOCK_START: &str = "<!-- e-studio-agentic-rules:start -->";
 pub const BLOCK_END: &str = "<!-- e-studio-agentic-rules:end -->";
+
+const BLOCK_PREAMBLE: &str = "## E-Studio Managed Rules\n\nThis section is managed by Agentic Hub. Edit rule selections in the\nAgentic Capability Manager instead of editing these blocks by hand.";
 
 /// State of the managed block within an instruction file's contents.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +56,144 @@ pub fn block_lists_rule(inner: &str, relative_path: &Path) -> bool {
         .replace(std::path::MAIN_SEPARATOR, "/");
     let heading = format!("### {rel}");
     inner.lines().any(|line| line.trim() == heading)
+}
+
+/// Strip a leading YAML frontmatter block (`---` … `---`). If none is present,
+/// the whole content (trimmed) is the body.
+pub fn strip_frontmatter(content: &str) -> String {
+    let trimmed = content.trim_start_matches(['\u{feff}', ' ', '\t', '\n', '\r']);
+    let mut lines = trimmed.lines();
+    if lines.next().map(str::trim) != Some("---") {
+        return content.trim_end().to_string();
+    }
+    let mut body = String::new();
+    let mut closed = false;
+    for line in lines {
+        if !closed {
+            if line.trim() == "---" {
+                closed = true;
+            }
+            continue;
+        }
+        body.push_str(line);
+        body.push('\n');
+    }
+    if closed {
+        body.trim().to_string()
+    } else {
+        // No closing marker — treat the whole thing as body.
+        content.trim_end().to_string()
+    }
+}
+
+/// Build the full managed block (markers inclusive) for the enabled rules.
+pub fn build_managed_block(enabled_rules: &[&CapabilityItem]) -> String {
+    let mut out = String::new();
+    out.push_str(BLOCK_START);
+    out.push('\n');
+    out.push_str(BLOCK_PREAMBLE);
+    out.push_str("\n\n");
+    for rule in enabled_rules {
+        let rel = rule
+            .relative_path
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
+        let body = fs::read_to_string(&rule.source_path)
+            .map(|c| strip_frontmatter(&c))
+            .unwrap_or_default();
+        out.push_str(&format!("### {rel}\n\n"));
+        out.push_str(&format!("Source: `{}`\n\n", tildify(&rule.source_path)));
+        if !body.is_empty() {
+            out.push_str(&body);
+            out.push_str("\n\n");
+        }
+    }
+    out.push_str(BLOCK_END);
+    out
+}
+
+/// Write the managed rule block into `instructions`, preserving everything
+/// outside the markers. Pure write-half of the `markdown_section_sync` contract.
+pub fn sync_markdown_rules(
+    instructions: &Path,
+    enabled_rules: &[&CapabilityItem],
+) -> Result<RuleSyncOutcome, RuleSyncError> {
+    let err = |code: &str, msg: &str| RuleSyncError {
+        path: instructions.to_path_buf(),
+        code: code.to_string(),
+        message: msg.to_string(),
+    };
+
+    if instructions.is_dir() {
+        return Err(err(
+            "conflict_real_file_at_target",
+            "A directory occupies the instruction-file path",
+        ));
+    }
+
+    let block = build_managed_block(enabled_rules);
+
+    if !instructions.exists() {
+        if enabled_rules.is_empty() {
+            return Ok(RuleSyncOutcome::NoOp);
+        }
+        atomic_write(instructions, &format!("{block}\n"))
+            .map_err(|e| err("internal", &e.to_string()))?;
+        return Ok(RuleSyncOutcome::Wrote);
+    }
+
+    let content =
+        fs::read_to_string(instructions).map_err(|e| err("permission_denied", &e.to_string()))?;
+
+    match read_block(&content) {
+        BlockState::Malformed => Err(err(
+            "rule_sync_malformed_markers",
+            "Instruction file has malformed managed-block markers",
+        )),
+        BlockState::Missing => {
+            if enabled_rules.is_empty() {
+                return Ok(RuleSyncOutcome::NoOp);
+            }
+            let joined = format!("{}\n\n{block}\n", content.trim_end());
+            atomic_write(instructions, &joined).map_err(|e| err("internal", &e.to_string()))?;
+            Ok(RuleSyncOutcome::Wrote)
+        }
+        BlockState::Present(_) => {
+            let start = content.find(BLOCK_START).expect("present block has start");
+            let end = content.find(BLOCK_END).expect("present block has end") + BLOCK_END.len();
+            let before = &content[..start];
+            let after = &content[end..];
+
+            if enabled_rules.is_empty() {
+                let remainder = format!("{}{}", before.trim_end(), after);
+                if remainder.trim().is_empty() {
+                    fs::remove_file(instructions).map_err(|e| err("internal", &e.to_string()))?;
+                    return Ok(RuleSyncOutcome::Removed);
+                }
+                atomic_write(instructions, &format!("{}\n", remainder.trim_end()))
+                    .map_err(|e| err("internal", &e.to_string()))?;
+                return Ok(RuleSyncOutcome::Wrote);
+            }
+
+            let rebuilt = format!("{before}{block}{after}");
+            atomic_write(instructions, &rebuilt).map_err(|e| err("internal", &e.to_string()))?;
+            Ok(RuleSyncOutcome::Wrote)
+        }
+    }
+}
+
+/// Atomic write (`.tmp` + rename), falling back to a direct write if the rename
+/// crosses a filesystem boundary.
+fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("agentic-rules.tmp");
+    if fs::write(&tmp, content).is_ok() && fs::rename(&tmp, path).is_ok() {
+        return Ok(());
+    }
+    let _ = fs::remove_file(&tmp);
+    fs::write(path, content)
 }
 
 #[cfg(test)]

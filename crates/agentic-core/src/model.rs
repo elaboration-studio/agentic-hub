@@ -182,3 +182,113 @@ pub struct ToolCapabilityState {
     pub state: LinkState,
     pub current_link_target: Option<PathBuf>,
 }
+
+/// The mechanism a planned operation performs on disk.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationKind {
+    CreateLink,
+    RemoveLink,
+    ReplaceLink,
+    CreateManagedCopy,
+    RemoveManagedCopy,
+    ReplaceManagedCopy,
+    SyncJsonSection,
+    ClearJsonSection,
+    SkipConflict,
+}
+
+/// A single planned mutation for one `(tool, item)`, computed by the planner
+/// against fresh disk state.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannedOperation {
+    pub tool: ToolId,
+    pub item_id: String,
+    pub target_path: PathBuf,
+    pub source_path: Option<PathBuf>,
+    pub kind: OperationKind,
+    pub reason: String,
+}
+
+/// A per-operation failure. One failing op never aborts the rest.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyError {
+    pub operation: PlannedOperation,
+    pub message: String,
+    pub code: String,
+}
+
+/// Aggregated outcome of applying a batch of operations.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyResult {
+    pub created: u32,
+    pub removed: u32,
+    pub replaced: u32,
+    pub refreshed: u32,
+    pub skipped: u32,
+    pub errors: Vec<ApplyError>,
+}
+
+/// Outcome of a markdown managed-block rule sync for one tool.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleSyncOutcome {
+    Wrote,
+    Removed,
+    NoOp,
+}
+
+/// A rule-sync failure surfaced to the UI.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleSyncError {
+    pub path: PathBuf,
+    pub code: String,
+    pub message: String,
+}
+
+/// Result of `cmd_sync_rules`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncRulesResult {
+    pub outcome: RuleSyncOutcome,
+    pub errors: Vec<RuleSyncError>,
+}

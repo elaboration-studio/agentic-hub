@@ -30,3 +30,14 @@ pub fn expand_tilde(input: &str) -> PathBuf {
     }
     PathBuf::from(input)
 }
+
+/// Render a path home-relative (`~/…`) for display. Inverse of [`expand_tilde`].
+/// Paths outside the home directory are returned unchanged.
+pub fn tildify(path: &std::path::Path) -> String {
+    let home = home_dir();
+    match path.strip_prefix(&home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Ok(rest) => format!("~/{}", rest.to_string_lossy().replace('\\', "/")),
+        Err(_) => path.to_string_lossy().replace('\\', "/"),
+    }
+}
