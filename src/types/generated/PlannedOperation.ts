@@ -6,4 +6,9 @@ import type { ToolId } from "./ToolId";
  * A single planned mutation for one `(tool, item)`, computed by the planner
  * against fresh disk state.
  */
-export type PlannedOperation = { tool: ToolId, itemId: string, targetPath: string, sourcePath: string | null, kind: OperationKind, reason: string, };
+export type PlannedOperation = { tool: ToolId, itemId: string, 
+/**
+ * The tool's base directory for this item's kind (skills/agents/rules dir).
+ * Carried so the applier can locate the per-root managed-copy manifest.
+ */
+targetRoot: string, targetPath: string, sourcePath: string | null, kind: OperationKind, reason: string, };

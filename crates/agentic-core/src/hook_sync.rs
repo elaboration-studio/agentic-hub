@@ -86,8 +86,10 @@ impl HookCanonicalEvent {
     }
 
     fn claude_supports(self) -> bool {
-        // Claude is the canonical source; supports everything except Notification.
-        self != HookCanonicalEvent::Notification
+        // Claude is the canonical source and accepts every documented event,
+        // including Notification (matcher-free top-level event).
+        let _ = self;
+        true
     }
 }
 
@@ -102,6 +104,8 @@ pub struct HookEventSpec {
 /// ignored, so they do not participate in the source hash.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookManifest {
+    /// Defaults to the hook folder name when omitted (see [`load_manifest`]).
+    #[serde(default)]
     pub id: String,
     #[serde(default)]
     pub name: Option<String>,
@@ -130,8 +134,14 @@ impl HookManifest {
 pub fn load_manifest(hook_dir: &Path) -> Result<HookManifest, String> {
     let path = hook_dir.join("hook.json");
     let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let manifest: HookManifest =
+    let mut manifest: HookManifest =
         serde_json::from_str(&content).map_err(|e| format!("invalid hook.json: {e}"))?;
+    if manifest.id.is_empty() {
+        manifest.id = hook_dir
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+    }
     validate(&manifest)?;
     Ok(manifest)
 }
@@ -161,11 +171,13 @@ fn is_kebab_case(s: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// `sha256` of the canonical manifest JSON (struct re-serialized → stable key
-/// order; `$schema` already dropped by parsing).
-pub fn source_hash(m: &HookManifest) -> String {
-    let json = serde_json::to_string(m).unwrap_or_default();
-    hash_bytes(json.as_bytes())
+/// `sha256` of the raw `hook.json` file bytes. Matches the VS Code extension's
+/// `hookSourceHash` exactly so managed entries written by either app agree on
+/// staleness.
+pub fn source_hash(hook_dir: &Path) -> String {
+    fs::read(hook_dir.join("hook.json"))
+        .map(|b| hash_bytes(&b))
+        .unwrap_or_default()
 }
 
 /// Replace every `${HOOK_DIR}` with the hook's absolute source folder.
@@ -205,8 +217,8 @@ pub fn inspect_hooks(
             RootRead::Missing => LinkState::Disabled,
             RootRead::Foreign => LinkState::ForeignFile,
             RootRead::Broken => LinkState::Broken,
-            RootRead::Ok(root) => match find_managed_hash(root, &item.id) {
-                Some(hash) if hash == source_hash(m) => LinkState::Enabled,
+            RootRead::Ok(root) => match find_managed_hash(root, &m.id) {
+                Some(hash) if hash == source_hash(&item.source_path) => LinkState::Enabled,
                 Some(_) => LinkState::Stale,
                 None => LinkState::Disabled,
             },
@@ -359,7 +371,7 @@ fn build_desired(
 ) -> Vec<(String, Value)> {
     let mut desired = Vec::new();
     for (item, m) in enabled {
-        let hash = source_hash(m);
+        let hash = source_hash(&item.source_path);
         for spec in &m.events {
             if cursor_shape {
                 match spec.name.cursor_key() {
@@ -408,10 +420,13 @@ fn cursor_entry(
     if let Some(matcher) = &spec.matcher {
         o.insert("matcher".to_string(), Value::String(matcher.clone()));
     }
+    if let Some(t) = m.timeout {
+        o.insert("timeout".to_string(), json!(t));
+    }
     if let Some(ll) = m.loop_limit {
         o.insert("loop_limit".to_string(), json!(ll));
     }
-    o.insert("_agenticHub".to_string(), marker(&item.id, hash));
+    o.insert("_agenticHub".to_string(), marker(&m.id, hash));
     Value::Object(o)
 }
 
@@ -433,7 +448,7 @@ fn group_entry(item: &CapabilityItem, m: &HookManifest, hash: &str, spec: &HookE
         "hooks".to_string(),
         Value::Array(vec![Value::Object(inner)]),
     );
-    g.insert("_agenticHub".to_string(), marker(&item.id, hash));
+    g.insert("_agenticHub".to_string(), marker(&m.id, hash));
     Value::Object(g)
 }
 
@@ -538,12 +553,28 @@ mod tests {
     }
 
     #[test]
-    fn source_hash_ignores_schema_and_is_stable() {
-        let with_schema = r#"{ "$schema": "agentic-hub.hook.v1", "id": "h", "events": [{"name":"Stop"}], "command": "x" }"#;
-        let without = r#"{ "id": "h", "command": "x", "events": [{"name":"Stop"}] }"#;
-        let a: HookManifest = serde_json::from_str(with_schema).unwrap();
-        let b: HookManifest = serde_json::from_str(without).unwrap();
-        assert_eq!(source_hash(&a), source_hash(&b));
+    fn source_hash_is_sha256_of_raw_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let hook = dir.path().join("hooks/fmt");
+        fs::create_dir_all(&hook).unwrap();
+        let raw =
+            r#"{ "$schema": "x", "id": "fmt", "command": "run", "events": [{"name":"Stop"}] }"#;
+        fs::write(hook.join("hook.json"), raw).unwrap();
+        assert_eq!(source_hash(&hook), hash_bytes(raw.as_bytes()));
+    }
+
+    #[test]
+    fn load_manifest_falls_back_to_folder_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let hook = dir.path().join("hooks/auto-format");
+        fs::create_dir_all(&hook).unwrap();
+        fs::write(
+            hook.join("hook.json"),
+            r#"{ "command": "run", "events": [{"name":"Stop"}] }"#,
+        )
+        .unwrap();
+        let m = load_manifest(&hook).unwrap();
+        assert_eq!(m.id, "auto-format");
     }
 
     #[test]
@@ -563,6 +594,15 @@ mod tests {
         )
         .unwrap();
 
+        // A real hook source folder so the file-based source hash is meaningful.
+        let hook_src = dir.path().join("hooks/fmt");
+        fs::create_dir_all(&hook_src).unwrap();
+        fs::write(
+            hook_src.join("hook.json"),
+            r#"{ "id": "fmt", "command": "run.sh", "events": [{"name":"PostToolUse","matcher":"Edit|Write"}] }"#,
+        )
+        .unwrap();
+
         let adapter = {
             let mut s = Settings::default();
             s.tools.cursor.hooks_file = Some(target.clone());
@@ -572,7 +612,7 @@ mod tests {
             "fmt",
             vec![ev(HookCanonicalEvent::PostToolUse, Some("Edit|Write"))],
         );
-        let item = hook_item("fmt", dir.path().join("hooks/fmt"));
+        let item = hook_item("fmt", hook_src.clone());
 
         let (outcome, notes) = sync_json_hooks(&adapter, &[(&item, &m)]).unwrap();
         assert_eq!(outcome, HookSyncOutcome::Wrote);
@@ -582,19 +622,23 @@ mod tests {
         let arr = written["hooks"]["postToolUse"].as_array().unwrap();
         assert_eq!(arr.len(), 2, "foreign + managed coexist");
         assert_eq!(written["$schema"], json!("x"), "foreign key preserved");
+        // Marker carries the bare manifest id, matching the VS Code extension.
+        let managed = arr.iter().find(|e| e.get("_agenticHub").is_some()).unwrap();
+        assert_eq!(managed["_agenticHub"]["hookId"], json!("fmt"));
 
-        // Inspect: enabled (hash matches).
+        // Inspect: enabled (file hash matches the written marker).
         let mut manifests = HashMap::new();
         manifests.insert(item.id.clone(), m.clone());
         let states = inspect_hooks(std::slice::from_ref(&item), &manifests, &adapter);
         assert_eq!(states[0].state, LinkState::Enabled);
 
-        // Stale: mutate the manifest so the hash no longer matches.
-        let mut m2 = m.clone();
-        m2.command = "${HOOK_DIR}/other.sh".into();
-        let mut manifests2 = HashMap::new();
-        manifests2.insert(item.id.clone(), m2);
-        let states = inspect_hooks(std::slice::from_ref(&item), &manifests2, &adapter);
+        // Stale: edit the source file so its hash no longer matches the marker.
+        fs::write(
+            hook_src.join("hook.json"),
+            r#"{ "id": "fmt", "command": "other.sh", "events": [{"name":"PostToolUse","matcher":"Edit|Write"}] }"#,
+        )
+        .unwrap();
+        let states = inspect_hooks(std::slice::from_ref(&item), &manifests, &adapter);
         assert_eq!(states[0].state, LinkState::Stale);
     }
 
@@ -620,7 +664,7 @@ mod tests {
         assert_eq!(group["matcher"], json!("Edit"));
         assert_eq!(group["hooks"][0]["type"], json!("command"));
         assert_eq!(group["hooks"][0]["timeout"], json!(30));
-        assert_eq!(group["_agenticHub"]["hookId"], json!("hook:fmt"));
+        assert_eq!(group["_agenticHub"]["hookId"], json!("fmt"));
         assert_eq!(written["model"], json!("opus"), "foreign key preserved");
     }
 

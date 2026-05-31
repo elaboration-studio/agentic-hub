@@ -76,7 +76,7 @@ fn run(op: &PlannedOperation) -> Result<Effect, Fail> {
             Ok(Effect::Created)
         }
         ReplaceLink => {
-            if !is_symlink_or_managed_copy(target) {
+            if !is_symlink_or_managed_copy(target, &op.target_root) {
                 return Err(Fail::Conflict);
             }
             let source = source(op)?;
@@ -93,19 +93,21 @@ fn run(op: &PlannedOperation) -> Result<Effect, Fail> {
         }
         CreateManagedCopy => {
             let source = source(op)?;
-            managed_copy::write_managed_copy(&source, target, false).map_err(Fail::Io)?;
+            managed_copy::write_managed_copy(&source, target, &op.target_root, &op.item_id, false)
+                .map_err(Fail::Io)?;
             Ok(Effect::Created)
         }
         ReplaceManagedCopy => {
             let source = source(op)?;
-            managed_copy::write_managed_copy(&source, target, true).map_err(Fail::Io)?;
+            managed_copy::write_managed_copy(&source, target, &op.target_root, &op.item_id, true)
+                .map_err(Fail::Io)?;
             Ok(Effect::Refreshed)
         }
         RemoveManagedCopy => {
-            if !is_managed_copy(target) {
+            if !is_managed_copy(target, &op.target_root) {
                 return Err(Fail::Conflict);
             }
-            managed_copy::remove_managed_copy(target).map_err(Fail::Io)?;
+            managed_copy::remove_managed_copy(target, &op.target_root).map_err(Fail::Io)?;
             Ok(Effect::Removed)
         }
         // Hooks are not yet wired into apply; planner does not emit these.
@@ -152,12 +154,12 @@ fn is_symlink(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn is_managed_copy(path: &Path) -> bool {
-    !is_symlink(path) && managed_copy::read_meta(path).is_some()
+fn is_managed_copy(path: &Path, target_root: &Path) -> bool {
+    !is_symlink(path) && managed_copy::read_entry(target_root, path).is_some()
 }
 
-fn is_symlink_or_managed_copy(path: &Path) -> bool {
-    is_symlink(path) || managed_copy::read_meta(path).is_some()
+fn is_symlink_or_managed_copy(path: &Path, target_root: &Path) -> bool {
+    is_symlink(path) || managed_copy::read_entry(target_root, path).is_some()
 }
 
 #[cfg(unix)]
@@ -181,9 +183,11 @@ mod tests {
     use std::path::PathBuf;
 
     fn op(kind: OperationKind, target: PathBuf, source: Option<PathBuf>) -> PlannedOperation {
+        let target_root = target.parent().map(Path::to_path_buf).unwrap_or_default();
         PlannedOperation {
             tool: crate::model::ToolId::Codex,
-            item_id: "skill:x".into(),
+            item_id: "agent:x.md".into(),
+            target_root,
             target_path: target,
             source_path: source,
             kind,
@@ -238,7 +242,7 @@ mod tests {
         );
         assert_eq!(res.created, 1);
         assert!(target.exists());
-        assert!(managed_copy::read_meta(&target).is_some());
+        assert!(managed_copy::read_entry(target.parent().unwrap(), &target).is_some());
 
         // A real (non-managed) file must not be removed.
         let real = dir.path().join("out/real.md");

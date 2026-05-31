@@ -188,7 +188,7 @@ Out of scope for now: teams, multi-machine sync, cloud profiles, organizational 
 **Description:** For tools using `markdown_section_sync`, rewrite a single managed marker-delimited block inside the tool's instruction file. Strip YAML frontmatter from each rule body before inlining. Preserve all content outside the managed block. If no rules remain enabled for a tool, remove only the managed block. Delete the whole file only when the managed block was the entire file.
 
 **Acceptance Criteria:**
-- [ ] Marker contract: `<!-- e-studio-agentic-rules:start -->` / `<!-- e-studio-agentic-rules:end -->` (preserved verbatim from VS Code extension for migration parity — see Open Questions)
+- [ ] Marker contract: `<!-- agentic-hub:start -->` / `<!-- agentic-hub:end -->` (identical to the rebranded VS Code extension for migration parity)
 - [ ] Codex rules sync to `~/.codex/AGENTS.md`
 - [ ] Claude rules sync to `~/.claude/CLAUDE.md`
 - [ ] OpenClaw rules sync to `~/.openclaw/workspace/SOUL.md`
@@ -380,7 +380,7 @@ Estimated effort: 3 days human / ~1 hour Arno-agentic-system
 
 ## Open Questions
 
-- **Managed block markers.** The VS Code extension uses `<!-- e-studio-agentic-rules:start -->` / `:end`. Preserving them lets users migrate without touching their instruction files. Renaming to `<!-- agentic-hub:start -->` / `:end` is cleaner but breaks transparent migration. **Default for v1: preserve verbatim**, with a migration command to rename later if we decide to. Decision needed before M1 ships.
+- **Managed block markers.** Resolved: the (rebranded) VS Code extension uses `<!-- agentic-hub:start -->` / `:end` with the heading `## Agentic Hub Managed Rules`. Agentic Hub matches these verbatim so users migrate without touching their instruction files. The legacy `e-studio-*` names are not reintroduced.
 - **Suite storage path.** Keep `~/.agentic-suites.json` (extension parity, portable across tools) or move to `~/.agentic-hub/suites.json`? **Default for v1: preserve `~/.agentic-suites.json`** for cross-app compatibility.
 - **Workspace manifest folder.** Confirmed `<ws>/.agentic-hub/workspace-patch.json`. Gitignore guidance: document in README that this folder should typically be gitignored, but allow users to commit it if they want shared project-level capability state.
 - **Windows symlink fallback.** Symlinks require either Developer Mode or admin elevation on Windows. v1 documents Windows as constrained. The `managed_copy` projection path technically works on Windows but has not been validated. Decide before any Windows release whether to ship at all or to skip.

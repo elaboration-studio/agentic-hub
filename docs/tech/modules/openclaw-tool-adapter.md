@@ -46,11 +46,10 @@ Skill and agent layout: `Nested` (OpenClaw recurses by default).
 Agentic Hub owns exactly one block in SOUL.md delimited by the standard markers:
 
 ```md
-<!-- e-studio-agentic-rules:start -->
-## E-Studio Managed Rules
+<!-- agentic-hub:start -->
+## Agentic Hub Managed Rules
 
-This section is managed by Agentic Hub. Edit rule selections in the
-Agentic Capability Manager instead of editing these blocks by hand.
+This section is managed by Agentic Hub. Edit rule selections in the Capability Manager instead of editing these blocks by hand.
 
 ### general/precise.mdc
 
@@ -58,7 +57,7 @@ Source: `~/.agentic/rules/general/precise.mdc`
 Mirrored link: `~/.openclaw/agentic-rules/general/precise.mdc`
 
 ...rule body with frontmatter stripped...
-<!-- e-studio-agentic-rules:end -->
+<!-- agentic-hub:end -->
 ```
 
 Rules:

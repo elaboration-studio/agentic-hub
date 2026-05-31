@@ -51,7 +51,7 @@ As a user with multiple project repos, I want to apply a saved suite directly in
 
 Codex projects under `.agents/` rather than `.codex/` because OpenAI Codex's documented skill scan paths are `$CWD/.agents/skills` walking up to `$REPO_ROOT/.agents/skills` (and `$HOME/.agents/skills` for user scope). Codex agents follow the same `.agents/` root for consistency.
 
-All projections use **hard overwrite**: prior files written by the manager are removed first, then the new payload is copied in. Codex and Claude rules write a managed `<!-- e-studio-agentic-rules:start -->`/`...:end -->` block, so unmanaged content in `AGENTS.md` / `CLAUDE.md` is preserved.
+All projections use **hard overwrite**: prior files written by the manager are removed first, then the new payload is copied in. Codex and Claude rules write a managed `<!-- agentic-hub:start -->`/`...:end -->` block, so unmanaged content in `AGENTS.md` / `CLAUDE.md` is preserved.
 
 ## Experience
 

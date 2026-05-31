@@ -137,9 +137,23 @@ impl ResolvedAdapter {
             (ToolId::Openclaw, Hook) => None,
             (_, Hook) => Some(JsonSection),
             (ToolId::Cursor, Agent) => Some(FileSync),
+            // Claude's skill loader does not follow symlinks, so skills are
+            // hard-copied (managed) rather than linked.
+            (ToolId::Claude, Skill) => Some(FileSync),
             (_, Skill | Agent) => Some(LinkSync),
             (ToolId::Cursor, Rule) => Some(LinkSync),
             (_, Rule) => Some(MarkdownSectionSync),
+        }
+    }
+
+    /// Base directory for an item's kind (`skills`/`agents`/`rules` dir). `None`
+    /// for hooks, which target the single `hooks_file`.
+    pub fn base_path_for(&self, kind: CapabilityKind) -> Option<&PathBuf> {
+        match kind {
+            CapabilityKind::Skill => Some(&self.skills_path),
+            CapabilityKind::Agent => Some(&self.agents_path),
+            CapabilityKind::Rule => Some(&self.rules_path),
+            CapabilityKind::Hook => None,
         }
     }
 
@@ -211,7 +225,18 @@ mod tests {
         let s = Settings::default();
         let cursor = resolve(&s, ToolId::Cursor);
         let codex = resolve(&s, ToolId::Codex);
+        let claude = resolve(&s, ToolId::Claude);
         let openclaw = resolve(&s, ToolId::Openclaw);
+
+        // Claude skills are hard-copied (loader does not follow symlinks).
+        assert_eq!(
+            claude.projection_mode_for(CapabilityKind::Skill),
+            Some(ProjectionMode::FileSync)
+        );
+        assert_eq!(
+            codex.projection_mode_for(CapabilityKind::Skill),
+            Some(ProjectionMode::LinkSync)
+        );
 
         assert_eq!(
             cursor.projection_mode_for(CapabilityKind::Agent),

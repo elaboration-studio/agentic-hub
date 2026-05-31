@@ -187,7 +187,7 @@ The UI maintains a per-tool `desiredEnabledByItemId` map. Toggling an item updat
 - [ ] Applying replaces broken symlinks with correct links
 - [ ] Applying replaces wrong-target symlinks with correct links
 - [ ] Applying never overwrites a real file or directory
-- [ ] Enabling a Cursor agent writes a managed file copy (not a symlink) under `~/.cursor/agents` with a `<file>.e-studio-meta.json` sidecar
+- [ ] Enabling a Cursor agent writes a managed file copy (not a symlink) under `~/.cursor/agents`, recorded in the per-root `.agentic-hub-managed.json` manifest
 - [ ] Refreshing or re-enabling a stale Cursor agent rewrites the managed copy and updates the sidecar metadata
 - [ ] Enabling a Cursor rule creates or repairs a symlink under `~/.cursor/rules` while preserving nested folders
 - [ ] Applying Claude Code rule changes refreshes the managed marker block inside `~/.claude/CLAUDE.md`

@@ -316,7 +316,7 @@ if target does not exist:
 
 content = fs::read_to_string(target)?
 case content:
-    contains BOTH "<!-- e-studio-agentic-rules:start -->" AND "<!-- ...:end -->":
+    contains BOTH "<!-- agentic-hub:start -->" AND "<!-- ...:end -->":
         if start < end:
             replace block contents with new managed block
         else:
@@ -359,55 +359,50 @@ Apply safety: the apply still refuses to remove a real (non-symlink) directory o
 
 User-facing fix: rename a source item under `~/.agentic/`. Do not invent ad-hoc Claude-only nesting.
 
-## Cursor managed-copy lifecycle
+## Managed-copy lifecycle (Cursor agents, Claude skills)
 
-Cursor's runtime loads agent files into memory at launch. Symlinks are unreliable because Cursor may follow them once at launch and not re-check. The solution: write the file contents as a real file, with a sidecar metadata block that ties the copy back to the shared source.
+Cursor's runtime loads agent files into memory at launch and Claude's skill loader does not follow symlinks. For both, symlinks are unreliable. The solution: write the contents as a real file (or a real folder, for skills), and record it in a per-root manifest that ties each copy back to its shared source.
+
+Metadata lives in one `.agentic-hub-managed.json` per target root (e.g. `~/.cursor/agents/`, `~/.claude/skills/`), keyed by the copy's path relative to the root:
+
+```json
+{ "version": 1, "entries": { "dev/tdd": { "itemId": "skill:dev/tdd", "sourcePath": "/abs/skills/dev/tdd", "sourceHash": "<sha256>" } } }
+```
+
+`sourceHash` is the file's sha256 for agents, and the `SKILL.md` sha256 for skill folders. File name and shape are identical to the VS Code extension for migration parity.
 
 Lifecycle:
 
 ```
 Create:
-  target = adapter.target_path_for(item)
-  fs::copy(item.source_path, target)
-  fs::write(target.with_extension("e-studio-meta.json"), {
-      source_path: item.source_path,
-      source_hash: sha256(item.source_path contents),
-      synced_at: ISO 8601,
-  })
+  target = adapter.target_path_for(item)          # file (agent) or folder (skill)
+  copy item.source_path -> target                  # recursive for skill folders
+  manifest.entries[rel(target)] = { itemId, sourcePath, sourceHash }
 
 State inspection:
-  if target exists AND meta.json exists AND meta.source_path == item.source_path:
-      if sha256(target contents) == meta.source_hash:
+  if target exists AND entry exists AND entry.sourcePath == item.source_path:
+      if content_hash(target) == content_hash(source) == entry.sourceHash:
           state = Enabled
       else:
-          state = Stale (target was edited by user, drifted from shared source)
-  if target exists AND meta.json missing:
+          state = Stale (drifted from shared source)
+  if target exists AND no manifest entry:
       state = ForeignFile
 
-Refresh (Replace):
-  fs::copy(item.source_path, target.tmp)
-  fs::rename(target.tmp, target)  # atomic
-  rewrite meta.json with new hash + timestamp
-
-Remove:
-  fs::remove_file(target)
-  fs::remove_file(target.with_extension("e-studio-meta.json"))
+Refresh (Replace): re-copy + rewrite the manifest entry (file copies are atomic)
+Remove: delete the file/folder + drop its manifest entry (delete manifest when empty)
 ```
 
-Stale detection vs ForeignFile: managed-copy state is **Stale** only when the metadata sidecar exists and attributes the file to the same shared source but content has diverged. Without the sidecar, the file is treated as user-owned (`ForeignFile`) and apply refuses to overwrite.
-
-The metadata file (`<target>.e-studio-meta.json`) sits adjacent to the managed copy. The `e-studio-` prefix is preserved from the VS Code extension for migration parity. Cursor ignores files with that suffix because they do not match `*.md`.
+Stale detection vs ForeignFile: managed-copy state is **Stale** only when a manifest entry attributes the target to the same shared source but content has diverged. Without an entry, the file/folder is treated as user-owned (`ForeignFile`) and apply refuses to overwrite.
 
 ## Marker-delimited managed-block contract
 
 For `markdown_section_sync` tools (Codex, Claude, OpenClaw), the rule sync module owns exactly one block in the instruction file:
 
 ```md
-<!-- e-studio-agentic-rules:start -->
-## E-Studio Managed Rules
+<!-- agentic-hub:start -->
+## Agentic Hub Managed Rules
 
-This section is managed by Agentic Hub. Edit rule selections in the
-Agentic Capability Manager instead of editing these blocks by hand.
+This section is managed by Agentic Hub. Edit rule selections in the Capability Manager instead of editing these blocks by hand.
 
 ### general/precise.mdc
 
@@ -415,7 +410,7 @@ Source: `~/.agentic/rules/general/precise.mdc`
 Mirrored link: `~/.codex/agentic-rules/general/precise.mdc`
 
 ...rule body with YAML frontmatter stripped...
-<!-- e-studio-agentic-rules:end -->
+<!-- agentic-hub:end -->
 ```
 
 Rules:
@@ -518,8 +513,8 @@ agentic-core::inspect_all_tools():
 
 - Apply is always idempotent: re-running the same plan against unchanged disk produces zero new operations
 - Plan is always re-computed from fresh disk state; never reused across user interactions
-- Managed-copy metadata sidecars use the `.e-studio-meta.json` extension to preserve VS Code extension compatibility — do not rename
-- Marker-delimited block markers (`e-studio-agentic-rules:start/end`) are preserved verbatim
+- Managed-copy metadata uses a per-root `.agentic-hub-managed.json` manifest, matching the VS Code extension — do not rename
+- Marker-delimited block markers (`agentic-hub:start/end`) match the rebranded VS Code extension verbatim
 - Path canonicalization happens once per command; downstream code operates on canonical paths
 - Symlink creation is platform-specific; Windows code path is documented in [ARCHITECTURE.permissions.md](ARCHITECTURE.permissions.md) but not exercised in v1
 
@@ -533,6 +528,6 @@ agentic-core::inspect_all_tools():
 
 ## Open questions
 
-- **Per-skill metadata files.** Currently each managed agent copy has a `<file>.e-studio-meta.json` sidecar. Should we move to a single per-tool manifest (`~/.cursor/agents/.agentic-hub-manifest.json`) so the agents directory stays clean? Decision: keep per-file sidecars in v1 for simplicity and crash-tolerance; revisit if user feedback says the noise is unacceptable.
+- **Managed-copy metadata layout.** Resolved: a single per-root `.agentic-hub-managed.json` manifest (keyed by relative target path), matching the VS Code extension exactly. Chosen over per-file sidecars for migration parity and a clean target directory.
 - **Per-rule mirrored files.** The `Mirrored link:` annotation references a real mirrored file at the tool's `rulesPath` if it exists. We do not currently create the mirrored file by default for `markdown_section_sync` tools; the annotation is only added when an external workflow has created one. Decision: keep behavior; document that users who want a real file can configure `rulesPath` and the apply will create the mirror.
 - **Concurrent apply across windows.** If the main window and Suite Manager window both trigger apply at the same time, we have a race. Decision: serialize through a Tokio mutex in the Tauri shell layer (one apply at a time, queued).

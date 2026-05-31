@@ -522,7 +522,7 @@ mod tests {
         .unwrap();
         let real_ws = ws.path().canonicalize().unwrap();
         let agents = fs::read_to_string(real_ws.join("AGENTS.md")).unwrap();
-        assert!(agents.contains("e-studio-agentic-rules:start"));
+        assert!(agents.contains("agentic-hub:start"));
         assert!(agents.contains("be precise"));
     }
 }

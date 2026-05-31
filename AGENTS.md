@@ -76,7 +76,7 @@ See [docs/tech/development/getting-started.md](docs/tech/development/getting-sta
 
 ## Hard rules
 
-- Markdown managed-block markers stay verbatim: `<!-- e-studio-agentic-rules:start -->` / `:end`. Migration parity with the VS Code extension. See [PRODUCT.md Open Questions](PRODUCT.md) before considering rename.
+- Markdown managed-block markers stay verbatim: `<!-- agentic-hub:start -->` / `:end` (heading `## Agentic Hub Managed Rules`). Migration parity with the rebranded VS Code extension. Managed-copy metadata lives in a per-root `.agentic-hub-managed.json` manifest; hook entries carry the `_agenticHub` marker keyed by the bare manifest id. Do not reintroduce the legacy `e-studio-*` names.
 - Suite storage path stays `~/.agentic-suites.json`. Same reason.
 - Workspace manifest folder is `<ws>/.agentic-hub/`.
 - `tauri-plugin-shell` is never added to `Cargo.toml`. If a feature seems to need it, raise security review first.

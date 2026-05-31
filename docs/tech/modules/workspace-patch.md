@@ -90,7 +90,7 @@ Format (version 1):
 
 Conventions:
 - Each entry in `paths` is workspace-relative
-- The sentinel `<file>::managed-section` tells the cleanup pass to clear the managed `<!-- e-studio-agentic-rules:start -->`/`...:end -->` block in the named file via `rule_sync::sync_markdown_rules` with an empty enabled-rule list, instead of deleting the whole file
+- The sentinel `<file>::managed-section` tells the cleanup pass to clear the managed `<!-- agentic-hub:start -->`/`...:end -->` block in the named file via `rule_sync::sync_markdown_rules` with an empty enabled-rule list, instead of deleting the whole file
 - The sentinel `<file>::managed-hooks` tells the cleanup pass to clear this tool's managed hook entries (those carrying the `_agenticHub` marker) in the named JSON file via `hook_sync::sync_json_hooks` with an empty enabled-hook list, preserving foreign entries — instead of deleting the whole file
 - Manifest is single-tool. Re-applying with a different focused tool cleans the prior tool's payload using `prior_manifest.tool` for adapter resolution
 - Atomic writes: `<manifest>.json.tmp` then `rename`

@@ -12,10 +12,10 @@ use std::path::Path;
 use crate::model::{CapabilityItem, RuleSyncError, RuleSyncOutcome};
 use crate::paths::tildify;
 
-pub const BLOCK_START: &str = "<!-- e-studio-agentic-rules:start -->";
-pub const BLOCK_END: &str = "<!-- e-studio-agentic-rules:end -->";
+pub const BLOCK_START: &str = "<!-- agentic-hub:start -->";
+pub const BLOCK_END: &str = "<!-- agentic-hub:end -->";
 
-const BLOCK_PREAMBLE: &str = "## E-Studio Managed Rules\n\nThis section is managed by Agentic Hub. Edit rule selections in the\nAgentic Capability Manager instead of editing these blocks by hand.";
+const BLOCK_PREAMBLE: &str = "## Agentic Hub Managed Rules\n\nThis section is managed by Agentic Hub. Edit rule selections in the Capability Manager instead of editing these blocks by hand.";
 
 /// State of the managed block within an instruction file's contents.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -215,6 +215,9 @@ pub enum OperationKind {
 pub struct PlannedOperation {
     pub tool: ToolId,
     pub item_id: String,
+    /// The tool's base directory for this item's kind (skills/agents/rules dir).
+    /// Carried so the applier can locate the per-root managed-copy manifest.
+    pub target_root: PathBuf,
     pub target_path: PathBuf,
     pub source_path: Option<PathBuf>,
     pub kind: OperationKind,

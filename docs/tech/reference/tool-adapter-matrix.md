@@ -22,7 +22,7 @@ Single-page reference table for every tool adapter: target paths, projection mod
 | `instructionsPath` default | `~/.codex/AGENTS.md` | `~/.claude/CLAUDE.md` | _unused_ | `~/.openclaw/workspace/SOUL.md` |
 | `skillLayout` | `Nested` | `Flat` | `Nested` | `Nested` |
 | `agentLayout` | `Nested` | `Flat` | `Nested` | `Nested` |
-| Skill projection | symlink | symlink (flat) | symlink | symlink |
+| Skill projection | symlink | **managed copy** (flat) | symlink | symlink |
 | Agent projection | symlink | symlink (flat) | **managed copy** | symlink |
 | Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `link_sync` | `markdown_section_sync` |
 | Rule target | `~/.codex/AGENTS.md` (managed block) | `~/.claude/CLAUDE.md` (managed block) | symlinks under `~/.cursor/rules/` | `~/.openclaw/workspace/SOUL.md` (managed block) |
@@ -36,9 +36,9 @@ Single-page reference table for every tool adapter: target paths, projection mod
 
 OpenAI Codex's documented skill scan paths are `$CWD/.agents/skills` walking up to `$REPO_ROOT/.agents/skills`, and `$HOME/.agents/skills` for user scope. Agents follow the same `.agents/` root for consistency. This is distinct from Codex's tool config dir `~/.codex/` which is used for `AGENTS.md` instruction projection.
 
-### Why Cursor agents are managed copies
+### Why Cursor agents and Claude skills are managed copies
 
-Cursor loads agent files into memory at launch. Symlinks may be followed once and not re-checked. Managed copies with metadata sidecars (`<file>.e-studio-meta.json`) let us detect drift (`stale` state) and explicitly refresh on user action.
+Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
 
 ### Why Claude is flat
 
@@ -65,13 +65,14 @@ In workspace scope every projection is hard copy (no symlinks). Claude's flat co
 
 ### Skill
 
-- Global: symlink (flat for Claude, nested otherwise)
+- Global Codex / Cursor / OpenClaw: symlink (nested)
+- Global Claude: managed copy (flat) — Claude's skill loader does not follow symlinks
 - Workspace: hard copy (nested)
 
 ### Agent
 
 - Global Codex / Claude / OpenClaw: symlink (flat for Claude)
-- Global Cursor: managed copy with metadata sidecar
+- Global Cursor: managed copy (per-root manifest)
 - Workspace: hard copy (nested)
 
 ### Rule
@@ -101,12 +102,12 @@ In workspace scope every projection is hard copy (no symlinks). Claude's flat co
 
 | State | Symlink | Managed copy | Markdown section | JSON section |
 |-------|---------|--------------|-------------------|--------------|
-| `enabled` | Symlink points to correct source | Copy with metadata sidecar matching source + hash | Rule entry present in managed block | Managed entry present with matching `sourceHash` |
+| `enabled` | Symlink points to correct source | Copy with manifest entry matching source + hash | Rule entry present in managed block | Managed entry present with matching `sourceHash` |
 | `disabled` | Target absent | Target absent | Rule entry absent from managed block | No managed entry for this hook |
 | `broken` | Symlink to non-existent path | n/a | n/a | Target JSON malformed/unreadable |
-| `stale` | n/a | Sidecar matches source path but content hash mismatched | n/a (rule sync rewrites on every apply) | Managed entry present but `sourceHash` mismatched |
-| `foreign_file` | Real file at target | Real file at target without sidecar | n/a | Target path is not a regular file |
-| `foreign_link` | Symlink to different source | Managed copy attributed to different source | n/a | n/a (foreign entries co-exist; never a conflict) |
+| `stale` | n/a | Manifest entry matches source path but content hash mismatched | n/a (rule sync rewrites on every apply) | Managed entry present but `sourceHash` mismatched |
+| `foreign_file` | Real file at target | Real file/dir at target without a manifest entry | n/a | Target path is not a regular file |
+| `foreign_link` | Symlink to different source | Manifest entry attributed to different source | n/a | n/a (foreign entries co-exist; never a conflict) |
 
 ## Decision logic: which projection mode does this `(tool, kind)` use?
 
@@ -119,6 +120,7 @@ fn projection_mode(tool: ToolId, kind: CapabilityKind, scope: SyncScope) -> Proj
 
         // Global scope
         (Cursor,   Agent, Global)    => ManagedCopy,
+        (Claude,   Skill, Global)    => ManagedCopy,
         (Cursor,   Rule,  Global)    => LinkSync,
         (_,        Skill, Global)    => LinkSync,
         (_,        Agent, Global)    => LinkSync,

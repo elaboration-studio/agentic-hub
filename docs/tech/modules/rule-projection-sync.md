@@ -48,11 +48,10 @@ Define how shared `rules/` content is projected into Cursor, Codex, Claude Code,
 The manager owns one block per instruction file:
 
 ```md
-<!-- e-studio-agentic-rules:start -->
-## E-Studio Managed Rules
+<!-- agentic-hub:start -->
+## Agentic Hub Managed Rules
 
-This section is managed by Agentic Hub. Edit rule selections in the
-Agentic Capability Manager instead of editing these blocks by hand.
+This section is managed by Agentic Hub. Edit rule selections in the Capability Manager instead of editing these blocks by hand.
 
 ### general/precise.mdc
 
@@ -66,7 +65,7 @@ Mirrored link: `~/.codex/agentic-rules/general/precise.mdc`
 Source: `~/.agentic/rules/general/workspace.mdc`
 
 ...rule body with YAML frontmatter stripped...
-<!-- e-studio-agentic-rules:end -->
+<!-- agentic-hub:end -->
 ```
 
 Rules:
@@ -82,7 +81,7 @@ Rules:
 
 ### Markers preserved verbatim
 
-The opening and closing markers — `<!-- e-studio-agentic-rules:start -->` and `<!-- e-studio-agentic-rules:end -->` — are preserved verbatim from the VS Code extension. This lets users migrate from the extension to Agentic Hub without touching their instruction files. See [PRODUCT.md Open Questions](../../../PRODUCT.md) for the rename discussion.
+The opening and closing markers — `<!-- agentic-hub:start -->` and `<!-- agentic-hub:end -->` — are identical to the rebranded VS Code extension's markers. This lets users migrate from the extension to Agentic Hub without touching their instruction files.
 
 ## Conflict handling
 

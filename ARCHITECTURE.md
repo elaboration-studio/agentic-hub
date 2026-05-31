@@ -159,7 +159,7 @@ Tauri 2.x uses fine-grained capability JSON files. We declare scoped FS access f
 
 ### Markdown markers preserved from VS Code extension
 
-`<!-- e-studio-agentic-rules:start -->` / `<!-- e-studio-agentic-rules:end -->` markers are preserved verbatim for migration parity. Users coming from the VS Code extension keep working without touching their instruction files. Rename is deferred — see Open Questions in [PRODUCT.md](PRODUCT.md).
+`<!-- agentic-hub:start -->` / `<!-- agentic-hub:end -->` markers match the rebranded VS Code extension verbatim for migration parity. Users coming from the extension keep working without touching their instruction files.
 
 ## Stack decisions
 

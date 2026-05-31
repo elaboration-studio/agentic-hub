@@ -115,7 +115,16 @@ fn walk(
             }
             if let Some(marker) = kind.marker_file() {
                 if path.join(marker).is_file() {
-                    out.push(dir_item(base, &path, kind, source));
+                    let mut item = dir_item(base, &path, kind, source);
+                    // Hook identity follows the manifest `id` (folder name is the
+                    // fallback), matching the VS Code extension's scanner.
+                    if kind == CapabilityKind::Hook {
+                        if let Ok(m) = crate::hook_sync::load_manifest(&path) {
+                            item.id = format!("{}:{}", kind.id_prefix(), m.id);
+                            item.name = m.name.unwrap_or(m.id);
+                        }
+                    }
+                    out.push(item);
                 }
             }
             walk(base, &path, kind, source, depth + 1, out, errors);

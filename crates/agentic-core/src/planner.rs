@@ -40,7 +40,8 @@ fn inspect_item(item: &CapabilityItem, adapter: &ResolvedAdapter) -> Option<Tool
         }
         ProjectionMode::FileSync => {
             let target = adapter.target_path_for(item)?;
-            let (state, current) = inspect_managed_copy(item, &target);
+            let root = adapter.base_path_for(item.kind)?;
+            let (state, current) = inspect_managed_copy(item, &target, root);
             (target, state, current)
         }
         ProjectionMode::LinkSync => {
@@ -91,25 +92,49 @@ fn inspect_symlink(item: &CapabilityItem, target: &Path) -> (LinkState, Option<P
     }
 }
 
-fn inspect_managed_copy(item: &CapabilityItem, target: &Path) -> (LinkState, Option<PathBuf>) {
+fn inspect_managed_copy(
+    item: &CapabilityItem,
+    target: &Path,
+    target_root: &Path,
+) -> (LinkState, Option<PathBuf>) {
     let meta = match fs::symlink_metadata(target) {
         Ok(m) => m,
         Err(_) => return (LinkState::Disabled, None),
     };
     if meta.file_type().is_symlink() {
-        return (LinkState::ForeignLink, fs::read_link(target).ok());
+        // A legacy symlink at a managed target: stale if it points at the right
+        // source (refresh into a copy), foreign otherwise.
+        let dest = fs::read_link(target).ok();
+        let state = if dest.as_deref() == Some(item.source_path.as_path()) {
+            LinkState::Stale
+        } else {
+            LinkState::ForeignLink
+        };
+        return (state, dest);
     }
-    if !meta.is_file() {
+    // Skills are directory copies; agents/rules are file copies. A type mismatch
+    // at the target means a user-owned thing occupies it.
+    let expect_dir = item.source_path.is_dir();
+    if expect_dir != meta.is_dir() {
         return (LinkState::ForeignFile, None);
     }
-    match managed_copy::read_meta(target) {
-        Some(m) if m.source_path == item.source_path => match managed_copy::hash_file(target) {
-            Ok(hash) if hash == m.source_hash => (LinkState::Enabled, Some(target.to_path_buf())),
-            _ => (LinkState::Stale, Some(target.to_path_buf())),
-        },
-        // Sidecar attributes the copy to a different source.
-        Some(_) => (LinkState::ForeignLink, Some(target.to_path_buf())),
-        // Real file without our sidecar — user-owned.
+    match managed_copy::read_entry(target_root, target) {
+        Some(entry) if entry.source_path == item.source_path => {
+            match (
+                managed_copy::content_hash(target),
+                managed_copy::content_hash(&item.source_path),
+            ) {
+                (Some(th), Some(sh)) if th == sh && entry.source_hash == sh => {
+                    (LinkState::Enabled, Some(target.to_path_buf()))
+                }
+                (Some(_), Some(_)) => (LinkState::Stale, Some(target.to_path_buf())),
+                // Expected content (e.g. SKILL.md) is missing on either side.
+                _ => (LinkState::Broken, Some(target.to_path_buf())),
+            }
+        }
+        // Manifest attributes the copy to a different source.
+        Some(_) => (LinkState::ForeignFile, None),
+        // Real file/dir without a manifest entry — user-owned.
         None => (LinkState::ForeignFile, None),
     }
 }
@@ -152,9 +177,12 @@ pub fn build_plan(
         let Some(state) = inspect_item(item, adapter) else {
             continue;
         };
+        let Some(root) = adapter.base_path_for(item.kind) else {
+            continue;
+        };
         let desired = desired_enabled.get(&item.id).copied().unwrap_or(false);
         let managed = matches!(mode, ProjectionMode::FileSync);
-        if let Some(op) = diff_op(item, &state, desired, managed) {
+        if let Some(op) = diff_op(item, &state, root, desired, managed) {
             ops.push(op);
         }
     }
@@ -165,6 +193,7 @@ pub fn build_plan(
 fn diff_op(
     item: &CapabilityItem,
     state: &ToolCapabilityState,
+    target_root: &Path,
     desired: bool,
     managed: bool,
 ) -> Option<PlannedOperation> {
@@ -234,6 +263,7 @@ fn diff_op(
     Some(PlannedOperation {
         tool: state.tool,
         item_id: item.id.clone(),
+        target_root: target_root.to_path_buf(),
         target_path: state.target_path.clone(),
         source_path: with_source.then(|| item.source_path.clone()),
         kind,
@@ -357,31 +387,36 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("src/agent.md");
         write(&source, "agent v1");
-        let target = dir.path().join("cursor-agents/agent.md");
+        let root = dir.path().join("cursor-agents");
+        let target = root.join("agent.md");
         let it = item(CapabilityKind::Agent, "agent.md", source.clone());
 
         // Disabled.
-        assert_eq!(inspect_managed_copy(&it, &target).0, LinkState::Disabled);
-
-        // ForeignFile: file without sidecar.
-        write(&target, "agent v1");
-        assert_eq!(inspect_managed_copy(&it, &target).0, LinkState::ForeignFile);
-
-        // Enabled: sidecar matches source + content hash.
-        let meta = managed_copy::ManagedCopyMeta {
-            source_path: source.clone(),
-            source_hash: managed_copy::hash_file(&target).unwrap(),
-            synced_at: "2026-05-31T00:00:00Z".into(),
-        };
-        write(
-            &managed_copy::meta_path(&target),
-            &serde_json::to_string(&meta).unwrap(),
+        assert_eq!(
+            inspect_managed_copy(&it, &target, &root).0,
+            LinkState::Disabled
         );
-        assert_eq!(inspect_managed_copy(&it, &target).0, LinkState::Enabled);
+
+        // ForeignFile: file without a manifest entry.
+        write(&target, "agent v1");
+        assert_eq!(
+            inspect_managed_copy(&it, &target, &root).0,
+            LinkState::ForeignFile
+        );
+
+        // Enabled: manifest entry matches source + content hash.
+        managed_copy::write_managed_copy(&source, &target, &root, &it.id, false).unwrap();
+        assert_eq!(
+            inspect_managed_copy(&it, &target, &root).0,
+            LinkState::Enabled
+        );
 
         // Stale: content drifts from the recorded hash.
         write(&target, "agent v2 edited");
-        assert_eq!(inspect_managed_copy(&it, &target).0, LinkState::Stale);
+        assert_eq!(
+            inspect_managed_copy(&it, &target, &root).0,
+            LinkState::Stale
+        );
     }
 
     #[test]
@@ -480,9 +515,10 @@ mod tests {
         desired.insert(b.id.clone(), true);
 
         let ops = build_plan(&[a, b], &adapter, &desired);
+        // Claude skills project as managed copies, so the winner is a create-copy.
         let creates = ops
             .iter()
-            .filter(|o| o.kind == OperationKind::CreateLink)
+            .filter(|o| o.kind == OperationKind::CreateManagedCopy)
             .count();
         let skips = ops
             .iter()
