@@ -52,9 +52,11 @@ function seedDesired(result: InspectResult): DesiredMap {
   return map;
 }
 
+const ROUTES: Route[] = ["manager", "suites", "config"];
+
 function routeFromHash(): Route {
-  const hash = window.location.hash.replace(/^#\/?/, "");
-  return hash === "config" || hash === "suites" ? hash : "manager";
+  const hash = window.location.hash.replace(/^#\/?/, "") as Route;
+  return ROUTES.includes(hash) ? hash : "manager";
 }
 
 export function App() {
@@ -260,7 +262,9 @@ export function App() {
 }
 
 function navigate(route: Route) {
-  window.location.hash = route === "config" ? "#/config" : "";
+  // Manager is the default route (empty hash); every other route maps to
+  // `#/<route>`. Keep this generic so new routes work without edits here.
+  window.location.hash = route === "manager" ? "" : `#/${route}`;
 }
 
 function Header(props: {
