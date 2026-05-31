@@ -41,3 +41,33 @@ pub fn tildify(path: &std::path::Path) -> String {
         Err(_) => path.to_string_lossy().replace('\\', "/"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_tilde_takes_plain_paths_literally() {
+        assert_eq!(expand_tilde("/abs/path"), PathBuf::from("/abs/path"));
+        assert_eq!(expand_tilde("relative/x"), PathBuf::from("relative/x"));
+        // `~user` is not the home shortcut — kept verbatim.
+        assert_eq!(expand_tilde("~user"), PathBuf::from("~user"));
+    }
+
+    #[test]
+    fn expand_tilde_resolves_home() {
+        // Computed against home_dir() so the assertion is independent of the
+        // actual HOME value in the test environment.
+        assert_eq!(expand_tilde("~"), home_dir());
+        assert_eq!(expand_tilde("~/a/b"), home_dir().join("a/b"));
+    }
+
+    #[test]
+    fn tildify_renders_home_relative_and_round_trips() {
+        let p = home_dir().join("proj/skills");
+        assert_eq!(tildify(&p), "~/proj/skills");
+        assert_eq!(tildify(&home_dir()), "~");
+        // tildify is the inverse of expand_tilde under the home directory.
+        assert_eq!(expand_tilde(&tildify(&p)), p);
+    }
+}

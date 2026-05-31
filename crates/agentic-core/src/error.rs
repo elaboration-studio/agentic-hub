@@ -35,3 +35,31 @@ pub enum CoreError {
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_messages_are_stable() {
+        assert_eq!(
+            CoreError::SuiteNotFound("dev".into()).to_string(),
+            "suite not found: dev"
+        );
+        assert_eq!(
+            CoreError::SuiteNameConflict("dev".into()).to_string(),
+            "a suite named \"dev\" already exists"
+        );
+        assert_eq!(
+            CoreError::NotADirectory(PathBuf::from("/x")).to_string(),
+            "path is not a directory: /x"
+        );
+    }
+
+    #[test]
+    fn io_errors_convert_via_from() {
+        let io = std::io::Error::new(std::io::ErrorKind::NotFound, "x");
+        let err: CoreError = io.into();
+        assert!(matches!(err, CoreError::Io(_)));
+    }
+}

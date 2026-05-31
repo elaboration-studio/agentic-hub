@@ -265,6 +265,39 @@ pub fn slugify(label: &str) -> String {
 }
 
 #[cfg(test)]
+impl Settings {
+    /// Test-only: build settings whose every tool path is rooted under
+    /// `tools_dir`, so a test can never read or write the real home directory.
+    /// Pass a fresh tempdir per test. All four tools are enabled.
+    pub(crate) fn sandboxed(shared_root: impl Into<PathBuf>, tools_dir: &Path) -> Self {
+        let tool = |name: &str| {
+            let base = tools_dir.join(name);
+            ToolSettings {
+                enabled: true,
+                skills_path: base.join("skills"),
+                agents_path: base.join("agents"),
+                rules_path: base.join("rules"),
+                instructions_path: Some(base.join("INSTRUCTIONS.md")),
+                hooks_enabled: true,
+                hooks_file: Some(base.join("hooks.json")),
+            }
+        };
+        Settings {
+            sources: Vec::new(),
+            shared_root: shared_root.into(),
+            suites_path: None,
+            watcher_enabled: true,
+            tools: ToolsSettings {
+                codex: tool("codex"),
+                claude: tool("claude"),
+                cursor: tool("cursor"),
+                openclaw: tool("openclaw"),
+            },
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

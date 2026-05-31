@@ -201,11 +201,11 @@ mod tests {
         let known: HashSet<String> = states.iter().map(|s| s.item_id.clone()).collect();
         let desired = compute_reconcile_desired(&items, &states, &known);
 
-        assert_eq!(desired["skill:a"], true, "enabled stays on");
-        assert_eq!(desired["skill:b"], true, "stale stays on (refresh)");
-        assert_eq!(desired["skill:c"], true, "broken stays on (repair)");
-        assert_eq!(desired["skill:d"], false, "disabled stays off");
-        assert_eq!(desired["skill:e"], false, "foreign never taken over");
+        assert!(desired["skill:a"], "enabled stays on");
+        assert!(desired["skill:b"], "stale stays on (refresh)");
+        assert!(desired["skill:c"], "broken stays on (repair)");
+        assert!(!desired["skill:d"], "disabled stays off");
+        assert!(!desired["skill:e"], "foreign never taken over");
     }
 
     #[test]
@@ -227,9 +227,9 @@ mod tests {
         known.insert("skill:dev/a".to_string());
 
         let desired = compute_reconcile_desired(&items, &states, &known);
-        assert_eq!(desired["skill:dev/a"], true);
-        assert_eq!(desired["skill:dev/b"], true, "sibling of enabled dev/a");
-        assert_eq!(desired["skill:other/c"], false, "no enabled sibling");
+        assert!(desired["skill:dev/a"]);
+        assert!(desired["skill:dev/b"], "sibling of enabled dev/a");
+        assert!(!desired["skill:other/c"], "no enabled sibling");
     }
 
     #[test]
@@ -248,8 +248,8 @@ mod tests {
         known.insert("skill:dev/a".to_string());
 
         let desired = compute_reconcile_desired(&items, &states, &known);
-        assert_eq!(
-            desired["skill:dev/x"], false,
+        assert!(
+            !desired["skill:dev/x"],
             "different source does not count as a sibling"
         );
     }
@@ -283,12 +283,10 @@ mod tests {
         let tools = tempfile::tempdir().unwrap();
         write(&root.path().join("skills/keep/SKILL.md"), "# keep v1");
 
-        let mut settings = Settings {
-            shared_root: root.path().to_path_buf(),
-            ..Settings::default()
-        };
         // Claude skills are managed copies (FileSync) — staleness is meaningful.
-        settings.tools.claude.skills_path = tools.path().join("skills");
+        // Sandbox every tool path so the rule/hook syncs in reconcile_tool can
+        // never touch the real home directory.
+        let settings = Settings::sandboxed(root.path(), tools.path());
 
         let scanned = api::scan(&settings);
         let known: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
@@ -321,11 +319,7 @@ mod tests {
         let tools = tempfile::tempdir().unwrap();
         write(&root.path().join("skills/keep/SKILL.md"), "# keep");
 
-        let mut settings = Settings {
-            shared_root: root.path().to_path_buf(),
-            ..Settings::default()
-        };
-        settings.tools.codex.skills_path = tools.path().join("skills");
+        let settings = Settings::sandboxed(root.path(), tools.path());
 
         let scanned = api::scan(&settings);
         let known: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
@@ -344,11 +338,7 @@ mod tests {
         let tools = tempfile::tempdir().unwrap();
         write(&root.path().join("skills/dev/a/SKILL.md"), "# a");
 
-        let mut settings = Settings {
-            shared_root: root.path().to_path_buf(),
-            ..Settings::default()
-        };
-        settings.tools.codex.skills_path = tools.path().join("skills");
+        let settings = Settings::sandboxed(root.path(), tools.path());
 
         // Enable `dev/a`, snapshot the known ids before adding the newcomer.
         let scanned = api::scan(&settings);
@@ -377,15 +367,12 @@ mod tests {
     #[test]
     fn reconcile_refreshes_markdown_rule_body() {
         let root = tempfile::tempdir().unwrap();
-        let cfg = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
         write(&root.path().join("rules/g/p.mdc"), "rule body v1");
 
-        let mut settings = Settings {
-            shared_root: root.path().to_path_buf(),
-            ..Settings::default()
-        };
-        let instr = cfg.path().join("AGENTS.md");
-        settings.tools.codex.instructions_path = Some(instr.clone());
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let instr = settings.tools.codex.instructions_path.clone().unwrap();
+        fs::create_dir_all(instr.parent().unwrap()).unwrap();
 
         let scanned = api::scan(&settings);
         let known: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
@@ -408,11 +395,9 @@ mod tests {
     #[test]
     fn reconcile_all_skips_disabled_tools() {
         let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
         write(&root.path().join("skills/a/SKILL.md"), "# a");
-        let mut settings = Settings {
-            shared_root: root.path().to_path_buf(),
-            ..Settings::default()
-        };
+        let mut settings = Settings::sandboxed(root.path(), tools.path());
         settings.tools.openclaw.enabled = false;
 
         let scanned = api::scan(&settings);
