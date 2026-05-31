@@ -20,8 +20,12 @@ pub mod rule_sync;
 pub mod scanner;
 pub mod settings;
 pub mod suite_store;
+pub mod workspace_patch;
+pub mod workspace_target_store;
 
-pub use adapter_registry::{Layout, ProjectionMode, ResolvedAdapter};
+pub use adapter_registry::{
+    create_workspace_adapter, Layout, ProjectionMode, ResolvedAdapter, WORKSPACE_TOOL_IDS,
+};
 pub use api::{AdapterStatus, InspectResult};
 pub use error::{CoreError, Result};
 pub use hook_sync::{HookEventSpec, HookManifest};
@@ -29,9 +33,11 @@ pub use model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncError,
     HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome,
     ScanError, ScanResult, SuiteDefinition, SuiteValidationResult, SyncHooksResult,
-    SyncRulesResult, ToolCapabilityState, ToolId,
+    SyncRulesResult, ToolCapabilityState, ToolId, WorkspacePatchResult, WorkspaceTarget,
+    WorkspaceTargetsState,
 };
 pub use planner::{build_plan, inspect_tool};
 pub use scanner::{scan, scan_all};
 pub use settings::{Settings, SourceConfig, ToolSettings, ToolsSettings};
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
+pub use workspace_target_store::WorkspaceTargetStore;

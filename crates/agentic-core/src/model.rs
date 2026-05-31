@@ -381,3 +381,56 @@ pub struct ApplySuiteResult {
     pub skipped_stale: u32,
     pub suite: SuiteDefinition,
 }
+
+/// A remembered per-project workspace directory (workspace scope).
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceTarget {
+    pub id: String,
+    pub label: String,
+    pub dir: PathBuf,
+    pub last_used_at: String,
+}
+
+/// Persisted workspace-target state (`~/.agentic-hub/state.json`).
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceTargetsState {
+    #[serde(default)]
+    pub workspace_targets: Vec<WorkspaceTarget>,
+    #[serde(default)]
+    pub workspace_active_id: Option<String>,
+}
+
+/// Outcome of applying a suite into a workspace directory (hard copy).
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspacePatchResult {
+    pub tool: ToolId,
+    pub workspace_dir: PathBuf,
+    pub suite_id: String,
+    pub suite_name: String,
+    /// Workspace-relative paths written this cycle (incl. managed sentinels).
+    pub applied: Vec<String>,
+    /// Prior-manifest entries cleaned this cycle.
+    pub removed: Vec<String>,
+    /// Suite capability IDs not provided by any configured source.
+    pub skipped_stale_ids: Vec<String>,
+    pub notes: Vec<String>,
+    pub errors: Vec<String>,
+}

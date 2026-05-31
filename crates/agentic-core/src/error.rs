@@ -18,6 +18,9 @@ pub enum CoreError {
     #[error("failed to parse suite store: {0}")]
     SuiteParse(String),
 
+    #[error("failed to parse workspace state: {0}")]
+    StateParse(String),
+
     #[error("suite not found: {0}")]
     SuiteNotFound(String),
 

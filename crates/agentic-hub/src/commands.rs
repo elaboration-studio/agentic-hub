@@ -4,18 +4,24 @@
 
 use std::collections::HashMap;
 
+use agentic_core::adapter_registry::WORKSPACE_TOOL_IDS;
 use agentic_core::api::{self, InspectResult};
 use agentic_core::applier;
+use agentic_core::hook_sync;
 use agentic_core::managed_copy::now_iso8601;
 use agentic_core::model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, PlannedOperation, ScanResult,
-    SuiteDefinition, SyncHooksResult, SyncRulesResult, ToolId,
+    SuiteDefinition, SyncHooksResult, SyncRulesResult, ToolId, WorkspacePatchResult,
+    WorkspaceTarget, WorkspaceTargetsState,
 };
 use agentic_core::paths::expand_tilde;
 use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
 use agentic_core::suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
+use agentic_core::workspace_patch;
+use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::error::IpcError;
 
@@ -293,4 +299,79 @@ pub async fn cmd_apply_suite(input: ApplySuiteInput) -> IpcResult<ApplySuiteResu
         input.tool_id,
         &suite,
     ))
+}
+
+// ---- Workspace scope ------------------------------------------------------
+
+#[tauri::command]
+pub async fn cmd_pick_workspace_dir(app: AppHandle) -> IpcResult<WorkspaceTarget> {
+    let picked = app
+        .dialog()
+        .file()
+        .blocking_pick_folder()
+        .and_then(|fp| fp.as_path().map(|p| p.to_path_buf()))
+        .ok_or_else(|| IpcError::new("dialog_cancelled", "No folder selected"))?;
+    Ok(WorkspaceTargetStore::new().add(&picked)?)
+}
+
+#[tauri::command]
+pub async fn cmd_list_workspace_targets() -> IpcResult<WorkspaceTargetsState> {
+    Ok(WorkspaceTargetStore::new().read()?)
+}
+
+#[tauri::command]
+pub async fn cmd_remove_workspace_target(id: String) -> IpcResult<()> {
+    WorkspaceTargetStore::new().remove(&id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_set_active_workspace_target(id: String) -> IpcResult<()> {
+    WorkspaceTargetStore::new().set_active(&id)?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyWorkspacePatchInput {
+    pub workspace_id: String,
+    pub tool_id: ToolId,
+    pub suite_id: String,
+}
+
+#[tauri::command]
+pub async fn cmd_apply_workspace_patch(
+    input: ApplyWorkspacePatchInput,
+) -> IpcResult<WorkspacePatchResult> {
+    if !WORKSPACE_TOOL_IDS.contains(&input.tool_id) {
+        return Err(IpcError::new(
+            "tool_unsupported_in_workspace",
+            "This tool is not supported in workspace scope",
+        ));
+    }
+    let store = WorkspaceTargetStore::new();
+    let target = store
+        .read()?
+        .workspace_targets
+        .into_iter()
+        .find(|t| t.id == input.workspace_id)
+        .ok_or_else(|| IpcError::new("workspace_not_found", "Workspace target no longer exists"))?;
+
+    let suite = SuiteStore::new()
+        .get(&input.suite_id)?
+        .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
+
+    let settings = Settings::load()?;
+    let scanned = api::scan(&settings);
+    let manifests = hook_sync::load_manifests(&scanned.items);
+
+    let result = workspace_patch::apply_workspace_patch(
+        &target.dir,
+        input.tool_id,
+        &suite,
+        &scanned.items,
+        &manifests,
+    )?;
+    let _ = store.set_active(&input.workspace_id);
+    Ok(result)
 }

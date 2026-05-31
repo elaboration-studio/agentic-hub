@@ -20,6 +20,9 @@ import type {
   SyncRulesResult,
   ToolId,
   ToolsSettings,
+  WorkspacePatchResult,
+  WorkspaceTarget,
+  WorkspaceTargetsState,
 } from "./types";
 
 export type DesiredMap = Record<string, boolean>;
@@ -112,3 +115,24 @@ export const onSuiteStoreChanged = (
   cb: (e: SuiteStoreChangedEvent) => void,
 ): Promise<UnlistenFn> =>
   listen<SuiteStoreChangedEvent>("suite-store-changed", (event) => cb(event.payload));
+
+// ---- Workspace scope ------------------------------------------------------
+
+export const pickWorkspaceDir = (): Promise<WorkspaceTarget> =>
+  invoke("cmd_pick_workspace_dir");
+
+export const listWorkspaceTargets = (): Promise<WorkspaceTargetsState> =>
+  invoke("cmd_list_workspace_targets");
+
+export const removeWorkspaceTarget = (id: string): Promise<void> =>
+  invoke("cmd_remove_workspace_target", { id });
+
+export const setActiveWorkspaceTarget = (id: string): Promise<void> =>
+  invoke("cmd_set_active_workspace_target", { id });
+
+export const applyWorkspacePatch = (
+  workspaceId: string,
+  toolId: ToolId,
+  suiteId: string,
+): Promise<WorkspacePatchResult> =>
+  invoke("cmd_apply_workspace_patch", { input: { workspaceId, toolId, suiteId } });

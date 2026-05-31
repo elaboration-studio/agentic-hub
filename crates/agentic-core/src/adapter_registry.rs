@@ -67,6 +67,58 @@ pub fn resolve_all(settings: &Settings) -> Vec<ResolvedAdapter> {
     ToolId::ALL.iter().map(|&t| resolve(settings, t)).collect()
 }
 
+/// Tools supported in workspace scope. OpenClaw is global-only.
+pub const WORKSPACE_TOOL_IDS: [ToolId; 3] = [ToolId::Codex, ToolId::Claude, ToolId::Cursor];
+
+/// Materialize a workspace-scoped adapter rooted at `ws`. Paths are hard-coded
+/// per tool (v1). OpenClaw is unsupported and returns a disabled adapter so
+/// callers reject it. See `docs/tech/modules/workspace-patch.md`.
+pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedAdapter {
+    let j = |p: &str| ws.join(p);
+    match tool {
+        ToolId::Codex => ResolvedAdapter {
+            tool_id: tool,
+            enabled: true,
+            skills_path: j(".agents/skills"),
+            agents_path: j(".agents/agents"),
+            rules_path: j(".codex/agentic-rules"),
+            instructions_path: Some(j("AGENTS.md")),
+            hooks_enabled: true,
+            hooks_file: Some(j(".codex/hooks.json")),
+        },
+        ToolId::Claude => ResolvedAdapter {
+            tool_id: tool,
+            enabled: true,
+            skills_path: j(".claude/skills"),
+            agents_path: j(".claude/agents"),
+            rules_path: j(".claude/agentic-rules"),
+            instructions_path: Some(j("CLAUDE.md")),
+            hooks_enabled: true,
+            hooks_file: Some(j(".claude/settings.json")),
+        },
+        ToolId::Cursor => ResolvedAdapter {
+            tool_id: tool,
+            enabled: true,
+            skills_path: j(".cursor/skills"),
+            agents_path: j(".cursor/agents"),
+            rules_path: j(".cursor/rules"),
+            instructions_path: None,
+            hooks_enabled: true,
+            hooks_file: Some(j(".cursor/hooks.json")),
+        },
+        ToolId::Openclaw => ResolvedAdapter {
+            tool_id: tool,
+            enabled: false,
+            skills_path: j(".openclaw/skills"),
+            agents_path: j(".openclaw/agents"),
+            rules_path: j(".openclaw/agentic-rules"),
+            instructions_path: None,
+            hooks_enabled: false,
+            hooks_file: None,
+        },
+    }
+}
+
 impl ResolvedAdapter {
     /// Layout for a kind. Claude skills/agents are flat; everything else nested.
     pub fn layout_for(&self, kind: CapabilityKind) -> Layout {

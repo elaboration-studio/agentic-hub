@@ -29,6 +29,11 @@ pub fn run() {
             commands::cmd_update_suite,
             commands::cmd_delete_suite,
             commands::cmd_apply_suite,
+            commands::cmd_pick_workspace_dir,
+            commands::cmd_list_workspace_targets,
+            commands::cmd_remove_workspace_target,
+            commands::cmd_set_active_workspace_target,
+            commands::cmd_apply_workspace_patch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Agentic Hub Tauri application");
