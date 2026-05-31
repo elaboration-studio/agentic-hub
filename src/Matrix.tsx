@@ -8,6 +8,7 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type {
   AdapterStatus,
   CapabilityItem,
+  CapabilityKind,
   ToolCapabilityState,
   ToolId,
 } from "./types";
@@ -39,6 +40,7 @@ export function Matrix(props: MatrixProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [source, setSource] = useState("");
+  const [kind, setKind] = useState<KindFilter>("all");
 
   const adapterMap = useMemo(() => {
     const m = new Map<ToolId, AdapterStatus>();
@@ -54,8 +56,8 @@ export function Matrix(props: MatrixProps) {
   }, [props.items]);
 
   const filtered = useMemo(
-    () => filterItems(props.items, query, source),
-    [props.items, query, source],
+    () => filterItems(props.items, query, source, kind),
+    [props.items, query, source, kind],
   );
   const root = useMemo(() => buildTree(filtered), [filtered]);
   const folderPaths = useMemo(() => collectFolderPaths(root), [root]);
@@ -101,6 +103,18 @@ export function Matrix(props: MatrixProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <select
+          className="suite-tool kind-filter"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as KindFilter)}
+          title="Filter by type"
+        >
+          <option value="all">All types</option>
+          <option value="skill">Skills</option>
+          <option value="agent">Agents</option>
+          <option value="rule">Rules</option>
+          <option value="hook">Hooks</option>
+        </select>
         {sources.length > 1 && (
           <select
             className="suite-tool source-filter"
@@ -175,10 +189,18 @@ interface BodyContext {
   colCount: number;
 }
 
-function filterItems(items: CapabilityItem[], query: string, source: string): CapabilityItem[] {
+type KindFilter = "all" | CapabilityKind;
+
+function filterItems(
+  items: CapabilityItem[],
+  query: string,
+  source: string,
+  kind: KindFilter,
+): CapabilityItem[] {
   const q = query.trim().toLowerCase();
-  if (!q && !source) return items;
+  if (!q && !source && kind === "all") return items;
   return items.filter((it) => {
+    if (kind !== "all" && it.kind !== kind) return false;
     if (source && it.sourceId !== source) return false;
     if (!q) return true;
     return (

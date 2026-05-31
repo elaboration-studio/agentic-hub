@@ -629,8 +629,26 @@ tr.invalid .cap-name {
   color: var(--muted);
 }
 
-.source-filter {
-  min-width: 150px;
+.source-filter,
+.kind-filter {
+  min-width: 130px;
+}
+
+.suite-apply-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.suite-apply-row .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
 }
 
 /* Batch (group-level) toggle: ✓ all on, – mixed */

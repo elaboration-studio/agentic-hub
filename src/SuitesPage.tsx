@@ -12,14 +12,21 @@ import {
   type ReactNode,
 } from "react";
 import {
+  applySuite,
   createSuite,
   deleteSuite,
   listSuites,
   onSuiteStoreChanged,
   updateSuite,
 } from "./ipc";
-import type { CapabilityItem, CapabilityKind, SuiteDefinition } from "./types";
-import { messageOf } from "./shared";
+import type {
+  AdapterStatus,
+  CapabilityItem,
+  CapabilityKind,
+  SuiteDefinition,
+  ToolId,
+} from "./types";
+import { messageOf, type ToolDef } from "./shared";
 
 // The extension scopes suite editing to these kinds (hooks are excluded).
 const SUITE_KINDS: CapabilityKind[] = ["skill", "agent", "rule"];
@@ -43,7 +50,12 @@ interface SNode {
   item?: CapabilityItem;
 }
 
-export function SuitesPage(props: { items: CapabilityItem[]; onError: (msg: string) => void }) {
+export function SuitesPage(props: {
+  items: CapabilityItem[];
+  tools: ToolDef[];
+  adapterStatuses: AdapterStatus[];
+  onError: (msg: string) => void;
+}) {
   const [suites, setSuites] = useState<SuiteDefinition[]>([]);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [isCreating, setIsCreating] = useState(false);
@@ -52,6 +64,19 @@ export function SuitesPage(props: { items: CapabilityItem[]; onError: (msg: stri
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+
+  const availableTools = useMemo(
+    () => props.tools.filter((t) => props.adapterStatuses.find((a) => a.tool === t.id)?.available),
+    [props.tools, props.adapterStatuses],
+  );
+  const [applyTool, setApplyTool] = useState<ToolId>(availableTools[0]?.id ?? "codex");
+  const [applyMsg, setApplyMsg] = useState("");
+
+  useEffect(() => {
+    setApplyTool((cur) =>
+      availableTools.some((t) => t.id === cur) ? cur : (availableTools[0]?.id ?? cur),
+    );
+  }, [availableTools]);
 
   const reload = useCallback(async () => {
     try {
@@ -86,6 +111,7 @@ export function SuitesPage(props: { items: CapabilityItem[]; onError: (msg: stri
     setDraft({ name: "", description: "", capabilities: [] });
     setCapSearch("");
     setKindFilter("all");
+    setApplyMsg("");
   }, []);
 
   const selectSuite = useCallback(
@@ -101,6 +127,7 @@ export function SuitesPage(props: { items: CapabilityItem[]; onError: (msg: stri
       });
       setCapSearch("");
       setKindFilter("all");
+      setApplyMsg("");
     },
     [suites],
   );
@@ -158,6 +185,33 @@ export function SuitesPage(props: { items: CapabilityItem[]; onError: (msg: stri
       setBusy(false);
     }
   }, [selectedId, suites, reload, props]);
+
+  const applySelected = useCallback(async () => {
+    if (!selectedId) return;
+    const suite = suites.find((s) => s.id === selectedId);
+    if (
+      (!suite || suite.capabilities.length === 0) &&
+      !window.confirm(
+        "This suite is empty. Applying disables every capability for the tool. Continue?",
+      )
+    )
+      return;
+    setBusy(true);
+    setApplyMsg("");
+    try {
+      const result = await applySuite(applyTool, selectedId);
+      const ar = result.applyResult;
+      setApplyMsg(
+        `Applied to ${applyTool} · ${ar.created} added, ${ar.removed} removed` +
+          (result.skippedStale > 0 ? `, ${result.skippedStale} stale skipped` : "") +
+          (ar.errors.length > 0 ? `, ${ar.errors.length} error(s)` : ""),
+      );
+    } catch (e) {
+      props.onError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [selectedId, suites, applyTool, props]);
 
   const included = useMemo(() => new Set(draft?.capabilities ?? []), [draft]);
 
@@ -228,6 +282,31 @@ export function SuitesPage(props: { items: CapabilityItem[]; onError: (msg: stri
           <h2>{isCreating ? "New Suite" : draft ? "Edit Suite" : "Editor"}</h2>
           {draft && <span className="src-hint">{draft.capabilities.length} selected</span>}
         </div>
+        {selectedId && !isCreating && (
+          <div className="suite-apply-row">
+            <span className="label">Apply</span>
+            <select
+              className="suite-tool"
+              value={applyTool}
+              onChange={(e) => setApplyTool(e.target.value as ToolId)}
+              disabled={busy || availableTools.length === 0}
+            >
+              {availableTools.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn"
+              onClick={() => void applySelected()}
+              disabled={busy || availableTools.length === 0}
+            >
+              Apply Suite
+            </button>
+            {applyMsg && <span className="src-hint">{applyMsg}</span>}
+          </div>
+        )}
         {!draft ? (
           <div className="suite-empty">Select a suite to edit, or create a new one.</div>
         ) : (

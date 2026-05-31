@@ -30,7 +30,6 @@ import {
   type ToolDef,
 } from "./shared";
 import { Matrix } from "./Matrix";
-import { SuiteBar } from "./SuiteBar";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { ConfigPage } from "./ConfigPage";
 import { SuitesPage } from "./SuitesPage";
@@ -154,14 +153,6 @@ export function App() {
     if (data) setDesired(seedDesired(data.result));
   }, [data]);
 
-  const enabledCapsFor = useCallback(
-    (tool: ToolId): string[] => {
-      if (!data) return [];
-      return data.items.filter((it) => desired[key(tool, it.id)]).map((it) => it.id);
-    },
-    [data, desired],
-  );
-
   const applyChanges = useCallback(async () => {
     if (!data) return;
     setApplying(true);
@@ -208,7 +199,14 @@ export function App() {
         {data && route === "config" && (
           <ConfigPage settings={data.settings} onChanged={() => void refresh()} onError={setError} />
         )}
-        {data && route === "suites" && <SuitesPage items={data.items} onError={setError} />}
+        {data && route === "suites" && (
+          <SuitesPage
+            items={data.items}
+            tools={tools}
+            adapterStatuses={data.result.adapterStatuses}
+            onError={setError}
+          />
+        )}
         {data && route === "manager" && (
           <>
             {data.scanErrors.length > 0 && (
@@ -224,24 +222,15 @@ export function App() {
               </details>
             )}
             {scope === "global" ? (
-              <>
-                <SuiteBar
-                  tools={tools}
-                  adapterStatuses={data.result.adapterStatuses}
-                  enabledCapsFor={enabledCapsFor}
-                  onApplied={() => void refresh()}
-                  onError={setError}
-                />
-                <Matrix
-                  items={data.items}
-                  tools={tools}
-                  currentMap={currentMap}
-                  adapterStatuses={data.result.adapterStatuses}
-                  desired={desired}
-                  onToggle={toggle}
-                  onToggleMany={toggleMany}
-                />
-              </>
+              <Matrix
+                items={data.items}
+                tools={tools}
+                currentMap={currentMap}
+                adapterStatuses={data.result.adapterStatuses}
+                desired={desired}
+                onToggle={toggle}
+                onToggleMany={toggleMany}
+              />
             ) : (
               <WorkspacePanel tools={workspaceTools} onError={setError} />
             )}
