@@ -14,7 +14,7 @@ Define the filesystem contract for the **shared agentic root** that Agentic Hub 
 
 `~/.agentic`
 
-User-configurable via `settings.shared_root` (`~/.agentic-hub/config.json`).
+User-configurable via `settings.sources` (`~/.agentic-hub/config.json`) — an ordered list of `{ label, path }` source folders, each of which is a shared root that follows the contract on this page. When `sources` is empty, the legacy `settings.shared_root` is treated as a single `Default` source for one release. Items are keyed across the forest by `${kind}:${relative_path}`; the first (highest-priority) source wins and a later duplicate is dropped and reported as a scan error. See [multi-source-roots.md](../modules/multi-source-roots.md).
 
 ## Top-level shape
 
@@ -23,9 +23,10 @@ User-configurable via `settings.shared_root` (`~/.agentic-hub/config.json`).
   skills/
   agents/
   rules/
+  hooks/
 ```
 
-Only these three top-level directories are walked by the scanner. Other top-level entries (READMEs, scripts, lock files) are ignored.
+Only these four top-level directories are walked by the scanner. Other top-level entries (READMEs, scripts, lock files) are ignored. Any directory named `__archived__` is skipped at every depth (see [What is intentionally ignored](#what-is-intentionally-ignored)).
 
 A populated example:
 
@@ -96,6 +97,18 @@ A **rule** is a `.md` or `.mdc` file under `<sharedRoot>/rules/`.
 
 The `relative_path` is the file path under `<sharedRoot>/rules/`, including extension.
 
+### Hooks
+
+A **hook** is a directory under `<sharedRoot>/hooks/` containing a `hook.json` manifest, optionally with sibling scripts (e.g. `script.sh`).
+
+| Path | Valid? | Reason |
+|------|--------|--------|
+| `~/.agentic/hooks/auto-format-after-edit/hook.json` | yes | Directory contains `hook.json` |
+| `~/.agentic/hooks/auto-format-after-edit/` (no `hook.json`) | no | Missing manifest |
+| `~/.agentic/hooks/foo.json` (file, not dir) | no | Hooks must be directories |
+
+The `relative_path` is the directory path under `<sharedRoot>/hooks/`. The `source_path` is the absolute directory path — this is what `${HOOK_DIR}` resolves to at projection time. The scanner parses `hook.json` to validate it (see [hook-projection-sync.md](../modules/hook-projection-sync.md) for the schema and validation rules).
+
 ## Capability IDs
 
 Stable identifiers used everywhere (state inspection, suites, manifests):
@@ -105,6 +118,7 @@ Stable identifiers used everywhere (state inspection, suites, manifests):
 | Skill | `skill:<relative_path_without_skill_md>` | `skill:dev/repo-research` |
 | Agent | `agent:<relative_path>` | `agent:coding/coding-agent.md` |
 | Rule | `rule:<relative_path>` | `rule:general/precise.mdc` |
+| Hook | `hook:<relative_path>` | `hook:auto-format-after-edit` |
 
 IDs are stable as long as the source location does not change. Renaming a skill changes its ID; suites referencing the old ID treat it as stale.
 
@@ -137,7 +151,8 @@ Skills' `SKILL.md` files also commonly have YAML frontmatter (per the convention
 ## What is intentionally ignored
 
 - Top-level files (`README.md`, `ONBOARD.md`, etc.) — informational only
-- Directories outside `skills/`, `agents/`, `rules/` — e.g. `scripts/`, `node_modules/`
+- Directories outside `skills/`, `agents/`, `rules/`, `hooks/` — e.g. `scripts/`, `node_modules/`
+- Any directory named `__archived__`, at any depth — reserved for old versions of files per the workspace convention; never scanned
 - Hidden files (anything starting with `.`) — convention only; `.skill-lock.json` is ignored not because of the dot but because it lives in the top level
 - Files that don't match the allowed extensions per kind
 
@@ -162,5 +177,5 @@ None of these are required. Agentic Hub works with a shared root containing only
 
 ## Open questions
 
-- Should we add a top-level `prompts/` directory as a fourth kind? Defer; users who want prompt libraries can use skills or rules
-- Should we support multiple shared roots (overlayed)? Defer; one root with symlinks covers the multi-source case
+- Should we add a top-level `prompts/` directory as a fifth kind? Defer; users who want prompt libraries can use skills or rules
+- ~~Should we support multiple shared roots (overlayed)?~~ Resolved: shipped as ordered `sources` with first-source-wins dedupe — see [multi-source-roots.md](../modules/multi-source-roots.md)

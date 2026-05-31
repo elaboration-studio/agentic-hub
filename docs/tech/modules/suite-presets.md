@@ -108,7 +108,7 @@ pub struct SuiteDefinition {
 }
 ```
 
-Capability IDs use the same format as `CapabilityItem.id` produced by `scanner`. Stable as long as the capability's relative path in the shared root does not change.
+Capability IDs use the same format as `CapabilityItem.id` produced by `scanner`. Stable as long as the capability's relative path does not change. IDs are **source-free** (e.g. `skill:dev/tdd`): with [multi-source roots](./multi-source-roots.md), a suite ID resolves against the whole source forest and is backed by whichever source currently owns it (first source wins). Adding or reordering sources never changes a suite's IDs, so suites need no migration. A capability ID not provided by any configured source is reported as stale (see stale reconciliation below).
 
 ### Dotfile contract
 
@@ -197,7 +197,7 @@ The `apply_suite` handler:
 async fn apply_suite(tool_id: ToolId, suite_id: String) -> Result<ApplySuiteResult> {
     let suite = suite_store.get(&suite_id)?.ok_or(Err::SuiteNotFound)?;
     let settings = settings.read()?;
-    let scan = scanner::scan(&settings.shared_root)?;
+    let scan = scanner::scan_all(&settings.sources)?;  // forest; first-source-wins
     let adapters = adapter_registry::resolve_all(&settings.tools);
     let states = planner::inspect_all_tools(&scan.items, &adapters);
 

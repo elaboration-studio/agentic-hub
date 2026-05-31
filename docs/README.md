@@ -17,6 +17,7 @@ Detailed documentation for Agentic Hub. Start with the root-level specs, then dr
 User-facing feature designs aligned with each milestone.
 
 - [mvp-unified-agentic-capability-manager.md](features/mvp-unified-agentic-capability-manager.md) — the core MVP feature: scan / inspect / stage / apply
+- [hooks-projection.md](features/hooks-projection.md) — the `hook` capability kind projected into each tool's hooks config via `json_section`
 - [suite-presets.md](features/suite-presets.md) — named capability presets with one-click full-reset apply
 - [workspace-suite-sync.md](features/workspace-suite-sync.md) — per-project hard-copy suite apply with manifest cycle
 - [agentic-demo-scaffold.md](features/agentic-demo-scaffold.md) — first-run bootstrap of a starter shared root
@@ -26,6 +27,8 @@ User-facing feature designs aligned with each milestone.
 Detailed technical design for each subsystem of the projection engine and adjacent services.
 
 - [rule-projection-sync.md](tech/modules/rule-projection-sync.md) — three rule projection modes; managed-block contract
+- [hook-projection-sync.md](tech/modules/hook-projection-sync.md) — the `json_section` mode: hook schema, event mapping, marker-preserving JSON CRUD
+- [multi-source-roots.md](tech/modules/multi-source-roots.md) — ordered source forest, first-source-wins dedupe, priority collision resolution
 - [claude-flat-skill-layout.md](tech/modules/claude-flat-skill-layout.md) — Claude's flat layout constraint and basename-collision rules
 - [openclaw-tool-adapter.md](tech/modules/openclaw-tool-adapter.md) — OpenClaw filesystem conventions and SOUL.md managed block
 - [suite-presets.md](tech/modules/suite-presets.md) — suite store, full-reset apply pipeline
@@ -46,6 +49,12 @@ Day-to-day development reference.
 
 - [getting-started.md](tech/development/getting-started.md) — local setup, scripts, common workflows
 - [testing-strategy.md](tech/development/testing-strategy.md) — test pyramid, fixtures, coverage targets, CI matrix
+
+### `plans/` — migration & change plans
+
+Time-boxed plans that coordinate multi-doc or multi-module change.
+
+- [vscode-extension-feature-migration_2026-05-31.plan.md](plans/vscode-extension-feature-migration_2026-05-31.plan.md) — port hooks, multi-source roots, and `__archived__` scan exclusion from the VS Code extension (`0.3.0`–`0.5.0`) into the hub
 
 ## How to read this
 

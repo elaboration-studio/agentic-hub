@@ -39,7 +39,7 @@ As a power user managing multiple AI tools, I want a single desktop window that 
   - rule = `.md` or `.mdc` file
 - Per-tool state inspection: `enabled` / `disabled` / `broken` / `stale` / `foreign_file` / `foreign_link`
 - Search by capability name or relative path
-- Kind filter: all / skills / agents / rules
+- Kind filter: all / skills / agents / rules / hooks
 - Stage enable/disable changes before apply
 - Safe apply semantics:
   - Create missing symlink
@@ -146,6 +146,7 @@ That is the MVP. Everything else is optional.
 - `skill`
 - `agent`
 - `rule`
+- `hook` — added post-MVP; projected via `json_section` into each tool's hooks config. Carries a Not-Targeted lock when the focused tool is not in the hook's `targets`. See [hooks-projection.md](./hooks-projection.md).
 
 ### Link states (per (tool, item))
 
@@ -197,10 +198,14 @@ The UI maintains a per-tool `desiredEnabledByItemId` map. Toggling an item updat
 - [ ] Invalid shared root and missing tool paths surface actionable errors
 - [ ] App cold-start to first interactive window under 1.5s on macOS
 
+## Multi-source roots (post-MVP)
+
+The MVP ships against a single shared root. A later wave generalizes the header's "Shared root" to an ordered list of **sources**, each rendered as its own tree root, with first-source-wins dedupe across the forest and priority-based collision resolution. Capability IDs stay source-free so suites need no migration. Full design in [multi-source-roots.md](../tech/modules/multi-source-roots.md). Until then, the single `sharedRoot` setting is the only configured source.
+
 ## Dependencies
 
 - Tauri 2.x shell + capability files (see [ARCHITECTURE.permissions.md](../../ARCHITECTURE.permissions.md))
-- `agentic-core` modules: `settings`, `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync`
+- `agentic-core` modules: `settings`, `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync` (plus `hook_sync` once hooks land)
 - IPC commands: `cmd_load_settings`, `cmd_save_settings`, `cmd_scan`, `cmd_inspect`, `cmd_plan`, `cmd_apply`, `cmd_sync_rules` (see [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md))
 
 ## Delivery slices

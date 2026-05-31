@@ -48,6 +48,9 @@ Common error codes:
 | `manifest_malformed` | A workspace manifest could not be parsed |
 | `rule_sync_malformed_markers` | Instruction file has malformed managed-block markers |
 | `conflict_real_file_at_target` | A real file blocks a write |
+| `hook_manifest_invalid` | A `hook.json` failed schema validation |
+| `hook_target_broken_json` | A tool's hook config file is malformed and cannot be safely rewritten |
+| `source_path_invalid` | A configured source path failed canonicalization or is not a directory |
 | `internal` | Catch-all unexpected error; surface for bug reports |
 
 ## Settings commands
@@ -62,8 +65,15 @@ Validates and atomically writes settings. Validation includes: non-empty `shared
 
 ```typescript
 type Settings = {
-  sharedRoot: string;
+  sources: SourceConfig[];        // ordered by priority
+  sharedRoot: string;             // deprecated; one-release fallback when sources is empty
   tools: ToolsSettings;
+};
+
+type SourceConfig = {
+  id: string;                     // stable slug derived from label
+  label: string;
+  path: string;                   // absolute, normalized
 };
 
 type ToolsSettings = {
@@ -79,12 +89,18 @@ type ToolSettings = {
   agentsPath: string;
   rulesPath: string;
   instructionsPath: string | null;
+  hooksEnabled: boolean;          // default true for codex/claude/cursor, false for openclaw
+  hooksFile: string | null;       // null for openclaw (no hook support)
 };
 ```
 
+Hook settings defaults: `~/.codex/hooks.json`, `~/.claude/settings.json`, `~/.cursor/hooks.json`. OpenClaw has `hooksEnabled: false` and `hooksFile: null`.
+
 ## Scan & inspect commands
 
-### `cmd_scan(shared_root: string) -> ScanResult`
+### `cmd_scan(input: { sources: SourceConfig[] }) -> ScanResult`
+
+Walks every source in priority order, dedupes by `${kind}:${relativePath}` (first source wins), and reports shadowed duplicates and missing source folders as `errors`. The legacy single-root `cmd_scan(shared_root)` is retained as a thin wrapper.
 
 ```typescript
 type ScanResult = {
@@ -93,20 +109,30 @@ type ScanResult = {
 };
 
 type CapabilityItem = {
-  id: string;                  // e.g. "skill:dev/repo-research"
-  kind: 'skill' | 'agent' | 'rule';
+  id: string;                  // e.g. "skill:dev/repo-research" (source-free)
+  kind: 'skill' | 'agent' | 'rule' | 'hook';
   name: string;
-  sourcePath: string;          // absolute
-  relativePath: string;        // relative to <root>/<kind>/
+  sourcePath: string;          // absolute (for hooks: the hook folder = ${HOOK_DIR})
+  relativePath: string;        // relative to <source>/<kind>/
+  sourceId: string;            // which source contributed this item
+  sourceLabel: string;
   valid: boolean;
   validationErrors: string[];
 };
 
 type ScanError = {
   path: string;
-  message: string;
+  message: string;             // e.g. "shadowed by higher-priority source 'Arno'"
 };
 ```
+
+### `cmd_add_source(input: { label: string, path: string }) -> Settings`
+
+The shell opens a Tauri folder dialog before this call. Validates uniqueness of label and normalized path, appends to `settings.sources`, persists, and emits `settings-changed`. Errors: `source_path_invalid` if the path fails canonicalization or is not a directory.
+
+### `cmd_remove_source(input: { id: string }) -> Settings`
+
+Splices the matching entry out of `settings.sources` and persists. Never touches files on disk. Removing the only source falls back to the legacy `sharedRoot` Default.
 
 ### `cmd_inspect(items: CapabilityItem[], tools: ToolsSettings) -> InspectResult`
 
@@ -149,6 +175,7 @@ type PlannedOperation = {
   sourcePath?: string;
   kind: 'create_link' | 'remove_link' | 'replace_link'
       | 'create_managed_copy' | 'remove_managed_copy' | 'replace_managed_copy'
+      | 'sync_json_section' | 'clear_json_section'
       | 'skip_conflict';
   reason: string;
 };
@@ -176,6 +203,8 @@ type ApplyError = {
 ```
 
 Emits `apply-progress` events per operation (see Events below).
+
+`sync_json_section` / `clear_json_section` operations (hooks) are grouped by target file and executed as a single read–merge–write per file inside the apply, so foreign entries are partitioned and preserved exactly once. Before planning, the caller passes only hooks whose effective targets include the focused tool; the planner's `filter_desired_enabled_for_tool` step drops the rest with a note. See [hook-projection-sync.md](./hook-projection-sync.md).
 
 ### `cmd_sync_rules(input: SyncRulesInput) -> SyncRulesResult`
 

@@ -49,17 +49,20 @@ impl WorkspaceTargetStore {
 
 `adapter_registry::create_workspace_adapter(tool_id, workspace_dir)` materializes workspace-scoped `ResolvedAdapter`s:
 
-| Tool | `skills_path` | `agents_path` | `rules_path` | `instructions_path` | `rule_projection` |
-|------|---------------|---------------|--------------|----------------------|-------------------|
-| Codex | `<ws>/.agents/skills` | `<ws>/.agents/agents` | `<ws>/.codex/agentic-rules` | `<ws>/AGENTS.md` | `MarkdownSectionSync` |
-| Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` | `<ws>/.claude/agentic-rules` | `<ws>/CLAUDE.md` | `MarkdownSectionSync` |
-| Cursor | `<ws>/.cursor/skills` | `<ws>/.cursor/agents` | `<ws>/.cursor/rules` | unused | `FileSync` (raw copy) |
+| Tool | `skills_path` | `agents_path` | `rules_path` | `instructions_path` | `hooks_file` | `rule_projection` |
+|------|---------------|---------------|--------------|----------------------|--------------|-------------------|
+| Codex | `<ws>/.agents/skills` | `<ws>/.agents/agents` | `<ws>/.codex/agentic-rules` | `<ws>/AGENTS.md` | `<ws>/.codex/hooks.json` | `MarkdownSectionSync` |
+| Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` | `<ws>/.claude/agentic-rules` | `<ws>/CLAUDE.md` | `<ws>/.claude/settings.json` | `MarkdownSectionSync` |
+| Cursor | `<ws>/.cursor/skills` | `<ws>/.cursor/agents` | `<ws>/.cursor/rules` | unused | `<ws>/.cursor/hooks.json` | `FileSync` (raw copy) |
+
+Hooks in workspace scope use `json_section` (same as global) against the per-workspace `hooks_file`. OpenClaw is unsupported in workspace scope, so it has no hook target here.
 
 `projection_kind_for(kind, tool)` in workspace mode:
 
 - `Skill` or `Agent` → `managed_copy` (hard copy, dereferencing symlinks)
 - `Rule && tool == Cursor` → `managed_copy` (raw copy)
 - `Rule && tool == Codex | Claude` → `markdown_section_sync`
+- `Hook` → `json_section` (managed JSON entries in the per-workspace `hooks_file`)
 
 Layout: workspace adapters use `Nested` for all tools (Claude's flat-layout constraint applies only to its global home).
 
@@ -79,7 +82,8 @@ Format (version 1):
     ".agents/skills/skill-a",
     ".agents/skills/dev/repo-research",
     ".agents/agents/agent-b.md",
-    "AGENTS.md::managed-section"
+    "AGENTS.md::managed-section",
+    ".codex/hooks.json::managed-hooks"
   ]
 }
 ```
@@ -87,6 +91,7 @@ Format (version 1):
 Conventions:
 - Each entry in `paths` is workspace-relative
 - The sentinel `<file>::managed-section` tells the cleanup pass to clear the managed `<!-- e-studio-agentic-rules:start -->`/`...:end -->` block in the named file via `rule_sync::sync_markdown_rules` with an empty enabled-rule list, instead of deleting the whole file
+- The sentinel `<file>::managed-hooks` tells the cleanup pass to clear this tool's managed hook entries (those carrying the `_agenticHub` marker) in the named JSON file via `hook_sync::sync_json_hooks` with an empty enabled-hook list, preserving foreign entries — instead of deleting the whole file
 - Manifest is single-tool. Re-applying with a different focused tool cleans the prior tool's payload using `prior_manifest.tool` for adapter resolution
 - Atomic writes: `<manifest>.json.tmp` then `rename`
 - The folder `<ws>/.agentic-hub/` is created on first write if missing
@@ -97,20 +102,22 @@ Conventions:
 
 1. Build workspace-scoped adapter via `adapter_registry::create_workspace_adapter`. Reject if the focused tool is OpenClaw or disabled.
 2. Read suite via `suite_store::get(suite_id)`. Reject if missing.
-3. Scan shared root for items.
-4. Resolve suite capability ids against scanned items. Items found are queued; missing ids are recorded as `skipped_stale_ids`.
+3. Scan the source forest for items via `scanner::scan_all(settings.sources)` (first-source-wins).
+4. Resolve suite capability ids against scanned items. Items found are queued; ids not provided by any configured source are recorded as `skipped_stale_ids`.
 5. Hand off to `workspace_patch::apply::apply`:
    1. `fs::metadata(workspace_dir)`; refuse if not a directory
    2. Resolve `realpath(workspace_dir)` and use it as the boundary for "no writes outside workspace"
    3. Read prior manifest if any. For each prior `paths[i]`:
       - Sentinel `<file>::managed-section`: call `sync_markdown_rules` with empty items for the prior tool's adapter
+      - Sentinel `<file>::managed-hooks`: call `hook_sync::sync_json_hooks` with an empty enabled-hook list for the prior tool's adapter (clears managed hook entries, preserves foreign ones)
       - Path: `fs::remove_dir_all_or_file` with `force` semantics; then prune empty parent dirs up to workspace root
    4. For each queued item, hard-copy according to kind:
       - Skill: recursive directory copy, dereferencing symlinks inside
       - Agent / Cursor rule: single file copy
    5. For Codex / Claude rules: build synthetic `ToolCapabilityState[]` with `state=Enabled` and call `sync_markdown_rules` with workspace-scoped adapter
-   6. Build the new manifest: rule writes record the sentinel `<rel(instructions_path)>::managed-section` so the next cycle can clean it
-   7. Write manifest atomically
+   6. For hooks: build synthetic enabled states for the suite's hook items and call `hook_sync::sync_json_hooks` with the workspace-scoped adapter (skipped for tools whose `hooks_enabled` is off or that the hook does not target)
+   7. Build the new manifest: rule writes record `<rel(instructions_path)>::managed-section`; hook writes record `<rel(hooks_file)>::managed-hooks`, so the next cycle can clean them
+   8. Write manifest atomically
 6. Return `WorkspacePatchResult { tool, workspace_dir, suite_id, suite_name, applied[], removed[], skipped_stale_ids[], notes[], errors[] }`
 
 ## Safety rules

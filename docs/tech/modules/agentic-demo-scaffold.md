@@ -37,12 +37,16 @@ resources/agentic-demo/
     agent-resources-manager.md
   rules/
     general/workspace.mdc
+  hooks/
+    auto-format-after-edit/hook.json
+    auto-format-after-edit/script.sh
 ```
 
 - `README.md`, `ONBOARD.md` — orientation and the optional `npx skills` lock workflow (aligned with `~/.agentic-arno` patterns)
 - Demo skills teach the manager's contract by example
 - Demo agent shows the `<agentsPath>/<file>.md` convention
 - Demo rule shows the `rules/<category>/<name>.mdc` convention
+- Demo hook (`auto-format-after-edit`) shows the `hooks/<name>/hook.json` + sibling `script.sh` convention and the `${HOOK_DIR}` token, so the hook flow is dogfoodable end-to-end (see [hooks-projection.md](../../features/hooks-projection.md))
 
 ## Embedding strategy
 

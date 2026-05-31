@@ -27,6 +27,10 @@ Single-page reference table for every tool adapter: target paths, projection mod
 | Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `link_sync` | `markdown_section_sync` |
 | Rule target | `~/.codex/AGENTS.md` (managed block) | `~/.claude/CLAUDE.md` (managed block) | symlinks under `~/.cursor/rules/` | `~/.openclaw/workspace/SOUL.md` (managed block) |
 | Mirrored rule files | optional at `~/.codex/agentic-rules/` (annotated when present) | optional at `~/.claude/rules/` (rarely used) | n/a (rules are real files via symlink) | optional at `~/.openclaw/agentic-rules/` |
+| `hooks_enabled` default | `true` | `true` | `true` | `false` |
+| `hooks_file` default | `~/.codex/hooks.json` | `~/.claude/settings.json` | `~/.cursor/hooks.json` | _none_ |
+| Hook projection mode | `json_section` | `json_section` | `json_section` | not supported |
+| Hook JSON shape | two-level (PascalCase events) | two-level (PascalCase events) | flat (camelCase events) | n/a |
 
 ### Why Codex uses `~/.agents/`
 
@@ -77,6 +81,13 @@ In workspace scope every projection is hard copy (no symlinks). Claude's flat co
 - Workspace Cursor: hard copy under `<ws>/.cursor/rules/`
 - Workspace Codex / Claude: managed block in `<ws>/AGENTS.md` / `<ws>/CLAUDE.md`
 
+### Hook
+
+- Global Codex / Claude / Cursor: managed JSON entry in the tool's hooks file (`json_section`)
+- Global OpenClaw: not supported (no public hook spec)
+- Workspace Codex / Claude / Cursor: managed JSON entry in `<ws>/.codex/hooks.json` / `<ws>/.claude/settings.json` / `<ws>/.cursor/hooks.json`
+- Cursor uses a flat shape (camelCase events); Codex / Claude use a two-level shape (PascalCase events, marker on the matcher group). See [hook-projection-sync.md](../modules/hook-projection-sync.md).
+
 ## Operation kinds per projection mode
 
 | Mode | Create | Update | Remove |
@@ -84,23 +95,28 @@ In workspace scope every projection is hard copy (no symlinks). Claude's flat co
 | Symlink (`link_sync`) | `create_link` | `replace_link` | `remove_link` |
 | Managed copy (`file_sync` with metadata) | `create_managed_copy` | `replace_managed_copy` | `remove_managed_copy` |
 | Markdown section (`markdown_section_sync`) | full block rewrite via `rule_sync` | full block rewrite | block removal (file remains if other content present) |
+| JSON section (`json_section`) | `sync_json_section` | `sync_json_section` | `clear_json_section` (foreign entries preserved) |
 
 ## State semantics per projection mode
 
-| State | Symlink | Managed copy | Markdown section |
-|-------|---------|--------------|-------------------|
-| `enabled` | Symlink points to correct source | Copy with metadata sidecar matching source + hash | Rule entry present in managed block |
-| `disabled` | Target absent | Target absent | Rule entry absent from managed block |
-| `broken` | Symlink to non-existent path | n/a | n/a |
-| `stale` | n/a | Sidecar matches source path but content hash mismatched | n/a (rule sync rewrites on every apply) |
-| `foreign_file` | Real file at target | Real file at target without sidecar | n/a |
-| `foreign_link` | Symlink to different source | Managed copy attributed to different source | n/a |
+| State | Symlink | Managed copy | Markdown section | JSON section |
+|-------|---------|--------------|-------------------|--------------|
+| `enabled` | Symlink points to correct source | Copy with metadata sidecar matching source + hash | Rule entry present in managed block | Managed entry present with matching `sourceHash` |
+| `disabled` | Target absent | Target absent | Rule entry absent from managed block | No managed entry for this hook |
+| `broken` | Symlink to non-existent path | n/a | n/a | Target JSON malformed/unreadable |
+| `stale` | n/a | Sidecar matches source path but content hash mismatched | n/a (rule sync rewrites on every apply) | Managed entry present but `sourceHash` mismatched |
+| `foreign_file` | Real file at target | Real file at target without sidecar | n/a | Target path is not a regular file |
+| `foreign_link` | Symlink to different source | Managed copy attributed to different source | n/a | n/a (foreign entries co-exist; never a conflict) |
 
 ## Decision logic: which projection mode does this `(tool, kind)` use?
 
 ```
 fn projection_mode(tool: ToolId, kind: CapabilityKind, scope: SyncScope) -> ProjectionMode {
     match (tool, kind, scope) {
+        // Hooks (OpenClaw has no hook support in any scope)
+        (OpenClaw, Hook, _)          => Err(HookUnsupportedForTool),
+        (_,        Hook, _)          => JsonSection,
+
         // Global scope
         (Cursor,   Agent, Global)    => ManagedCopy,
         (Cursor,   Rule,  Global)    => LinkSync,
@@ -117,7 +133,7 @@ fn projection_mode(tool: ToolId, kind: CapabilityKind, scope: SyncScope) -> Proj
 }
 ```
 
-OpenClaw + Workspace returns `Err(UnsupportedInWorkspaceScope)`.
+OpenClaw + Workspace returns `Err(UnsupportedInWorkspaceScope)`. A hook targeting OpenClaw is dropped with a note (OpenClaw is never a default or supported hook target).
 
 ## Layout strategy per `(tool, kind)`
 

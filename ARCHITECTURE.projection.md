@@ -11,7 +11,7 @@ The root architecture establishes that the Rust core (`agentic-core`) owns all f
 The projection engine is the single largest piece of architecturally novel design in this app. It has:
 
 - four pipeline stages, each with its own data model and failure modes
-- four tool adapters with three different rule projection modes (`link_sync`, `file_sync`, `markdown_section_sync`)
+- four tool adapters with four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
 - two layout strategies (`flat`, `nested`) with explicit collision handling
 - a separate managed-copy lifecycle with stale detection for Cursor agents
 - a marker-delimited managed block contract for `markdown_section_sync` tools
@@ -40,7 +40,8 @@ In scope:
 - `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync` modules in `agentic-core`
 - Global-scope projections only (workspace scope is the sibling doc)
 - All four tools (Codex, Claude Code, Cursor, OpenClaw)
-- All three projection modes (`link_sync`, `file_sync`, `markdown_section_sync`)
+- All four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
+- All four capability kinds (`skill`, `agent`, `rule`, `hook`)
 - All four state classes (item state, link state, planned op, apply result)
 
 Out of scope:
@@ -57,6 +58,7 @@ This engine is a 1:1 port of the VS Code extension's services:
 - `SymlinkPlanService` → `planner`
 - `SymlinkApplyService` → `applier`
 - `RuleInstructionSyncService` → `rule_sync`
+- `HookProjectionSyncService` + `HookEventMapper` → `hook_sync`
 
 The behavior is preserved verbatim. The implementation is Rust, the boundary semantics (safe symlinks, collision detection, marker block) are identical.
 
@@ -82,16 +84,23 @@ Each stage is a pure function over its inputs except `applier` and `rule_sync`, 
 
 ## Stage 1: Scan
 
-Input: `shared_root: PathBuf`
+Input: `sources: Vec<SourceConfig>` (ordered by priority; a single legacy `shared_root` resolves to one `Default` source)
 Output: `ScanResult { items: Vec<CapabilityItem>, errors: Vec<ScanError> }`
 
-Walk strategy:
+`scanner::scan_all` walks every source in priority order and keys items by `${kind}:${relative_path}`. The first source to provide a key wins; a later source's duplicate is dropped from inventory and surfaced as a `ScanError` (shadowing). Each `CapabilityItem` carries `source_id` / `source_label`. The single-root `scanner::scan(shared_root)` is retained as a thin wrapper. See [docs/tech/modules/multi-source-roots.md](docs/tech/modules/multi-source-roots.md).
+
+Walk strategy (per source):
 
 ```
 <shared_root>/skills/**/SKILL.md           -> CapabilityKind::Skill
 <shared_root>/agents/**/*.{md}              -> CapabilityKind::Agent
 <shared_root>/rules/**/*.{md,mdc}           -> CapabilityKind::Rule
+<shared_root>/hooks/**/hook.json           -> CapabilityKind::Hook
 ```
+
+Any directory named `__archived__` is skipped at every depth. Per the workspace
+convention, `__archived__` holds old versions of files; archived capabilities must
+never surface in inventory, suites, or plans.
 
 Validation per kind:
 
@@ -132,15 +141,21 @@ The adapter is the **only** code that decides basename-vs-relative-path:
 ```rust
 impl ResolvedAdapter {
     pub fn target_path_for(&self, item: &CapabilityItem) -> PathBuf {
+        // Hooks do not project to a per-item path; their target is the tool's
+        // single hooks file. The planner routes Hook items to hook_sync, which
+        // resolves adapter.hooks_file directly. target_path_for is never called
+        // for Hook items.
         let base = match item.kind {
             CapabilityKind::Skill => &self.skills_path,
             CapabilityKind::Agent => &self.agents_path,
             CapabilityKind::Rule => &self.rules_path,
+            CapabilityKind::Hook => unreachable!("hooks route through hook_sync, not target_path_for"),
         };
         let layout = match item.kind {
             CapabilityKind::Skill => self.skill_layout,
             CapabilityKind::Agent => self.agent_layout,
             CapabilityKind::Rule => Layout::Nested,
+            CapabilityKind::Hook => Layout::Nested,
         };
         let rel = match layout {
             Layout::Nested => item.relative_path.clone(),
@@ -225,7 +240,7 @@ match (state, desired):
     (ForeignFile, false) -> no-op (real file already not ours)
 ```
 
-After the per-item pass, the planner runs the **flat-layout collision pass** (see Claude Flat Layout below).
+After the per-item pass, the planner runs the **projection-target collision pass** — a generalization of the original flat-layout pass. It groups ops by `(tool, target_path)`; for any group with more than one op, items are sorted by source priority (then `item_id` for determinism), the first wins, and the rest become `skip_conflict` with a reason naming the winning source. This covers both cross-source target clashes and the Claude flat-layout basename case (see Claude Flat Layout below).
 
 ## Stage 5: Apply
 
@@ -415,16 +430,39 @@ Rules:
 
 Markers preserved verbatim from VS Code extension. See [PRODUCT.md Open Questions](PRODUCT.md) for rename discussion.
 
+## JSON-section managed-entry contract
+
+For the `json_section` mode (hooks, Codex / Claude / Cursor), `hook_sync` owns a set of marked entries inside each tool's native hook config file rather than a marker block. Instead of textual start/end markers, each managed entry carries an inline `_agenticHub` object:
+
+```json
+{
+  "command": "/abs/path/script.sh",
+  "matcher": "Edit|Write",
+  "_agenticHub": { "hookId": "auto-format-after-edit", "sourceHash": "<sha256>", "version": 1 }
+}
+```
+
+Rules:
+
+- On each sync, read the whole file, partition entries into managed (`_agenticHub` present) vs foreign, and rebuild only the managed set. Foreign entries and all non-`hooks` top-level keys are written back verbatim.
+- Cursor uses a flat shape (camelCase event arrays); Codex / Claude use a two-level shape where the marker sits on a dedicated matcher group — a user matcher group is never merged into.
+- `${HOOK_DIR}` in `command` is expanded to the hook's source folder at projection time.
+- Atomic write (temp + rename). The file is deleted only when the managed set is empty AND the file is hooks-only AND has no foreign keys.
+- A malformed target JSON yields `broken` for every hook in that file and blocks the write.
+
+The full schema, event mapping, and CRUD algorithm live in [docs/tech/modules/hook-projection-sync.md](docs/tech/modules/hook-projection-sync.md).
+
 ## Components and responsibilities
 
 | Component | Owns |
 |-----------|------|
-| `scanner` | Shared-root walk, validation per kind, `CapabilityItem` construction |
-| `adapter_registry` | Per-tool target path resolution, layout strategy, projection kind |
+| `scanner` | Shared-root walk (skills/agents/rules/hooks, `__archived__` skipped), validation per kind, `CapabilityItem` construction |
+| `adapter_registry` | Per-tool target path resolution, layout strategy, projection kind, hooks file resolution |
 | `planner::inspect` | Current per-tool state per item |
-| `planner::build_plan` | Diff desired vs current; emit operations; collision pass |
+| `planner::build_plan` | Diff desired vs current; emit operations; projection-target collision pass; Not-Targeted hook sanitizer |
 | `applier` | Execute operations safely; aggregate `ApplyResult`; emit progress events |
 | `rule_sync` | Managed-block contract for `markdown_section_sync` tools |
+| `hook_sync` | Managed-entry JSON contract + event mapping for `json_section` tools |
 | `managed_copy` (sub-module of applier) | Cursor-style copy with metadata sidecar |
 
 ## Key flows
@@ -434,14 +472,15 @@ Markers preserved verbatim from VS Code extension. See [PRODUCT.md Open Question
 ```
 UI -> cmd_apply
 agentic-core::apply_for_tool(tool_id, desired):
-    1. scanner::scan(settings.shared_root) -> items
+    1. scanner::scan_all(settings.sources) -> items (first-source-wins; shadows reported)
     2. adapter = adapter_registry::resolve(settings, tool_id)
     3. states = planner::inspect(items, adapter)
-    4. ops = planner::build_plan(items, states, desired)
-    5. result = applier::apply(ops)
-    6. if adapter.rule_projection == MarkdownSectionSync:
+    4. desired = filter_desired_enabled_for_tool(tool_id, desired, items, manifests)  // drops Not-Targeted hooks
+    5. ops = planner::build_plan(items, states, desired)
+    6. result = applier::apply(ops)   // sync_json_section/clear_json_section batched per hooks file
+    7. if adapter.rule_projection == MarkdownSectionSync:
            rule_sync::sync_markdown_rules(adapter, items, post_apply_states)
-    7. return result
+    8. return result
 ```
 
 ### Refresh-only (no apply)
@@ -449,7 +488,7 @@ agentic-core::apply_for_tool(tool_id, desired):
 ```
 UI -> cmd_inspect
 agentic-core::inspect_all_tools():
-    1. items = scanner::scan(settings.shared_root)
+    1. items = scanner::scan_all(settings.sources)
     2. for each enabled tool:
            adapter = adapter_registry::resolve(settings, tool_id)
            states = planner::inspect(items, adapter)
@@ -460,9 +499,11 @@ agentic-core::inspect_all_tools():
 
 | Component | Failure | Impact | Recovery |
 |-----------|---------|--------|----------|
-| `scanner` | Shared root missing | Empty `items` + scan error | UI shows empty state |
-| `scanner` | Permission denied on shared root subdir | Subdir items missing | Surface in `errors`; continue scan |
-| `scanner` | Symlink cycle inside shared root | Walk bounded by max depth | Stop at cycle; log warning |
+| `scanner` | A source folder missing / not a dir | That source contributes nothing + scan error | Other sources still scanned; UI shows error |
+| `scanner` | All sources missing | Empty `items` + scan errors | UI shows empty state |
+| `scanner` | Same `kind:relative_path` in two sources | Lower-priority item shadowed | First source wins; shadow reported as scan error |
+| `scanner` | Permission denied on a source subdir | Subdir items missing | Surface in `errors`; continue scan |
+| `scanner` | Symlink cycle inside a source | Walk bounded by max depth | Stop at cycle; log warning |
 | `adapter_registry` | Tool target path is a file (not dir) | Adapter unavailable | Tool tab disabled; no plan ops |
 | `planner::inspect` | Target is on a different filesystem | Symlink read works | No special handling needed |
 | `planner::build_plan` | Flat-layout collision | First-id-wins, others `SkipConflict` | Surface in result; user renames source |
