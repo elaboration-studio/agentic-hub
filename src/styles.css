@@ -59,8 +59,8 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent), #7c74f0);
-  box-shadow: 0 0 0 1px #ffffff14 inset;
+  object-fit: cover;
+  display: block;
 }
 
 .header h1 {
@@ -150,8 +150,28 @@ body {
   padding: 6px 12px;
 }
 
+.sources-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sources-head h2 {
+  margin: 0;
+}
+
 .src-label {
   font-weight: 600;
+}
+
+.src-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.src-remove {
+  padding: 4px 10px;
 }
 
 .src-path,
@@ -559,4 +579,169 @@ tr.invalid .cap-name {
 
 .ws-err {
   color: var(--danger);
+}
+
+/* Header nav + matrix view toggle (share the segmented look of .scope-toggle) */
+.nav,
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.nav-tab,
+.view-tab {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nav-tab.active,
+.view-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.matrix-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tree-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.tree-controls .btn-ghost {
+  padding: 5px 12px;
+}
+
+/* Tree view rows */
+.tree-dir-row td {
+  background: #11131a;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.tree-toggle {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  width: 18px;
+  font-size: 11px;
+  padding: 0;
+  margin-right: 4px;
+}
+
+.tree-dir {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.kind-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--panel-2);
+}
+
+.kind-badge.kind-skill {
+  color: var(--accent);
+}
+.kind-badge.kind-agent {
+  color: var(--alien);
+}
+.kind-badge.kind-rule {
+  color: var(--ok);
+}
+.kind-badge.kind-hook {
+  color: var(--warn);
+}
+
+/* Config page */
+.config-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.config-panel {
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.config-panel h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.suitefile-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.path-input {
+  flex: 1;
+  min-width: 280px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.tools-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.tool-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.tool-name {
+  font-weight: 600;
 }

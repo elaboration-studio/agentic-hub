@@ -48,6 +48,7 @@ Quick-lookup reference tables.
 Day-to-day development reference.
 
 - [getting-started.md](tech/development/getting-started.md) — local setup, scripts, common workflows
+- [run-test-debug.md](tech/development/run-test-debug.md) — verified cheat sheet: how to start, test, and debug the app
 - [testing-strategy.md](tech/development/testing-strategy.md) — test pyramid, fixtures, coverage targets, CI matrix
 
 ### `plans/` — migration & change plans

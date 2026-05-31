@@ -27,6 +27,14 @@ use crate::error::IpcError;
 
 type IpcResult<T> = Result<T, IpcError>;
 
+/// Suite store bound to the effective suite-file path from settings (custom
+/// override or the canonical `~/.agentic-suites.json`).
+fn suite_store() -> IpcResult<SuiteStore> {
+    Ok(SuiteStore::with_path(
+        Settings::load()?.resolved_suites_path(),
+    ))
+}
+
 #[tauri::command]
 pub async fn cmd_load_settings() -> IpcResult<Settings> {
     Ok(Settings::load()?)
@@ -235,12 +243,12 @@ fn emit_suite_changed(app: &AppHandle, kind: &str, suite_id: Option<String>) {
 
 #[tauri::command]
 pub async fn cmd_list_suites() -> IpcResult<Vec<SuiteDefinition>> {
-    Ok(SuiteStore::new().list()?)
+    Ok(suite_store()?.list()?)
 }
 
 #[tauri::command]
 pub async fn cmd_get_suite(id: String) -> IpcResult<Option<SuiteDefinition>> {
-    Ok(SuiteStore::new().get(&id)?)
+    Ok(suite_store()?.get(&id)?)
 }
 
 #[tauri::command]
@@ -248,7 +256,7 @@ pub async fn cmd_create_suite(
     app: AppHandle,
     input: SuiteCreateInput,
 ) -> IpcResult<SuiteDefinition> {
-    let suite = SuiteStore::new().create(input)?;
+    let suite = suite_store()?.create(input)?;
     emit_suite_changed(&app, "created", Some(suite.id.clone()));
     Ok(suite)
 }
@@ -266,14 +274,14 @@ pub async fn cmd_update_suite(
     app: AppHandle,
     input: UpdateSuiteInput,
 ) -> IpcResult<SuiteDefinition> {
-    let suite = SuiteStore::new().update(&input.id, input.changes)?;
+    let suite = suite_store()?.update(&input.id, input.changes)?;
     emit_suite_changed(&app, "updated", Some(suite.id.clone()));
     Ok(suite)
 }
 
 #[tauri::command]
 pub async fn cmd_delete_suite(app: AppHandle, id: String) -> IpcResult<()> {
-    SuiteStore::new().remove(&id)?;
+    suite_store()?.remove(&id)?;
     emit_suite_changed(&app, "deleted", Some(id));
     Ok(())
 }
@@ -288,7 +296,7 @@ pub struct ApplySuiteInput {
 #[tauri::command]
 pub async fn cmd_apply_suite(input: ApplySuiteInput) -> IpcResult<ApplySuiteResult> {
     let settings = Settings::load()?;
-    let suite = SuiteStore::new()
+    let suite = SuiteStore::with_path(settings.resolved_suites_path())
         .get(&input.suite_id)?
         .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
 
@@ -357,11 +365,11 @@ pub async fn cmd_apply_workspace_patch(
         .find(|t| t.id == input.workspace_id)
         .ok_or_else(|| IpcError::new("workspace_not_found", "Workspace target no longer exists"))?;
 
-    let suite = SuiteStore::new()
+    let settings = Settings::load()?;
+    let suite = SuiteStore::with_path(settings.resolved_suites_path())
         .get(&input.suite_id)?
         .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
 
-    let settings = Settings::load()?;
     let scanned = api::scan(&settings);
     let manifests = hook_sync::load_manifests(&scanned.items);
 

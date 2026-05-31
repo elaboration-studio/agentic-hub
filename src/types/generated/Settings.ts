@@ -13,4 +13,9 @@ sources: Array<SourceConfig>,
 /**
  * Deprecated single-root field; one-release fallback when `sources` empty.
  */
-sharedRoot: string, tools: ToolsSettings, };
+sharedRoot: string, 
+/**
+ * Optional custom location for the suite store. `None` keeps the canonical
+ * `~/.agentic-suites.json` (migration-parity default).
+ */
+suitesPath: string | null, tools: ToolsSettings, };

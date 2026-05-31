@@ -73,6 +73,10 @@ pub struct Settings {
     pub sources: Vec<SourceConfig>,
     /// Deprecated single-root field; one-release fallback when `sources` empty.
     pub shared_root: PathBuf,
+    /// Optional custom location for the suite store. `None` keeps the canonical
+    /// `~/.agentic-suites.json` (migration-parity default).
+    #[serde(default)]
+    pub suites_path: Option<PathBuf>,
     pub tools: ToolsSettings,
 }
 
@@ -107,7 +111,8 @@ impl ToolSettings {
                 hooks_file: Some(expand_tilde("~/.cursor/hooks.json")),
             },
             ToolId::Openclaw => ToolSettings {
-                enabled: true,
+                // Hidden by default; enable it in the Config page to project to it.
+                enabled: false,
                 skills_path: expand_tilde("~/.openclaw/skills"),
                 agents_path: expand_tilde("~/.openclaw/agents"),
                 rules_path: expand_tilde("~/.openclaw/agentic-rules"),
@@ -135,6 +140,7 @@ impl Default for Settings {
         Settings {
             sources: Vec::new(),
             shared_root: expand_tilde("~/.agentic"),
+            suites_path: None,
             tools: ToolsSettings::default(),
         }
     }
@@ -144,6 +150,15 @@ impl Settings {
     /// Canonical config path: `~/.agentic-hub/config.json`.
     pub fn config_path() -> PathBuf {
         home_dir().join(".agentic-hub").join("config.json")
+    }
+
+    /// Effective suite-store path: the user's custom override (tilde-expanded)
+    /// or the canonical `~/.agentic-suites.json`.
+    pub fn resolved_suites_path(&self) -> PathBuf {
+        match &self.suites_path {
+            Some(p) => expand_tilde(&p.to_string_lossy()),
+            None => crate::suite_store::default_path(),
+        }
     }
 
     /// Load from the canonical path, falling back to defaults if absent.
@@ -247,6 +262,11 @@ mod tests {
     #[test]
     fn defaults_match_tool_adapter_matrix() {
         let s = Settings::default();
+        // Codex / Claude / Cursor ship enabled; OpenClaw is hidden by default.
+        assert!(s.tools.codex.enabled);
+        assert!(s.tools.claude.enabled);
+        assert!(s.tools.cursor.enabled);
+        assert!(!s.tools.openclaw.enabled);
         assert!(s.tools.codex.skills_path.ends_with(".agents/skills"));
         assert!(s.tools.codex.agents_path.ends_with(".agents/agents"));
         assert!(s.tools.codex.rules_path.ends_with(".codex/agentic-rules"));
