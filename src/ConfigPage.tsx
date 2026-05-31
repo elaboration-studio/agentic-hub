@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { addSource, removeSource, saveSettings } from "./ipc";
+import { addSource, removeSource, rescanResync, saveSettings } from "./ipc";
 import type { Settings, ToolId } from "./types";
 import { ALL_TOOLS, messageOf, resolveSourceIds } from "./shared";
 
@@ -19,7 +19,44 @@ export function ConfigPage(props: PanelProps) {
       <SourcesPanel {...props} />
       <SuiteFilePanel {...props} />
       <ToolsPanel {...props} />
+      <WatcherPanel {...props} />
     </div>
+  );
+}
+
+function WatcherPanel(props: PanelProps) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const onResync = useCallback(async () => {
+    setBusy(true);
+    setDone(false);
+    try {
+      await rescanResync();
+      setDone(true);
+      props.onChanged();
+    } catch (e) {
+      props.onError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [props]);
+
+  return (
+    <section className="config-panel">
+      <h2>Sync recovery</h2>
+      <p className="src-hint">
+        The source watcher keeps every tool in sync automatically (toggle it from the header). If
+        projections ever look out of sync, force a full rescan and resync of all enabled tools and
+        the active workspace.
+      </p>
+      <div className="resync-row">
+        <button className="btn" onClick={() => void onResync()} disabled={busy}>
+          {busy ? "Resyncing…" : "Rescan & resync everything"}
+        </button>
+        {done && !busy && <span className="src-hint">Done — projections reconciled.</span>}
+      </div>
+    </section>
   );
 }
 

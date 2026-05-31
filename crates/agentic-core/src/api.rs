@@ -263,12 +263,9 @@ mod tests {
         write(&root.path().join("skills/keep/SKILL.md"), "# keep");
         write(&root.path().join("skills/drop/SKILL.md"), "# drop");
 
-        let mut settings = Settings {
-            shared_root: root.path().to_path_buf(),
-            ..Settings::default()
-        };
-        // Point Codex skills at a tempdir so the apply is sandboxed.
-        settings.tools.codex.skills_path = tools.path().join("skills");
+        // Sandbox all tool paths so the full-reset's rule/hook syncs never touch
+        // the real home directory.
+        let settings = Settings::sandboxed(root.path(), tools.path());
 
         let scanned = scan(&settings);
         // Pre-enable both by applying a suite that contains both.
@@ -312,11 +309,9 @@ mod tests {
     #[test]
     fn inspect_reports_all_tools_and_skips_disabled() {
         let dir = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
         write(&dir.path().join("skills/a/SKILL.md"), "# a");
-        let mut settings = Settings {
-            shared_root: dir.path().to_path_buf(),
-            ..Settings::default()
-        };
+        let mut settings = Settings::sandboxed(dir.path(), tools.path());
         settings.tools.openclaw.enabled = false;
 
         let scanned = scan(&settings);

@@ -18,4 +18,9 @@ sharedRoot: string,
  * Optional custom location for the suite store. `None` keeps the canonical
  * `~/.agentic-suites.json` (migration-parity default).
  */
-suitesPath: string | null, tools: ToolsSettings, };
+suitesPath: string | null, 
+/**
+ * When on, the desktop shell watches the source roots and auto-reconciles
+ * projections on change. Defaults to on (the manual Rescan button is gone).
+ */
+watcherEnabled: boolean, tools: ToolsSettings, };

@@ -61,7 +61,15 @@ Reads `~/.agentic-hub/config.json` and returns the parsed settings. If the file 
 
 ### `cmd_save_settings(settings: Settings) -> ()`
 
-Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed.
+Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed. Re-subscribes the source watcher to the current roots when it is running.
+
+### `cmd_set_watcher_enabled(input: { enabled: boolean }) -> ()`
+
+Persists `settings.watcherEnabled` and starts or stops the source watcher immediately. See [watcher.md](./watcher.md).
+
+### `cmd_rescan_resync() -> ()`
+
+Recovery fallback: a full rescan + resync of every enabled tool (no newcomer auto-enable) plus the active workspace, then emits `sources-changed`. Use when the watcher is paused or projections look out of sync.
 
 ```typescript
 type Settings = {
@@ -386,6 +394,10 @@ type SuiteStoreChangedEvent = {
   suiteId: string;
 };
 ```
+
+### `sources-changed`
+
+Emitted (no payload) after the source watcher — or the `cmd_rescan_resync` fallback — reconciles projections following a source-root file change. The UI listens and re-scans + re-inspects, skipping the refresh while the user has unapplied edits. See [watcher.md](./watcher.md).
 
 ### `settings-changed`
 

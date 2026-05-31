@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import logoUrl from "./assets/logo.png";
 import {
   apply,
   inspect,
   loadSettings,
   onApplyProgress,
+  onSourcesChanged,
   plan,
   scan,
+  setWatcherEnabled,
   syncHooks,
   syncRules,
   type DesiredMap,
@@ -67,6 +69,7 @@ export function App() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [scope, setScope] = useState<Scope>("global");
   const [route, setRoute] = useState<Route>(routeFromHash);
+  const [watching, setWatching] = useState(true);
 
   const refresh = useCallback(async () => {
     setStatus("loading");
@@ -77,6 +80,7 @@ export function App() {
       const result = await inspect(items, settings.tools);
       setData({ settings, items, scanErrors: errors, result });
       setDesired(seedDesired(result));
+      setWatching(settings.watcherEnabled);
       setStatus("ready");
     } catch (e) {
       setError(messageOf(e));
@@ -103,6 +107,28 @@ export function App() {
     };
   }, []);
 
+  // Live-refresh on watcher / resync events. Skip while the user has unapplied
+  // edits so an incoming event never discards an in-progress selection.
+  const pendingRef = useRef(0);
+  useEffect(() => {
+    const unlisten = onSourcesChanged(() => {
+      if (pendingRef.current === 0) void refresh();
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [refresh]);
+
+  const toggleWatching = useCallback(async (next: boolean) => {
+    setWatching(next);
+    try {
+      await setWatcherEnabled(next);
+    } catch (e) {
+      setWatching(!next);
+      setError(messageOf(e));
+    }
+  }, []);
+
   const tools: ToolDef[] = useMemo(() => (data ? enabledTools(data.settings) : []), [data]);
   const workspaceTools = useMemo(
     () => tools.filter((t) => WORKSPACE_TOOL_IDS.has(t.id)),
@@ -125,6 +151,7 @@ export function App() {
       }),
     [desired, currentMap],
   );
+  pendingRef.current = pendingKeys.length;
 
   const toggle = useCallback(
     (tool: ToolId, itemId: string) => {
@@ -187,8 +214,8 @@ export function App() {
       <Header
         count={data?.items.length ?? 0}
         sources={data?.settings.sources.length ?? 0}
-        onRefresh={() => void refresh()}
-        loading={status === "loading"}
+        watching={watching}
+        onToggleWatching={(v) => void toggleWatching(v)}
         route={route}
         scope={scope}
         onScopeChange={setScope}
@@ -259,8 +286,8 @@ function navigate(route: Route) {
 function Header(props: {
   count: number;
   sources: number;
-  onRefresh: () => void;
-  loading: boolean;
+  watching: boolean;
+  onToggleWatching: (next: boolean) => void;
   route: Route;
   scope: Scope;
   onScopeChange: (s: Scope) => void;
@@ -299,26 +326,34 @@ function Header(props: {
           </button>
         </div>
         {props.route === "manager" && (
-          <>
-            <div className="scope-toggle" role="tablist">
-              <button
-                className={`scope-tab${props.scope === "global" ? " active" : ""}`}
-                onClick={() => props.onScopeChange("global")}
-              >
-                Global
-              </button>
-              <button
-                className={`scope-tab${props.scope === "workspace" ? " active" : ""}`}
-                onClick={() => props.onScopeChange("workspace")}
-              >
-                Workspace
-              </button>
-            </div>
-            <button className="btn" onClick={props.onRefresh} disabled={props.loading}>
-              {props.loading ? "Scanning…" : "Rescan"}
+          <div className="scope-toggle" role="tablist">
+            <button
+              className={`scope-tab${props.scope === "global" ? " active" : ""}`}
+              onClick={() => props.onScopeChange("global")}
+            >
+              Global
             </button>
-          </>
+            <button
+              className={`scope-tab${props.scope === "workspace" ? " active" : ""}`}
+              onClick={() => props.onScopeChange("workspace")}
+            >
+              Workspace
+            </button>
+          </div>
         )}
+        <button
+          className={`watch-toggle${props.watching ? " on" : ""}`}
+          onClick={() => props.onToggleWatching(!props.watching)}
+          title={
+            props.watching
+              ? "Watching source roots — changes sync automatically. Click to pause."
+              : "Watcher paused. Click to watch source roots and auto-sync changes."
+          }
+          aria-pressed={props.watching}
+        >
+          <span className="watch-dot" aria-hidden />
+          {props.watching ? "Watching" : "Paused"}
+        </button>
       </div>
     </header>
   );

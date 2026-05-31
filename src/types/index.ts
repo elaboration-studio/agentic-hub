@@ -12,6 +12,7 @@ export type { ApplySuiteResult } from "./generated/ApplySuiteResult";
 export type { SuiteDefinition } from "./generated/SuiteDefinition";
 export type { SuiteValidationResult } from "./generated/SuiteValidationResult";
 export type { SuiteStoreChangedEvent } from "./generated/SuiteStoreChangedEvent";
+export type { WorkspaceApply } from "./generated/WorkspaceApply";
 export type { WorkspaceTarget } from "./generated/WorkspaceTarget";
 export type { WorkspaceTargetsState } from "./generated/WorkspaceTargetsState";
 export type { WorkspacePatchResult } from "./generated/WorkspacePatchResult";

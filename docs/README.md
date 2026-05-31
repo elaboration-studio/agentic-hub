@@ -20,6 +20,7 @@ User-facing feature designs aligned with each milestone.
 - [hooks-projection.md](features/hooks-projection.md) — the `hook` capability kind projected into each tool's hooks config via `json_section`
 - [suite-presets.md](features/suite-presets.md) — named capability presets with one-click full-reset apply
 - [workspace-suite-sync.md](features/workspace-suite-sync.md) — per-project hard-copy suite apply with manifest cycle
+- [source-watcher.md](features/source-watcher.md) — auto-reconcile projections on source-root file changes; Watch toggle
 - [agentic-demo-scaffold.md](features/agentic-demo-scaffold.md) — first-run bootstrap of a starter shared root
 
 ### `tech/modules/` — subsystem deep dives
@@ -33,6 +34,7 @@ Detailed technical design for each subsystem of the projection engine and adjace
 - [openclaw-tool-adapter.md](tech/modules/openclaw-tool-adapter.md) — OpenClaw filesystem conventions and SOUL.md managed block
 - [suite-presets.md](tech/modules/suite-presets.md) — suite store, full-reset apply pipeline
 - [workspace-patch.md](tech/modules/workspace-patch.md) — workspace target store, manifest format, apply algorithm
+- [watcher.md](tech/modules/watcher.md) — source watcher + reconcile engine, auto-enable heuristic, debounce, loop avoidance
 - [tauri-ipc-contract.md](tech/modules/tauri-ipc-contract.md) — complete IPC command surface and event schemas
 - [agentic-demo-scaffold.md](tech/modules/agentic-demo-scaffold.md) — bundled tree embedding, scaffold modes, atomic writes
 

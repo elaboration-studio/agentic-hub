@@ -20,10 +20,11 @@ use agentic_core::suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 use agentic_core::workspace_patch;
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::error::IpcError;
+use crate::watcher::{self, WatcherState};
 
 type IpcResult<T> = Result<T, IpcError>;
 
@@ -41,8 +42,37 @@ pub async fn cmd_load_settings() -> IpcResult<Settings> {
 }
 
 #[tauri::command]
-pub async fn cmd_save_settings(settings: Settings) -> IpcResult<()> {
+pub async fn cmd_save_settings(
+    app: AppHandle,
+    watcher: State<'_, WatcherState>,
+    settings: Settings,
+) -> IpcResult<()> {
     settings.save()?;
+    // Source roots may have changed; re-subscribe if the watcher is running.
+    watcher.restart_if_running(app);
+    Ok(())
+}
+
+/// Toggle the source watcher on/off, persisting the choice to settings.
+#[tauri::command]
+pub async fn cmd_set_watcher_enabled(
+    app: AppHandle,
+    watcher: State<'_, WatcherState>,
+    enabled: bool,
+) -> IpcResult<()> {
+    let mut settings = Settings::load()?;
+    settings.watcher_enabled = enabled;
+    settings.save()?;
+    watcher.set_enabled(app, enabled);
+    Ok(())
+}
+
+/// Fallback recovery: full rescan + resync of every enabled tool (no newcomer
+/// auto-enable) and the active workspace, then notify the UI. Use when the
+/// watcher is off or projections look out of sync.
+#[tauri::command]
+pub async fn cmd_rescan_resync(app: AppHandle) -> IpcResult<()> {
+    watcher::resync_now(&app);
     Ok(())
 }
 
@@ -81,7 +111,11 @@ pub struct AddSourceInput {
 }
 
 #[tauri::command]
-pub async fn cmd_add_source(input: AddSourceInput) -> IpcResult<Settings> {
+pub async fn cmd_add_source(
+    app: AppHandle,
+    watcher: State<'_, WatcherState>,
+    input: AddSourceInput,
+) -> IpcResult<Settings> {
     let path = expand_tilde(&input.path);
     if !path.is_dir() {
         return Err(IpcError::new(
@@ -96,6 +130,7 @@ pub async fn cmd_add_source(input: AddSourceInput) -> IpcResult<Settings> {
         path,
     });
     settings.save()?;
+    watcher.restart_if_running(app);
     Ok(settings)
 }
 
@@ -105,7 +140,11 @@ pub struct RemoveSourceInput {
 }
 
 #[tauri::command]
-pub async fn cmd_remove_source(input: RemoveSourceInput) -> IpcResult<Settings> {
+pub async fn cmd_remove_source(
+    app: AppHandle,
+    watcher: State<'_, WatcherState>,
+    input: RemoveSourceInput,
+) -> IpcResult<Settings> {
     let mut settings = Settings::load()?;
     // Persisted sources carry empty ids; resolved ids align positionally.
     let resolved = settings.resolve_sources();
@@ -115,6 +154,7 @@ pub async fn cmd_remove_source(input: RemoveSourceInput) -> IpcResult<Settings> 
         }
     }
     settings.save()?;
+    watcher.restart_if_running(app);
     Ok(settings)
 }
 
@@ -381,5 +421,7 @@ pub async fn cmd_apply_workspace_patch(
         &manifests,
     )?;
     let _ = store.set_active(&input.workspace_id);
+    // Remember the (tool, suite) so the watcher can re-patch this workspace.
+    let _ = store.record_apply(&input.workspace_id, input.tool_id, &input.suite_id);
     Ok(result)
 }
