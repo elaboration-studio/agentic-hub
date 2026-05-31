@@ -16,7 +16,7 @@ the VS Code extension at [`e-studio-copilot`](https://github.com/arno/e-studio-c
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture (Rust core + Tauri shell + React UI)
 - [AGENTS.md](AGENTS.md) — short guide for AI coding agents working in this repo
 - [docs/README.md](docs/README.md) — full doc index (features, tech.modules, tech.reference, tech.development)
-- [RELEASE.md](RELEASE.md) — release notes · [DEPLOYMENT.md](DEPLOYMENT.md) — build & release pipeline
+- [CHANGELOG.md](CHANGELOG.md) — changelog · [RELEASE.md](RELEASE.md) — release notes · [DEPLOYMENT.md](DEPLOYMENT.md) — build & release pipeline
 
 ## Companion architecture docs
 
