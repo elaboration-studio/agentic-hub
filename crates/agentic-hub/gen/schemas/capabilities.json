@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Main window capability set. Grants core defaults plus the dialog and store plugins. Custom app commands (cmd_*) are local to the window and need no plugin permission. See docs/tech/modules/tauri-ipc-contract.md.","local":true,"windows":["main"],"permissions":["core:default","dialog:default","store:default"]}}

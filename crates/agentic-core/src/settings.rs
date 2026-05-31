@@ -11,6 +11,11 @@ use crate::paths::{expand_tilde, home_dir};
 
 /// A capability source: an ordered, priority-bearing shared root. See
 /// `docs/tech/modules/multi-source-roots.md`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceConfig {
@@ -23,6 +28,11 @@ pub struct SourceConfig {
 }
 
 /// Per-tool target paths and toggles. Mirrors the IPC `ToolSettings` shape.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolSettings {
@@ -35,6 +45,11 @@ pub struct ToolSettings {
     pub hooks_file: Option<PathBuf>,
 }
 
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolsSettings {
@@ -45,6 +60,11 @@ pub struct ToolsSettings {
 }
 
 /// Global settings persisted at `~/.agentic-hub/config.json`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {

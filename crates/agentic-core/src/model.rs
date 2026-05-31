@@ -3,6 +3,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// The four capability kinds the scanner walks under each source root.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CapabilityKind {
@@ -63,6 +68,11 @@ impl CapabilityKind {
 
 /// A single scanned capability. IDs are source-free so suites resolve against
 /// the whole source forest (first-source-wins). See `multi-source-roots.md`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapabilityItem {
@@ -84,6 +94,11 @@ pub struct CapabilityItem {
 
 /// A non-fatal problem encountered during a scan (missing source, shadowing,
 /// unreadable subdir). Surfaced to the UI; never aborts the scan.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanError {
@@ -92,6 +107,11 @@ pub struct ScanError {
 }
 
 /// Result of scanning one or more source roots.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanResult {
@@ -100,6 +120,11 @@ pub struct ScanResult {
 }
 
 /// The four supported AI tools.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ToolId {
@@ -119,6 +144,11 @@ impl ToolId {
 }
 
 /// Per-(tool, item) projection state on disk.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkState {
@@ -138,6 +168,11 @@ pub enum LinkState {
 }
 
 /// The inspected state of one capability for one tool.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolCapabilityState {

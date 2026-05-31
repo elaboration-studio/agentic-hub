@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/agentic-core"]
+members = ["crates/agentic-core", "crates/agentic-hub"]
 
 [workspace.package]
 edition = "2021"

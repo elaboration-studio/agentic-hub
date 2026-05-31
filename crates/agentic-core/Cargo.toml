@@ -6,11 +6,17 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+# Enable `ts-rs` derives + export tests. Off by default so production builds
+# never pull `ts-rs`. Run: `cargo test -p agentic-core --features ts-export`.
+ts-export = ["dep:ts-rs"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = "0.10"
+ts-rs = { version = "10", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
