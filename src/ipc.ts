@@ -13,6 +13,7 @@ import type {
   ScanResult,
   Settings,
   SourceConfig,
+  SyncHooksResult,
   SyncRulesResult,
   ToolId,
   ToolsSettings,
@@ -55,6 +56,13 @@ export const syncRules = (
   desiredEnabledByItemId: DesiredMap,
 ): Promise<SyncRulesResult> =>
   invoke("cmd_sync_rules", { input: { toolId, items, desiredEnabledByItemId } });
+
+export const syncHooks = (
+  toolId: ToolId,
+  items: CapabilityItem[],
+  desiredEnabledByItemId: DesiredMap,
+): Promise<SyncHooksResult> =>
+  invoke("cmd_sync_hooks", { input: { toolId, items, desiredEnabledByItemId } });
 
 export const onApplyProgress = (
   cb: (e: ApplyProgressEvent) => void,

@@ -11,6 +11,7 @@ pub mod adapter_registry;
 pub mod api;
 pub mod applier;
 pub mod error;
+pub mod hook_sync;
 pub mod managed_copy;
 pub mod model;
 pub mod paths;
@@ -22,10 +23,11 @@ pub mod settings;
 pub use adapter_registry::{Layout, ProjectionMode, ResolvedAdapter};
 pub use api::{AdapterStatus, InspectResult};
 pub use error::{CoreError, Result};
+pub use hook_sync::{HookEventSpec, HookManifest};
 pub use model::{
-    ApplyError, ApplyResult, CapabilityItem, CapabilityKind, LinkState, OperationKind,
-    PlannedOperation, RuleSyncError, RuleSyncOutcome, ScanError, ScanResult, SyncRulesResult,
-    ToolCapabilityState, ToolId,
+    ApplyError, ApplyResult, CapabilityItem, CapabilityKind, HookSyncError, HookSyncOutcome,
+    LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome, ScanError,
+    ScanResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
 };
 pub use planner::{build_plan, inspect_tool};
 pub use scanner::{scan, scan_all};

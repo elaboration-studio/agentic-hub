@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapter_registry::{self, ProjectionMode, ResolvedAdapter};
 use crate::applier;
+use crate::hook_sync;
 use crate::model::{
-    ApplyResult, CapabilityItem, CapabilityKind, PlannedOperation, RuleSyncOutcome, ScanResult,
-    SyncRulesResult, ToolCapabilityState, ToolId,
+    ApplyResult, CapabilityItem, CapabilityKind, HookSyncOutcome, PlannedOperation,
+    RuleSyncOutcome, ScanResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
 };
 use crate::planner;
 use crate::rule_sync;
@@ -47,15 +48,18 @@ pub struct InspectResult {
 }
 
 /// Scan the source forest configured in settings (resolving the legacy single
-/// root fallback).
+/// root fallback). Hook items are annotated with `hook.json` validation results.
 pub fn scan(settings: &Settings) -> ScanResult {
-    scanner::scan_all(&settings.resolve_sources())
+    let mut result = scanner::scan_all(&settings.resolve_sources());
+    hook_sync::annotate_validation(&mut result.items);
+    result
 }
 
 /// Inspect current per-tool state for every enabled tool.
 pub fn inspect(items: &[CapabilityItem], settings: &Settings) -> InspectResult {
     let mut states: Vec<ToolCapabilityState> = Vec::new();
     let mut adapter_statuses: Vec<AdapterStatus> = Vec::new();
+    let manifests = hook_sync::load_manifests(items);
 
     for tool in ToolId::ALL {
         let adapter = adapter_registry::resolve(settings, tool);
@@ -72,6 +76,7 @@ pub fn inspect(items: &[CapabilityItem], settings: &Settings) -> InspectResult {
                     unavailable_reason: None,
                 });
                 states.extend(planner::inspect_tool(items, &adapter));
+                states.extend(hook_sync::inspect_hooks(items, &manifests, &adapter));
             }
         }
     }
@@ -147,6 +152,40 @@ pub fn sync_rules(
         },
         Err(e) => SyncRulesResult {
             outcome: RuleSyncOutcome::NoOp,
+            errors: vec![e],
+        },
+    }
+}
+
+/// Sync the tool's hook config file (`json_section`) from the desired set. The
+/// Not-Targeted sanitizer drops hooks whose effective targets exclude this tool
+/// before the read-merge-write, so a stale toggle can never become a no-op edit.
+pub fn sync_hooks(
+    items: &[CapabilityItem],
+    settings: &Settings,
+    tool: ToolId,
+    desired_enabled: &HashMap<String, bool>,
+) -> SyncHooksResult {
+    let adapter = adapter_registry::resolve(settings, tool);
+    let manifests = hook_sync::load_manifests(items);
+
+    let enabled: Vec<(&CapabilityItem, &hook_sync::HookManifest)> = items
+        .iter()
+        .filter(|it| it.kind == CapabilityKind::Hook)
+        .filter(|it| desired_enabled.get(&it.id).copied().unwrap_or(false))
+        .filter_map(|it| manifests.get(&it.id).map(|m| (it, m)))
+        .filter(|(_, m)| m.effective_targets().contains(&tool))
+        .collect();
+
+    match hook_sync::sync_json_hooks(&adapter, &enabled) {
+        Ok((outcome, notes)) => SyncHooksResult {
+            outcome,
+            notes,
+            errors: vec![],
+        },
+        Err(e) => SyncHooksResult {
+            outcome: HookSyncOutcome::NoOp,
+            notes: vec![],
             errors: vec![e],
         },
     }

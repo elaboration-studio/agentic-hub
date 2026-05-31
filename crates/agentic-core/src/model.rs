@@ -292,3 +292,46 @@ pub struct SyncRulesResult {
     pub outcome: RuleSyncOutcome,
     pub errors: Vec<RuleSyncError>,
 }
+
+/// Outcome of a hook `json_section` sync for one tool.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookSyncOutcome {
+    Wrote,
+    Removed,
+    NoOp,
+}
+
+/// A hook-sync failure surfaced to the UI.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookSyncError {
+    pub path: PathBuf,
+    pub code: String,
+    pub message: String,
+}
+
+/// Result of `cmd_sync_hooks`. `notes` carries non-fatal per-(event, tool)
+/// "not supported; skipped" messages.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncHooksResult {
+    pub outcome: HookSyncOutcome,
+    pub notes: Vec<String>,
+    pub errors: Vec<HookSyncError>,
+}

@@ -8,7 +8,8 @@ use agentic_core::api::{self, InspectResult};
 use agentic_core::applier;
 use agentic_core::managed_copy::now_iso8601;
 use agentic_core::model::{
-    ApplyError, ApplyResult, CapabilityItem, PlannedOperation, ScanResult, SyncRulesResult, ToolId,
+    ApplyError, ApplyResult, CapabilityItem, PlannedOperation, ScanResult, SyncHooksResult,
+    SyncRulesResult, ToolId,
 };
 use agentic_core::paths::expand_tilde;
 use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
@@ -173,6 +174,25 @@ pub struct SyncRulesInput {
 pub async fn cmd_sync_rules(input: SyncRulesInput) -> IpcResult<SyncRulesResult> {
     let settings = Settings::load()?;
     Ok(api::sync_rules(
+        &input.items,
+        &settings,
+        input.tool_id,
+        &input.desired_enabled_by_item_id,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncHooksInput {
+    pub tool_id: ToolId,
+    pub items: Vec<CapabilityItem>,
+    pub desired_enabled_by_item_id: HashMap<String, bool>,
+}
+
+#[tauri::command]
+pub async fn cmd_sync_hooks(input: SyncHooksInput) -> IpcResult<SyncHooksResult> {
+    let settings = Settings::load()?;
+    Ok(api::sync_hooks(
         &input.items,
         &settings,
         input.tool_id,

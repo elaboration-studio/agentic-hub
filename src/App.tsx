@@ -7,6 +7,7 @@ import {
   onApplyProgress,
   plan,
   scan,
+  syncHooks,
   syncRules,
   type DesiredMap,
 } from "./ipc";
@@ -153,6 +154,7 @@ export function App() {
         const ops = await plan(tool.id, data.items, desiredByItem);
         if (ops.length > 0) await apply(ops);
         await syncRules(tool.id, data.items, desiredByItem);
+        await syncHooks(tool.id, data.items, desiredByItem);
       }
       await refresh();
     } catch (e) {
