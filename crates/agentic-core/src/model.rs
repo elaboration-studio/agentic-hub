@@ -117,3 +117,33 @@ impl ToolId {
         ToolId::Openclaw,
     ];
 }
+
+/// Per-(tool, item) projection state on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkState {
+    /// Symlink to the correct source, or managed copy with matching hash, or
+    /// rule present in the managed block.
+    Enabled,
+    /// Target absent.
+    Disabled,
+    /// Symlink to a non-existent path.
+    Broken,
+    /// Managed copy whose content drifted from the shared source.
+    Stale,
+    /// Real file/dir at the target, not owned by the manager.
+    ForeignFile,
+    /// Symlink/managed copy attributed to a different source.
+    ForeignLink,
+}
+
+/// The inspected state of one capability for one tool.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCapabilityState {
+    pub tool: ToolId,
+    pub item_id: String,
+    pub target_path: PathBuf,
+    pub state: LinkState,
+    pub current_link_target: Option<PathBuf>,
+}
