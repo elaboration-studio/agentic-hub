@@ -38,6 +38,7 @@ export function Matrix(props: MatrixProps) {
   const [view, setView] = useState<View>("flat");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
+  const [source, setSource] = useState("");
 
   const adapterMap = useMemo(() => {
     const m = new Map<ToolId, AdapterStatus>();
@@ -45,7 +46,17 @@ export function Matrix(props: MatrixProps) {
     return m;
   }, [props.adapterStatuses]);
 
-  const filtered = useMemo(() => filterItems(props.items, query), [props.items, query]);
+  // Distinct sources present in the scan, in first-seen order.
+  const sources = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const it of props.items) if (!seen.has(it.sourceId)) seen.set(it.sourceId, it.sourceLabel);
+    return [...seen].map(([id, label]) => ({ id, label }));
+  }, [props.items]);
+
+  const filtered = useMemo(
+    () => filterItems(props.items, query, source),
+    [props.items, query, source],
+  );
   const root = useMemo(() => buildTree(filtered), [filtered]);
   const folderPaths = useMemo(() => collectFolderPaths(root), [root]);
 
@@ -90,6 +101,21 @@ export function Matrix(props: MatrixProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        {sources.length > 1 && (
+          <select
+            className="suite-tool source-filter"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            title="Filter by source"
+          >
+            <option value="">All sources</option>
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        )}
         {view === "tree" && (
           <div className="tree-controls">
             <button className="btn-ghost" onClick={() => setCollapsed(new Set())}>
@@ -149,15 +175,18 @@ interface BodyContext {
   colCount: number;
 }
 
-function filterItems(items: CapabilityItem[], query: string): CapabilityItem[] {
+function filterItems(items: CapabilityItem[], query: string, source: string): CapabilityItem[] {
   const q = query.trim().toLowerCase();
-  if (!q) return items;
-  return items.filter(
-    (it) =>
+  if (!q && !source) return items;
+  return items.filter((it) => {
+    if (source && it.sourceId !== source) return false;
+    if (!q) return true;
+    return (
       it.name.toLowerCase().includes(q) ||
       it.relativePath.toLowerCase().includes(q) ||
-      it.sourceLabel.toLowerCase().includes(q),
-  );
+      it.sourceLabel.toLowerCase().includes(q)
+    );
+  });
 }
 
 // Batch toggle cells for a group row (a kind or a folder subtree): one click

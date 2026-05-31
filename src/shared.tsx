@@ -15,7 +15,7 @@ import type {
 import type { DesiredMap } from "./ipc";
 
 export type Scope = "global" | "workspace";
-export type Route = "manager" | "config";
+export type Route = "manager" | "suites" | "config";
 export type View = "flat" | "tree";
 
 export interface ToolDef {

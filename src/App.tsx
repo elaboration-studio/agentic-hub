@@ -33,6 +33,7 @@ import { Matrix } from "./Matrix";
 import { SuiteBar } from "./SuiteBar";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { ConfigPage } from "./ConfigPage";
+import { SuitesPage } from "./SuitesPage";
 
 type Status = "loading" | "ready" | "error";
 
@@ -52,7 +53,8 @@ function seedDesired(result: InspectResult): DesiredMap {
 }
 
 function routeFromHash(): Route {
-  return window.location.hash.replace(/^#\/?/, "") === "config" ? "config" : "manager";
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  return hash === "config" || hash === "suites" ? hash : "manager";
 }
 
 export function App() {
@@ -204,6 +206,7 @@ export function App() {
         {data && route === "config" && (
           <ConfigPage settings={data.settings} onChanged={() => void refresh()} onError={setError} />
         )}
+        {data && route === "suites" && <SuitesPage items={data.items} onError={setError} />}
         {data && route === "manager" && (
           <>
             {data.scanErrors.length > 0 && (
@@ -288,6 +291,12 @@ function Header(props: {
             onClick={() => navigate("manager")}
           >
             Manager
+          </button>
+          <button
+            className={`nav-tab${props.route === "suites" ? " active" : ""}`}
+            onClick={() => navigate("suites")}
+          >
+            Suites
           </button>
           <button
             className={`nav-tab${props.route === "config" ? " active" : ""}`}
