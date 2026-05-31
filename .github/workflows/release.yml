@@ -10,6 +10,12 @@ on:
 permissions:
   contents: write
 
+# Run JS-based actions on Node 24. checkout/setup-node are already on v5 (native
+# node24); this forces the remaining pinned actions (pnpm/softprops/rust-cache)
+# onto node24 ahead of GitHub's June 2026 cutover. Harmless once node24 is default.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -20,7 +26,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -28,7 +34,7 @@ jobs:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: pnpm
