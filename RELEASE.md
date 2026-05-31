@@ -3,6 +3,11 @@
 Notable changes per release. Newest first. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for how releases are built and published.
 
+## [Unreleased]
+
+- Empty-start scaffold: a first-run empty state bootstraps a bundled demo shared root (skills, agents, rules, hooks) in one click so a fresh install is usable immediately.
+- Open files: a per-row actions menu opens a capability's original file in a configurable preferred editor (System default / VS Code / Cursor / custom), reveals it in Finder, and opens the file each enabled tool actually references — all through validated Rust commands using `tauri-plugin-opener`.
+
 ## [0.1.0] — 2026-05-31
 
 First public build. Agentic Hub manages shared agentic capabilities — skills,

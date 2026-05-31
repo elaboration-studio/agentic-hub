@@ -11,6 +11,8 @@ import type {
   CapabilityItem,
   InspectResult,
   PlannedOperation,
+  ScaffoldMode,
+  ScaffoldResult,
   ScanResult,
   Settings,
   SourceConfig,
@@ -43,6 +45,20 @@ export const onSourcesChanged = (cb: () => void): Promise<UnlistenFn> =>
 
 export const scan = (sources: SourceConfig[]): Promise<ScanResult> =>
   invoke("cmd_scan", { input: { sources } });
+
+/// Materialize the bundled demo tree into the first source root. First-run
+/// "empty start" affordance; re-scan after it resolves.
+export const scaffoldDemo = (mode: ScaffoldMode): Promise<ScaffoldResult> =>
+  invoke("cmd_scaffold_demo", { input: { mode } });
+
+/// Open a file with the user's preferred editor (or system default when
+/// `openWith` is absent). Validated server-side against known roots.
+export const openPath = (path: string, openWith?: string): Promise<void> =>
+  invoke("cmd_open_path", { input: { path, openWith: openWith ?? null } });
+
+/// Reveal a file in the system file explorer (Finder / Explorer).
+export const revealPath = (path: string): Promise<void> =>
+  invoke("cmd_reveal_path", { input: { path } });
 
 export const inspect = (
   items: CapabilityItem[],

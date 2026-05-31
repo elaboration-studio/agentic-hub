@@ -1,0 +1,12 @@
+{
+  "$schema": "agentic-hub.hook.v1",
+  "id": "auto-format-after-edit",
+  "name": "Auto-format after edit",
+  "description": "Demo hook: runs after Edit/Write tool calls. Replace script.sh with your formatter.",
+  "events": [
+    { "name": "PostToolUse", "matcher": "Edit|Write" }
+  ],
+  "command": "${HOOK_DIR}/script.sh",
+  "timeout": 30,
+  "targets": ["cursor", "claude", "codex"]
+}

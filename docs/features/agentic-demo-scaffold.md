@@ -1,9 +1,9 @@
 # Feature: Agentic Demo Scaffold
 
-Status: Draft
+Status: Implemented
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-05-20
+Last Updated: 2026-06-01
 Depends On: [PRODUCT.md](../../PRODUCT.md), [docs/features/mvp-unified-agentic-capability-manager.md](./mvp-unified-agentic-capability-manager.md)
 Related Docs: [docs/tech/modules/agentic-demo-scaffold.md](../tech/modules/agentic-demo-scaffold.md), [docs/tech/reference/shared-root-contract.md](../tech/reference/shared-root-contract.md)
 
@@ -65,30 +65,32 @@ The skills, agent, and rule are tutorial-grade — they document the contract by
 
 ## UI affordance
 
-### Empty state (shared root missing or empty)
+### Empty state (no scanned items)
 
-When `cmd_inspect` returns zero items and the shared root does not exist or is empty:
+When the global manager has zero scanned items, `App.tsx` renders an
+`EmptyState` (in place of the matrix) showing the destination root and two
+actions:
 
 ```
 +----------------------------------------------------------+
-|             No capabilities found at                     |
+|                 No capabilities yet                      |
+|   Bootstrap a starter shared root with examples…         |
 |             ~/.agentic                                   |
 |                                                          |
-|     [Scaffold Demo Resources]   [Choose Different Root]  |
+|     [Scaffold demo resources]      [Add a source…]       |
 +----------------------------------------------------------+
 ```
 
-Clicking "Scaffold Demo Resources" runs `cmd_scaffold_demo({ mode: 'merge' })` and re-scans on completion.
+"Scaffold demo resources" runs `cmd_scaffold_demo({ mode: 'merge' })`, shows a
+written/skipped summary, and re-scans on completion. "Add a source…" reuses the
+folder picker + `cmd_add_source` flow. The destination is the first configured
+source root (the legacy `sharedRoot` when no sources are set).
 
-### Settings menu
+### Overwrite mode
 
-A "Scaffold Demo Resources…" option in the Settings menu opens a dialog:
-
-- Mode: `merge` (default, safe) / `overwrite` (replace existing)
-- Confirmation: shows the target dir and the bundled file count
-- Run button
-
-After the run, the result summary toast reports counts.
+`overwrite` mode is supported by the command and tested in the core, but is not
+surfaced in the empty-state UI in this release (the empty-state always uses the
+safe `merge` mode). A settings-menu dialog for choosing the mode is deferred.
 
 ## Acceptance criteria
 

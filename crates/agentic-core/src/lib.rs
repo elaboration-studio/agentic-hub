@@ -14,10 +14,12 @@ pub mod error;
 pub mod hook_sync;
 pub mod managed_copy;
 pub mod model;
+pub mod open_targets;
 pub mod paths;
 pub mod planner;
 pub mod reconcile;
 pub mod rule_sync;
+pub mod scaffold;
 pub mod scanner;
 pub mod settings;
 pub mod suite_store;
@@ -37,8 +39,10 @@ pub use model::{
     SyncRulesResult, ToolCapabilityState, ToolId, WorkspaceApply, WorkspacePatchResult,
     WorkspaceTarget, WorkspaceTargetsState,
 };
+pub use open_targets::is_openable;
 pub use planner::{build_plan, inspect_tool};
 pub use reconcile::{reconcile_all, reconcile_tool, ReconcileToolOutcome};
+pub use scaffold::{scaffold_demo, ScaffoldMode, ScaffoldResult};
 pub use scanner::{scan, scan_all};
 pub use settings::{Settings, SourceConfig, ToolSettings, ToolsSettings};
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};

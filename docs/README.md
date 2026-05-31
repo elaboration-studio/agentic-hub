@@ -22,6 +22,7 @@ User-facing feature designs aligned with each milestone.
 - [workspace-suite-sync.md](features/workspace-suite-sync.md) — per-project hard-copy suite apply with manifest cycle
 - [source-watcher.md](features/source-watcher.md) — auto-reconcile projections on source-root file changes; Watch toggle
 - [agentic-demo-scaffold.md](features/agentic-demo-scaffold.md) — first-run bootstrap of a starter shared root
+- [open-files.md](features/open-files.md) — per-row actions to open a capability's original file (preferred editor) or the file each tool actually references
 
 ### `tech/modules/` — subsystem deep dives
 

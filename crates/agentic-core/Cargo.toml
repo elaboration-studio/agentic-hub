@@ -15,6 +15,7 @@ ts-export = ["dep:ts-rs"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+include_dir = "0.7"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 ts-rs = { version = "10", optional = true }

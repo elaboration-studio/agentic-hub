@@ -51,6 +51,9 @@ Common error codes:
 | `hook_manifest_invalid` | A `hook.json` failed schema validation |
 | `hook_target_broken_json` | A tool's hook config file is malformed and cannot be safely rewritten |
 | `source_path_invalid` | A configured source path failed canonicalization or is not a directory |
+| `path_not_openable` | A path passed to `cmd_open_path` / `cmd_reveal_path` resolved outside every known root |
+| `open_failed` | The opener plugin could not open the path |
+| `reveal_failed` | The opener plugin could not reveal the path |
 | `internal` | Catch-all unexpected error; surface for bug reports |
 
 ## Settings commands
@@ -75,7 +78,15 @@ Recovery fallback: a full rescan + resync of every enabled tool (no newcomer aut
 type Settings = {
   sources: SourceConfig[];        // ordered by priority
   sharedRoot: string;             // deprecated; one-release fallback when sources is empty
+  suitesPath: string | null;      // custom suite-store path, or null for the default
+  watcherEnabled: boolean;
+  editor: EditorPref;             // preferred editor for "open original"
   tools: ToolsSettings;
+};
+
+type EditorPref = {
+  kind: string;                   // 'default' | 'vscode' | 'cursor' | 'custom'
+  customApp: string | null;       // app name/path when kind == 'custom'
 };
 
 type SourceConfig = {
@@ -353,13 +364,34 @@ type ScaffoldDemoInput = {
 };
 
 type ScaffoldResult = {
-  sharedRoot: string;
   written: number;
   skipped: number;             // existing files preserved in merge mode
   replaced: number;            // existing files overwritten in overwrite mode
-  errors: ScaffoldError[];
+  errors: string[];            // per-file failures ("<relative path>: <reason>")
+  destinationRoot: string;     // resolved source root the tree was written into
 };
 ```
+
+The destination is the first configured source root (the legacy `sharedRoot`
+when no sources are set). The empty-state in the manager calls this with
+`merge`; the bundled tree is embedded in the binary via `include_dir!`.
+
+## Open / reveal commands
+
+These let the UI open a capability's original file in the user's preferred
+editor and reveal it in the system file explorer. The WebView never holds
+opener or FS scope: the command validates the path server-side (must
+canonicalize under a configured source root, a tool target path, or a known
+workspace dir) and then calls `tauri-plugin-opener` from Rust.
+
+### `cmd_open_path(input: { path: string, openWith: string | null }) -> ()`
+
+Opens `path` with `openWith` (an app name/path) or the OS default when null.
+Errors: `path_not_openable`, `open_failed`.
+
+### `cmd_reveal_path(input: { path: string }) -> ()`
+
+Reveals `path` in Finder / Explorer. Errors: `path_not_openable`, `reveal_failed`.
 
 ## Events
 
