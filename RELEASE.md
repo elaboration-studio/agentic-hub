@@ -3,7 +3,7 @@
 Notable changes per release. Newest first. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for how releases are built and published.
 
-## [Unreleased]
+## [0.1.1] — 2026-06-01
 
 - Empty-start scaffold: a first-run empty state bootstraps a bundled demo shared root (skills, agents, rules, hooks) in one click so a fresh install is usable immediately.
 - Open files: a per-row actions menu opens a capability's original file in a configurable preferred editor (System default / VS Code / Cursor / custom), reveals it in Finder, and opens the file each enabled tool actually references — all through validated Rust commands using `tauri-plugin-opener`.
