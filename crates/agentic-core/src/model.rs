@@ -335,3 +335,49 @@ pub struct SyncHooksResult {
     pub notes: Vec<String>,
     pub errors: Vec<HookSyncError>,
 }
+
+/// A named, tool-agnostic capability preset. Persisted in `~/.agentic-suites.json`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiteDefinition {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    /// Source-free capability IDs matching `CapabilityItem.id`.
+    pub capabilities: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Partition of a suite's capability IDs against a scan.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiteValidationResult {
+    pub valid_ids: Vec<String>,
+    pub stale_ids: Vec<String>,
+}
+
+/// Result of applying a suite to one tool (full reset through the pipeline).
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplySuiteResult {
+    pub apply_result: ApplyResult,
+    /// Capability IDs in the suite not provided by any configured source.
+    pub skipped_stale: u32,
+    pub suite: SuiteDefinition,
+}

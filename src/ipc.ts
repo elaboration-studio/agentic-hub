@@ -7,12 +7,15 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ApplyProgressEvent,
   ApplyResult,
+  ApplySuiteResult,
   CapabilityItem,
   InspectResult,
   PlannedOperation,
   ScanResult,
   Settings,
   SourceConfig,
+  SuiteDefinition,
+  SuiteStoreChangedEvent,
   SyncHooksResult,
   SyncRulesResult,
   ToolId,
@@ -68,3 +71,44 @@ export const onApplyProgress = (
   cb: (e: ApplyProgressEvent) => void,
 ): Promise<UnlistenFn> =>
   listen<ApplyProgressEvent>("apply-progress", (event) => cb(event.payload));
+
+// ---- Suites ---------------------------------------------------------------
+
+export interface SuiteCreatePayload {
+  name: string;
+  description?: string | null;
+  capabilities: string[];
+}
+
+export interface SuiteUpdatePayload {
+  name?: string;
+  description?: string | null;
+  capabilities?: string[];
+}
+
+export const listSuites = (): Promise<SuiteDefinition[]> => invoke("cmd_list_suites");
+
+export const getSuite = (id: string): Promise<SuiteDefinition | null> =>
+  invoke("cmd_get_suite", { id });
+
+export const createSuite = (input: SuiteCreatePayload): Promise<SuiteDefinition> =>
+  invoke("cmd_create_suite", { input });
+
+export const updateSuite = (
+  id: string,
+  changes: SuiteUpdatePayload,
+): Promise<SuiteDefinition> => invoke("cmd_update_suite", { input: { id, ...changes } });
+
+export const deleteSuite = (id: string): Promise<void> =>
+  invoke("cmd_delete_suite", { id });
+
+export const applySuite = (
+  toolId: ToolId,
+  suiteId: string,
+): Promise<ApplySuiteResult> =>
+  invoke("cmd_apply_suite", { input: { toolId, suiteId } });
+
+export const onSuiteStoreChanged = (
+  cb: (e: SuiteStoreChangedEvent) => void,
+): Promise<UnlistenFn> =>
+  listen<SuiteStoreChangedEvent>("suite-store-changed", (event) => cb(event.payload));

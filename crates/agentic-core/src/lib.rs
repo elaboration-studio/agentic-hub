@@ -19,16 +19,19 @@ pub mod planner;
 pub mod rule_sync;
 pub mod scanner;
 pub mod settings;
+pub mod suite_store;
 
 pub use adapter_registry::{Layout, ProjectionMode, ResolvedAdapter};
 pub use api::{AdapterStatus, InspectResult};
 pub use error::{CoreError, Result};
 pub use hook_sync::{HookEventSpec, HookManifest};
 pub use model::{
-    ApplyError, ApplyResult, CapabilityItem, CapabilityKind, HookSyncError, HookSyncOutcome,
-    LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome, ScanError,
-    ScanResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
+    ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncError,
+    HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome,
+    ScanError, ScanResult, SuiteDefinition, SuiteValidationResult, SyncHooksResult,
+    SyncRulesResult, ToolCapabilityState, ToolId,
 };
 pub use planner::{build_plan, inspect_tool};
 pub use scanner::{scan, scan_all};
 pub use settings::{Settings, SourceConfig, ToolSettings, ToolsSettings};
+pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};

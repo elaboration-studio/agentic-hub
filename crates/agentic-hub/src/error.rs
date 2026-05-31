@@ -38,6 +38,9 @@ impl From<CoreError> for IpcError {
             CoreError::PathNotFound(_) => "path_not_found",
             CoreError::NotADirectory(_) => "source_path_invalid",
             CoreError::SettingsParse(_) => "manifest_malformed",
+            CoreError::SuiteParse(_) => "suite_store_malformed",
+            CoreError::SuiteNotFound(_) => "suite_not_found",
+            CoreError::SuiteNameConflict(_) => "suite_name_conflict",
             CoreError::Io(_) | CoreError::Json(_) => "internal",
         };
         IpcError::new(code, err.to_string())

@@ -376,3 +376,65 @@ tr.invalid .cap-name {
   opacity: 0.55;
   cursor: default;
 }
+
+.btn-ghost.danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.suitebar {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.suitebar h2 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.suitebar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.suite-create {
+  margin-top: 10px;
+}
+
+.suite-select,
+.suite-tool,
+.suite-name-input {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.suite-select {
+  min-width: 200px;
+}
+
+.suite-name-input {
+  flex: 1;
+  min-width: 240px;
+}
+
+.suite-arrow {
+  color: var(--muted);
+}
+
+.suite-desc {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}

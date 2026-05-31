@@ -15,6 +15,15 @@ pub enum CoreError {
     #[error("failed to parse settings: {0}")]
     SettingsParse(String),
 
+    #[error("failed to parse suite store: {0}")]
+    SuiteParse(String),
+
+    #[error("suite not found: {0}")]
+    SuiteNotFound(String),
+
+    #[error("a suite named \"{0}\" already exists")]
+    SuiteNameConflict(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 

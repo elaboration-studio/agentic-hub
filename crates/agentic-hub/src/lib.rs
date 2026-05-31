@@ -23,6 +23,12 @@ pub fn run() {
             commands::cmd_apply,
             commands::cmd_sync_rules,
             commands::cmd_sync_hooks,
+            commands::cmd_list_suites,
+            commands::cmd_get_suite,
+            commands::cmd_create_suite,
+            commands::cmd_update_suite,
+            commands::cmd_delete_suite,
+            commands::cmd_apply_suite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Agentic Hub Tauri application");

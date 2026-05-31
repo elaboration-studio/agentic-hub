@@ -8,11 +8,12 @@ use agentic_core::api::{self, InspectResult};
 use agentic_core::applier;
 use agentic_core::managed_copy::now_iso8601;
 use agentic_core::model::{
-    ApplyError, ApplyResult, CapabilityItem, PlannedOperation, ScanResult, SyncHooksResult,
-    SyncRulesResult, ToolId,
+    ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, PlannedOperation, ScanResult,
+    SuiteDefinition, SyncHooksResult, SyncRulesResult, ToolId,
 };
 use agentic_core::paths::expand_tilde;
 use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
+use agentic_core::suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
@@ -197,5 +198,99 @@ pub async fn cmd_sync_hooks(input: SyncHooksInput) -> IpcResult<SyncHooksResult>
         &settings,
         input.tool_id,
         &input.desired_enabled_by_item_id,
+    ))
+}
+
+// ---- Suites ---------------------------------------------------------------
+
+/// Notifies all windows when the suite store mutates, so the main window can
+/// refresh its selector.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiteStoreChangedEvent {
+    pub kind: String,
+    pub suite_id: Option<String>,
+}
+
+fn emit_suite_changed(app: &AppHandle, kind: &str, suite_id: Option<String>) {
+    let _ = app.emit(
+        "suite-store-changed",
+        SuiteStoreChangedEvent {
+            kind: kind.to_string(),
+            suite_id,
+        },
+    );
+}
+
+#[tauri::command]
+pub async fn cmd_list_suites() -> IpcResult<Vec<SuiteDefinition>> {
+    Ok(SuiteStore::new().list()?)
+}
+
+#[tauri::command]
+pub async fn cmd_get_suite(id: String) -> IpcResult<Option<SuiteDefinition>> {
+    Ok(SuiteStore::new().get(&id)?)
+}
+
+#[tauri::command]
+pub async fn cmd_create_suite(
+    app: AppHandle,
+    input: SuiteCreateInput,
+) -> IpcResult<SuiteDefinition> {
+    let suite = SuiteStore::new().create(input)?;
+    emit_suite_changed(&app, "created", Some(suite.id.clone()));
+    Ok(suite)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSuiteInput {
+    pub id: String,
+    #[serde(flatten)]
+    pub changes: SuiteUpdateInput,
+}
+
+#[tauri::command]
+pub async fn cmd_update_suite(
+    app: AppHandle,
+    input: UpdateSuiteInput,
+) -> IpcResult<SuiteDefinition> {
+    let suite = SuiteStore::new().update(&input.id, input.changes)?;
+    emit_suite_changed(&app, "updated", Some(suite.id.clone()));
+    Ok(suite)
+}
+
+#[tauri::command]
+pub async fn cmd_delete_suite(app: AppHandle, id: String) -> IpcResult<()> {
+    SuiteStore::new().remove(&id)?;
+    emit_suite_changed(&app, "deleted", Some(id));
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplySuiteInput {
+    pub tool_id: ToolId,
+    pub suite_id: String,
+}
+
+#[tauri::command]
+pub async fn cmd_apply_suite(input: ApplySuiteInput) -> IpcResult<ApplySuiteResult> {
+    let settings = Settings::load()?;
+    let suite = SuiteStore::new()
+        .get(&input.suite_id)?
+        .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
+
+    let scanned = api::scan(&settings);
+    Ok(api::apply_suite(
+        &scanned.items,
+        &settings,
+        input.tool_id,
+        &suite,
     ))
 }

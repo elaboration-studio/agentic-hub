@@ -4,7 +4,7 @@
 //! they stay unit-testable against a tempdir. The shell layer only does payload
 //! marshalling and error mapping. See `docs/tech/modules/tauri-ipc-contract.md`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,8 +12,9 @@ use crate::adapter_registry::{self, ProjectionMode, ResolvedAdapter};
 use crate::applier;
 use crate::hook_sync;
 use crate::model::{
-    ApplyResult, CapabilityItem, CapabilityKind, HookSyncOutcome, PlannedOperation,
-    RuleSyncOutcome, ScanResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
+    ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncOutcome,
+    PlannedOperation, RuleSyncOutcome, ScanResult, SuiteDefinition, SyncHooksResult,
+    SyncRulesResult, ToolCapabilityState, ToolId,
 };
 use crate::planner;
 use crate::rule_sync;
@@ -191,6 +192,42 @@ pub fn sync_hooks(
     }
 }
 
+/// Apply a suite to one tool as a full reset: every scanned item gets a desired
+/// state (`true` iff in the suite), then the existing plan/apply + rule + hook
+/// sync pipeline runs. Capability IDs not provided by any source are counted as
+/// skipped-stale. Reuses [`plan`]/[`apply`]/[`sync_rules`]/[`sync_hooks`] — no
+/// parallel pipeline.
+pub fn apply_suite(
+    items: &[CapabilityItem],
+    settings: &Settings,
+    tool: ToolId,
+    suite: &SuiteDefinition,
+) -> ApplySuiteResult {
+    let suite_set: HashSet<&str> = suite.capabilities.iter().map(String::as_str).collect();
+    let desired: HashMap<String, bool> = items
+        .iter()
+        .map(|it| (it.id.clone(), suite_set.contains(it.id.as_str())))
+        .collect();
+
+    let adapter = adapter_registry::resolve(settings, tool);
+    let ops = planner::build_plan(items, &adapter, &desired);
+    let apply_result = applier::apply(&ops, |_, _, _, _| {});
+    let _ = sync_rules(items, settings, tool, &desired);
+    let _ = sync_hooks(items, settings, tool, &desired);
+
+    let skipped_stale = suite
+        .capabilities
+        .iter()
+        .filter(|cap| !items.iter().any(|i| &i.id == *cap))
+        .count() as u32;
+
+    ApplySuiteResult {
+        apply_result,
+        skipped_stale,
+        suite: suite.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,6 +254,59 @@ mod tests {
         assert_eq!(result.items[0].id, "skill:a");
         // Carries the synthesized Default source identity.
         assert_eq!(result.items[0].source_label, "Default");
+    }
+
+    #[test]
+    fn apply_suite_full_reset_enables_suite_and_disables_rest() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/keep/SKILL.md"), "# keep");
+        write(&root.path().join("skills/drop/SKILL.md"), "# drop");
+
+        let mut settings = Settings {
+            shared_root: root.path().to_path_buf(),
+            ..Settings::default()
+        };
+        // Point Codex skills at a tempdir so the apply is sandboxed.
+        settings.tools.codex.skills_path = tools.path().join("skills");
+
+        let scanned = scan(&settings);
+        // Pre-enable both by applying a suite that contains both.
+        let both = SuiteDefinition {
+            id: "1".into(),
+            name: "both".into(),
+            description: None,
+            capabilities: vec!["skill:keep".into(), "skill:drop".into()],
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        apply_suite(&scanned.items, &settings, ToolId::Codex, &both);
+        let before = inspect(&scanned.items, &settings);
+        assert_eq!(
+            before
+                .states
+                .iter()
+                .filter(|s| s.tool == ToolId::Codex && s.state == crate::model::LinkState::Enabled)
+                .count(),
+            2
+        );
+
+        // Now apply a suite with only `keep`: full reset disables `drop`.
+        let only_keep = SuiteDefinition {
+            capabilities: vec!["skill:keep".into(), "skill:gone".into()],
+            ..both.clone()
+        };
+        let result = apply_suite(&scanned.items, &settings, ToolId::Codex, &only_keep);
+        assert_eq!(result.skipped_stale, 1, "skill:gone not in scan");
+
+        let after = inspect(&scanned.items, &settings);
+        let enabled: Vec<&str> = after
+            .states
+            .iter()
+            .filter(|s| s.tool == ToolId::Codex && s.state == crate::model::LinkState::Enabled)
+            .map(|s| s.item_id.as_str())
+            .collect();
+        assert_eq!(enabled, vec!["skill:keep"]);
     }
 
     #[test]
