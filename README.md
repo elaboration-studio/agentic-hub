@@ -6,7 +6,9 @@ A Tauri 2.x desktop app that projects a single shared `~/.agentic/` capability t
 
 ## Status
 
-Pre-implementation. Documentation-first migration from the VS Code extension at [`e-studio-copilot`](https://github.com/arno/e-studio-copilot). Code lands after [PRODUCT.md](PRODUCT.md) and [ARCHITECTURE.md](ARCHITECTURE.md) are reviewed.
+`v0.1.0` — first build. The Rust core and Tauri UI are implemented; macOS
+universal `.dmg` releases ship from GitHub Actions on `v*` tags. Migrated from
+the VS Code extension at [`e-studio-copilot`](https://github.com/arno/e-studio-copilot).
 
 ## Start here
 
@@ -14,6 +16,7 @@ Pre-implementation. Documentation-first migration from the VS Code extension at 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture (Rust core + Tauri shell + React UI)
 - [AGENTS.md](AGENTS.md) — short guide for AI coding agents working in this repo
 - [docs/README.md](docs/README.md) — full doc index (features, tech.modules, tech.reference, tech.development)
+- [RELEASE.md](RELEASE.md) — release notes · [DEPLOYMENT.md](DEPLOYMENT.md) — build & release pipeline
 
 ## Companion architecture docs
 

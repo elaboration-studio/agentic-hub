@@ -1,0 +1,61 @@
+name: Release (macOS)
+
+# Builds the macOS universal bundle and publishes it as a draft GitHub Release.
+# Triggered by pushing a version tag, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: Build & release (macOS universal)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust (stable, both Apple arches)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Run from the repo root so Tauri auto-discovers crates/agentic-hub/tauri.conf.json
+      # and the root-relative beforeBuildCommand (`pnpm build` -> ../../dist) resolves.
+      - name: Build macOS universal bundle
+        run: pnpm tauri build --target universal-apple-darwin
+
+      - name: Publish GitHub Release (draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Agentic Hub ${{ github.ref_name }}
+          body_path: RELEASE.md
+          draft: true
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
