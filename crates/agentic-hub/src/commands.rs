@@ -14,14 +14,19 @@ use agentic_core::model::{
     SuiteDefinition, SyncHooksResult, SyncRulesResult, ToolId, WorkspacePatchResult,
     WorkspaceTarget, WorkspaceTargetsState,
 };
+use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
+use agentic_core::scaffold::{self, ScaffoldMode, ScaffoldResult};
 use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
 use agentic_core::suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 use agentic_core::workspace_patch;
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 
 use crate::error::IpcError;
 use crate::watcher::{self, WatcherState};
@@ -102,6 +107,98 @@ pub async fn cmd_inspect(
         ..Settings::default()
     };
     Ok(api::inspect(&items, &settings))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScaffoldDemoInput {
+    pub mode: ScaffoldMode,
+}
+
+/// Materialize the bundled demo tree into the first configured source root
+/// (the legacy `shared_root` when no sources are set), then nudge the watcher
+/// so the new tree is picked up. First-run "empty start" affordance.
+#[tauri::command]
+pub async fn cmd_scaffold_demo(
+    app: AppHandle,
+    watcher: State<'_, WatcherState>,
+    input: ScaffoldDemoInput,
+) -> IpcResult<ScaffoldResult> {
+    let settings = Settings::load()?;
+    let dest = settings
+        .resolve_sources()
+        .into_iter()
+        .next()
+        .map(|s| s.path)
+        .unwrap_or_else(|| settings.shared_root.clone());
+    let result = scaffold::scaffold_demo(&dest, input.mode)?;
+    watcher.restart_if_running(app);
+    Ok(result)
+}
+
+/// Known workspace directories, used to extend the open-allowlist so a user can
+/// open a workspace-projected file. Best-effort: a malformed state yields none.
+fn workspace_dirs() -> Vec<PathBuf> {
+    WorkspaceTargetStore::new()
+        .read()
+        .map(|s| s.workspace_targets.into_iter().map(|t| t.dir).collect())
+        .unwrap_or_default()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenPathInput {
+    pub path: String,
+    /// App name/path to open with; `None` uses the OS default app.
+    pub open_with: Option<String>,
+}
+
+/// Open a file with the user's preferred editor (or the OS default). The path
+/// must canonicalize under a configured source root, tool target, or known
+/// workspace dir — the WebView never holds opener/FS scope directly.
+#[tauri::command]
+pub async fn cmd_open_path(app: AppHandle, input: OpenPathInput) -> IpcResult<()> {
+    let path = expand_tilde(&input.path);
+    let settings = Settings::load()?;
+    if !open_targets::is_openable(&path, &settings, &workspace_dirs()) {
+        return Err(IpcError::new(
+            "path_not_openable",
+            format!(
+                "Refusing to open a path outside known roots: {}",
+                path.display()
+            ),
+        ));
+    }
+    app.opener()
+        .open_path(path.to_string_lossy().to_string(), input.open_with)
+        .map_err(|e| IpcError::new("open_failed", e.to_string()))?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevealPathInput {
+    pub path: String,
+}
+
+/// Reveal a file in the system file explorer. Same allowlist as [`cmd_open_path`].
+#[tauri::command]
+pub async fn cmd_reveal_path(app: AppHandle, input: RevealPathInput) -> IpcResult<()> {
+    let path = expand_tilde(&input.path);
+    let settings = Settings::load()?;
+    if !open_targets::is_openable(&path, &settings, &workspace_dirs()) {
+        return Err(IpcError::new(
+            "path_not_openable",
+            format!(
+                "Refusing to reveal a path outside known roots: {}",
+                path.display()
+            ),
+        ));
+    }
+    app.opener()
+        .reveal_item_in_dir(path)
+        .map_err(|e| IpcError::new("reveal_failed", e.to_string()))?;
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import logoUrl from "./assets/logo.png";
 import {
+  addSource,
   apply,
   inspect,
   loadSettings,
   onApplyProgress,
   onSourcesChanged,
   plan,
+  scaffoldDemo,
   scan,
   setWatcherEnabled,
   syncHooks,
@@ -276,15 +279,27 @@ export function App() {
               </details>
             )}
             {scope === "global" ? (
-              <Matrix
-                items={data.items}
-                tools={tools}
-                currentMap={currentMap}
-                adapterStatuses={data.result.adapterStatuses}
-                desired={desired}
-                onToggle={toggle}
-                onToggleMany={toggleMany}
-              />
+              data.items.length === 0 ? (
+                <EmptyState
+                  destination={
+                    data.settings.sources[0]?.path ?? data.settings.sharedRoot
+                  }
+                  onChanged={() => void refresh()}
+                  onError={setError}
+                />
+              ) : (
+                <Matrix
+                  items={data.items}
+                  tools={tools}
+                  currentMap={currentMap}
+                  adapterStatuses={data.result.adapterStatuses}
+                  desired={desired}
+                  onToggle={toggle}
+                  onToggleMany={toggleMany}
+                  settings={data.settings}
+                  onError={setError}
+                />
+              )
             ) : (
               <WorkspacePanel tools={workspaceTools} onError={setError} />
             )}
@@ -463,6 +478,70 @@ function Header(props: {
         </button>
       </div>
     </header>
+  );
+}
+
+function EmptyState(props: {
+  destination: string;
+  onChanged: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<string>("");
+
+  const onScaffold = useCallback(async () => {
+    setBusy(true);
+    setSummary("");
+    try {
+      const r = await scaffoldDemo("merge");
+      setSummary(
+        `Wrote ${r.written}, skipped ${r.skipped} into ${r.destinationRoot}.`,
+      );
+      props.onChanged();
+    } catch (e) {
+      props.onError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [props]);
+
+  const onAddSource = useCallback(async () => {
+    setBusy(true);
+    try {
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        title: "Choose a resources root",
+      });
+      if (typeof picked !== "string") return; // cancelled
+      const label = picked.split("/").filter(Boolean).pop() ?? picked;
+      await addSource(label, picked);
+      props.onChanged();
+    } catch (e) {
+      props.onError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [props]);
+
+  return (
+    <section className="empty-state">
+      <h2>No capabilities yet</h2>
+      <p className="empty-lead">
+        Bootstrap a starter shared root with example skills, agents, rules, and a
+        hook — then enable them per tool from the manager.
+      </p>
+      <code className="empty-dest">{props.destination}</code>
+      <div className="empty-actions">
+        <button className="btn" onClick={() => void onScaffold()} disabled={busy}>
+          {busy ? "Working…" : "Scaffold demo resources"}
+        </button>
+        <button className="btn-ghost" onClick={() => void onAddSource()} disabled={busy}>
+          Add a source…
+        </button>
+      </div>
+      {summary && <p className="src-hint">{summary}</p>}
+    </section>
   );
 }
 

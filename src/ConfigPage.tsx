@@ -17,10 +17,88 @@ export function ConfigPage(props: PanelProps) {
   return (
     <div className="config-page">
       <SourcesPanel {...props} />
+      <EditorPanel {...props} />
       <SuiteFilePanel {...props} />
       <ToolsPanel {...props} />
       <WatcherPanel {...props} />
     </div>
+  );
+}
+
+function EditorPanel(props: PanelProps) {
+  const editor = props.settings.editor;
+  const [kind, setKind] = useState(editor.kind);
+  const [customApp, setCustomApp] = useState(editor.customApp ?? "");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setKind(props.settings.editor.kind);
+    setCustomApp(props.settings.editor.customApp ?? "");
+  }, [props.settings.editor]);
+
+  const persist = useCallback(
+    async (nextKind: string, nextCustom: string) => {
+      setBusy(true);
+      try {
+        await saveSettings({
+          ...props.settings,
+          editor: {
+            kind: nextKind,
+            customApp: nextKind === "custom" ? nextCustom.trim() || null : null,
+          },
+        });
+        props.onChanged();
+      } catch (e) {
+        props.onError(messageOf(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [props],
+  );
+
+  return (
+    <section className="config-panel">
+      <h2>Editor</h2>
+      <p className="src-hint">
+        Which app opens a capability&rsquo;s original file from the row actions menu.
+        Choose &ldquo;System default&rdquo; to use the OS file-type association.
+      </p>
+      <div className="suitefile-row">
+        <select
+          className="suite-tool"
+          value={kind}
+          disabled={busy}
+          onChange={(e) => {
+            const next = e.target.value;
+            setKind(next);
+            if (next !== "custom") void persist(next, customApp);
+          }}
+        >
+          <option value="default">System default</option>
+          <option value="vscode">Visual Studio Code</option>
+          <option value="cursor">Cursor</option>
+          <option value="custom">Custom…</option>
+        </select>
+        {kind === "custom" && (
+          <>
+            <input
+              className="path-input"
+              value={customApp}
+              placeholder="App name or path (e.g. Zed)"
+              onChange={(e) => setCustomApp(e.target.value)}
+            />
+            <button
+              className="btn"
+              onClick={() => void persist("custom", customApp)}
+              disabled={busy}
+            >
+              Save
+            </button>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 

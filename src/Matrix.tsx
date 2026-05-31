@@ -9,15 +9,17 @@ import type {
   AdapterStatus,
   CapabilityItem,
   CapabilityKind,
+  Settings,
   ToolCapabilityState,
   ToolId,
 } from "./types";
-import type { DesiredMap } from "./ipc";
+import { openPath, revealPath, type DesiredMap } from "./ipc";
 import {
   Banner,
   key,
   KIND_LABEL,
   KIND_ORDER,
+  messageOf,
   ToolCells,
   type ToolDef,
   type View,
@@ -31,6 +33,8 @@ interface MatrixProps {
   desired: DesiredMap;
   onToggle: (tool: ToolId, itemId: string) => void;
   onToggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
+  settings: Settings;
+  onError: (msg: string) => void;
 }
 
 const EMPTY_COLLAPSE: ReadonlySet<string> = new Set();
@@ -74,6 +78,8 @@ export function Matrix(props: MatrixProps) {
     desired: props.desired,
     onToggle: props.onToggle,
     onToggleMany: props.onToggleMany,
+    settings: props.settings,
+    onError: props.onError,
     colCount,
   };
   // While searching, ignore the manual collapse set so every match is visible.
@@ -186,6 +192,8 @@ interface BodyContext {
   desired: DesiredMap;
   onToggle: (tool: ToolId, itemId: string) => void;
   onToggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
+  settings: Settings;
+  onError: (msg: string) => void;
   colCount: number;
 }
 
@@ -252,6 +260,68 @@ function AggregateCells(props: { items: CapabilityItem[]; ctx: BodyContext }) {
   );
 }
 
+// Editor app name for the opener `openWith` arg. Mirrors agentic-core
+// `EditorPref::app_name` so "Open original" honors the Config setting.
+function editorApp(settings: Settings): string | undefined {
+  const e = settings.editor;
+  switch (e.kind) {
+    case "vscode":
+      return "Visual Studio Code";
+    case "cursor":
+      return "Cursor";
+    case "custom":
+      return e.customApp?.trim() || undefined;
+    default:
+      return undefined;
+  }
+}
+
+// The original file to open: the marker file inside a skill/hook folder, or
+// the capability file itself for agents/rules.
+function originalFile(item: CapabilityItem): string {
+  if (item.kind === "skill") return `${item.sourcePath}/SKILL.md`;
+  if (item.kind === "hook") return `${item.sourcePath}/hook.json`;
+  return item.sourcePath;
+}
+
+// Hidden-until-hover row menu: open the original in the preferred editor,
+// reveal it in Finder, and open the file each enabled tool actually references.
+function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
+  const { item, ctx } = props;
+  const app = editorApp(ctx.settings);
+  const run = (p: Promise<void>) =>
+    void p.catch((e) => ctx.onError(messageOf(e)));
+
+  const projected = ctx.tools
+    .map((t) => ({ tool: t, state: ctx.currentMap.get(key(t.id, item.id)) }))
+    .filter(
+      (x): x is { tool: ToolDef; state: ToolCapabilityState } =>
+        !!x.state && x.state.state === "enabled" && !!x.state.targetPath,
+    );
+
+  return (
+    <details className="row-actions">
+      <summary title="More actions" aria-label="More actions">
+        ⋯
+      </summary>
+      <div className="row-actions-menu">
+        <button onClick={() => run(openPath(originalFile(item), app))}>
+          Open original
+        </button>
+        <button onClick={() => run(revealPath(item.sourcePath))}>
+          Reveal in Finder
+        </button>
+        {projected.length > 0 && <div className="row-actions-sep" />}
+        {projected.map(({ tool, state }) => (
+          <button key={tool.id} onClick={() => run(openPath(state.targetPath))}>
+            Open in {tool.label}
+          </button>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge?: boolean) {
   return (
     <tr key={`l:${item.id}`} className={item.valid ? "" : "invalid"}>
@@ -259,6 +329,7 @@ function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge
         {badge && <span className={`kind-badge kind-${item.kind}`}>{item.kind}</span>}
         <span className="cap-name">{item.name}</span>
         {!badge && <code className="cap-rel">{item.relativePath}</code>}
+        <RowActions item={item} ctx={ctx} />
       </td>
       <td className="col-src">{item.sourceLabel}</td>
       <ToolCells

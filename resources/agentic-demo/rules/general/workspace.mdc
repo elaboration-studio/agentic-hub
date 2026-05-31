@@ -1,0 +1,16 @@
+---
+alwaysApply: true
+---
+
+## Workspace conventions
+
+| Path | Use |
+| --- | --- |
+| Shared agentic root | Path from VS Code `agentic-hub.sharedRoot` (default `~/.agentic`): skills, agents, rules |
+| Project workspace | Your git root for the product you are building |
+| Drafts / notes | Optional personal trees; keep product repos free of one-off scratch |
+
+| Rule | Convention |
+| --- | --- |
+| Path writing in docs | Prefer home-relative paths like `~/project/` instead of machine-specific absolute paths |
+| Symlinks | Use **Agentic Hub: Open Capability Manager** to enable skills/agents per tool; avoid manual links unless you accept overwrite risk |

@@ -27,6 +27,50 @@ pub struct SourceConfig {
     pub path: PathBuf,
 }
 
+/// The editor used to open a capability's original file. `kind` is one of
+/// `default` (OS default app), `vscode`, `cursor`, or `custom` (use
+/// `custom_app`). Kept as a string so the JSON config stays forward-compatible
+/// if more presets are added.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorPref {
+    pub kind: String,
+    /// Application name or path used when `kind == "custom"`.
+    #[serde(default)]
+    pub custom_app: Option<String>,
+}
+
+impl Default for EditorPref {
+    fn default() -> Self {
+        EditorPref {
+            kind: "default".to_string(),
+            custom_app: None,
+        }
+    }
+}
+
+impl EditorPref {
+    /// The application name/path to hand to the opener, or `None` for the OS
+    /// default app. macOS resolves these names via `open -a <name>`.
+    pub fn app_name(&self) -> Option<String> {
+        match self.kind.as_str() {
+            "vscode" => Some("Visual Studio Code".to_string()),
+            "cursor" => Some("Cursor".to_string()),
+            "custom" => self
+                .custom_app
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            _ => None,
+        }
+    }
+}
+
 /// Per-tool target paths and toggles. Mirrors the IPC `ToolSettings` shape.
 #[cfg_attr(
     feature = "ts-export",
@@ -81,6 +125,10 @@ pub struct Settings {
     /// projections on change. Defaults to on (the manual Rescan button is gone).
     #[serde(default = "default_true")]
     pub watcher_enabled: bool,
+    /// Preferred editor for opening a capability's original file. Defaults to
+    /// the OS default app.
+    #[serde(default)]
+    pub editor: EditorPref,
     pub tools: ToolsSettings,
 }
 
@@ -150,6 +198,7 @@ impl Default for Settings {
             shared_root: expand_tilde("~/.agentic"),
             suites_path: None,
             watcher_enabled: true,
+            editor: EditorPref::default(),
             tools: ToolsSettings::default(),
         }
     }
@@ -287,6 +336,7 @@ impl Settings {
             shared_root: shared_root.into(),
             suites_path: None,
             watcher_enabled: true,
+            editor: EditorPref::default(),
             tools: ToolsSettings {
                 codex: tool("codex"),
                 claude: tool("claude"),
@@ -354,6 +404,44 @@ mod tests {
             .unwrap()
             .ends_with(".claude/settings.json"));
         assert!(s.tools.openclaw.hooks_file.is_none());
+    }
+
+    #[test]
+    fn editor_pref_maps_to_app_name() {
+        assert_eq!(EditorPref::default().app_name(), None);
+        assert_eq!(
+            EditorPref {
+                kind: "vscode".into(),
+                custom_app: None,
+            }
+            .app_name(),
+            Some("Visual Studio Code".to_string())
+        );
+        assert_eq!(
+            EditorPref {
+                kind: "cursor".into(),
+                custom_app: None,
+            }
+            .app_name(),
+            Some("Cursor".to_string())
+        );
+        assert_eq!(
+            EditorPref {
+                kind: "custom".into(),
+                custom_app: Some("  Zed  ".into()),
+            }
+            .app_name(),
+            Some("Zed".to_string())
+        );
+        // Custom with empty string falls back to the OS default.
+        assert_eq!(
+            EditorPref {
+                kind: "custom".into(),
+                custom_app: Some("   ".into()),
+            }
+            .app_name(),
+            None
+        );
     }
 
     #[test]

@@ -48,6 +48,7 @@ Tauri 2.x ships with these plugins relevant to this app:
 - `tauri-plugin-dialog` — native folder picker (needed for workspace selection)
 - `tauri-plugin-store` — persistent key-value store (used for `state.json` workspace target LRU)
 - `tauri-plugin-shell` — explicitly **disabled** (the WebView must never run arbitrary commands)
+- `tauri-plugin-opener` — opens files in an app and reveals them in the file explorer; the scoped, official successor to `shell`'s `open` API. Initialized, but called only from Rust commands (`cmd_open_path` / `cmd_reveal_path`) with a server-side path allowlist — the WebView gets no opener scope.
 - `tauri-plugin-updater` — deferred to post-v1
 
 The Rust core uses `std::fs`, `std::os::unix::fs::symlink` (Unix), `std::os::windows::fs::{symlink_file, symlink_dir}` (Windows), and `fs_extra` for recursive copy.
@@ -134,6 +135,10 @@ Granted `store:default` access scoped to `state.json` under the app data directo
 
 Not added to `Cargo.toml`. Not declared in capability files. The WebView cannot spawn processes.
 
+### `tauri-plugin-opener` — file open / reveal
+
+Added to `Cargo.toml` and initialized in the shell. It is **not** declared in any capability file, so the WebView cannot call it directly. Instead, `cmd_open_path` / `cmd_reveal_path` validate the path with `agentic_core::open_targets::is_openable` (must canonicalize under a configured source root, a tool target path, or a known workspace dir) and then call the plugin's Rust API. This is the scoped, modern replacement for `shell`'s deprecated `open` and keeps the `shell` plugin out of the dependency tree.
+
 ### `tauri-plugin-updater` — deferred
 
 Will be added in a post-v1 release once a signed manifest endpoint exists. Until then, users update by downloading a new `.dmg` / `.deb`.
@@ -192,7 +197,7 @@ The WebView cannot:
 - Read or write arbitrary files (no `fs:allow-*` granted)
 - Read environment variables beyond what Tauri exposes by default
 - Spawn child windows except via documented commands
-- Open external URLs (no `shell:allow-open` granted; if we need to open a file in the user's editor, a dedicated `cmd_open_in_editor(path)` is added with explicit validation)
+- Open files or external URLs directly (no opener scope granted to the WebView). Opening a file in the user's editor goes through the dedicated `cmd_open_path` / `cmd_reveal_path` commands, which validate the path against `agentic_core::open_targets::is_openable` before calling `tauri-plugin-opener` from Rust
 - Bypass the per-command argument validation in the Rust core
 
 ## Operational rules
@@ -220,6 +225,6 @@ The WebView cannot:
 
 ## Open questions
 
-- Should we ship a `cmd_open_in_editor(path)` that uses `tauri-plugin-shell::open` to open a file in the user's default editor? Useful for "edit this rule" affordance. Decision: yes, but with explicit allowlist of file extensions and a path validator that confirms the path is under the shared root or a known tool home. Defer to M2 polish.
+- ~~Should we ship a `cmd_open_in_editor(path)` that uses `tauri-plugin-shell::open` to open a file in the user's default editor?~~ **Resolved (2026-06-01).** Shipped as `cmd_open_path` / `cmd_reveal_path` using `tauri-plugin-opener` (not `shell`), gated by a path allowlist (`open_targets::is_openable`) instead of an extension allowlist. The preferred editor is configurable in settings. See [docs/features/open-files.md](docs/features/open-files.md).
 - Should we add `tauri-plugin-fs` with a `fs:scope` of `~/.agentic/**` (read-only) so a future "preview rule body" feature can render markdown without a custom command? Decision: no in v1. Custom command keeps the boundary clean.
 - macOS notarization: required for distributing the `.dmg` without Gatekeeper warnings. Decide at M4 whether to invest in an Apple Developer account for this personal-tool app, or document the right-click-open workaround in install docs.

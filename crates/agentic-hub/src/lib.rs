@@ -16,6 +16,7 @@ use watcher::WatcherState;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(WatcherState::default())
         .setup(|app| {
@@ -33,6 +34,9 @@ pub fn run() {
             commands::cmd_rescan_resync,
             commands::cmd_scan,
             commands::cmd_inspect,
+            commands::cmd_scaffold_demo,
+            commands::cmd_open_path,
+            commands::cmd_reveal_path,
             commands::cmd_add_source,
             commands::cmd_remove_source,
             commands::cmd_plan,

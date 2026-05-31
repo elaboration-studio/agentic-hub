@@ -1,0 +1,12 @@
+{
+  "name": "agentic-shared-root",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "skills:lock": "node scripts/skills-manage.mjs lock",
+    "skills:install": "node scripts/skills-manage.mjs install",
+    "skills:sync": "node scripts/skills-manage.mjs sync",
+    "skills:check": "node scripts/skills-manage.mjs check",
+    "skills:update": "node scripts/skills-manage.mjs update"
+  }
+}
