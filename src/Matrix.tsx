@@ -1,7 +1,8 @@
 // Capability matrix with two interchangeable layouts:
 //   - flat: capabilities grouped by kind (Skills / Agents / Rules / Hooks)
 //   - tree: capabilities nested by their source-relative folder path
-// Both share the per-tool toggle cells from `shared.tsx`.
+// A shared search box filters both views. Group rows (kinds in flat, folders in
+// tree) carry batch toggles that flip every capability beneath them per tool.
 
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type {
@@ -13,6 +14,7 @@ import type {
 import type { DesiredMap } from "./ipc";
 import {
   Banner,
+  key,
   KIND_LABEL,
   KIND_ORDER,
   ToolCells,
@@ -27,11 +29,15 @@ interface MatrixProps {
   adapterStatuses: AdapterStatus[];
   desired: DesiredMap;
   onToggle: (tool: ToolId, itemId: string) => void;
+  onToggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
 }
+
+const EMPTY_COLLAPSE: ReadonlySet<string> = new Set();
 
 export function Matrix(props: MatrixProps) {
   const [view, setView] = useState<View>("flat");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
 
   const adapterMap = useMemo(() => {
     const m = new Map<ToolId, AdapterStatus>();
@@ -39,7 +45,8 @@ export function Matrix(props: MatrixProps) {
     return m;
   }, [props.adapterStatuses]);
 
-  const root = useMemo(() => buildTree(props.items), [props.items]);
+  const filtered = useMemo(() => filterItems(props.items, query), [props.items, query]);
+  const root = useMemo(() => buildTree(filtered), [filtered]);
   const folderPaths = useMemo(() => collectFolderPaths(root), [root]);
 
   if (props.items.length === 0) {
@@ -47,14 +54,17 @@ export function Matrix(props: MatrixProps) {
   }
 
   const colCount = 2 + props.tools.length;
-  const body: BodyContext = {
+  const ctx: BodyContext = {
     tools: props.tools,
     adapterMap,
     currentMap: props.currentMap,
     desired: props.desired,
     onToggle: props.onToggle,
+    onToggleMany: props.onToggleMany,
     colCount,
   };
+  // While searching, ignore the manual collapse set so every match is visible.
+  const effectiveCollapsed = query.trim() ? EMPTY_COLLAPSE : collapsed;
 
   return (
     <section className="matrix">
@@ -73,6 +83,13 @@ export function Matrix(props: MatrixProps) {
             Tree
           </button>
         </div>
+        <input
+          className="matrix-search"
+          type="search"
+          placeholder="Search by name, path, or source…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
         {view === "tree" && (
           <div className="tree-controls">
             <button className="btn-ghost" onClick={() => setCollapsed(new Set())}>
@@ -84,36 +101,40 @@ export function Matrix(props: MatrixProps) {
           </div>
         )}
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th className="col-cap">Capability</th>
-            <th className="col-src">Source</th>
-            {props.tools.map((t) => {
-              const adapter = adapterMap.get(t.id);
-              const off = adapter && !adapter.available;
-              return (
-                <th key={t.id} className="col-tool" title={adapter?.unavailableReason ?? ""}>
-                  {t.label}
-                  {off && <span className="tool-off">off</span>}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {view === "flat"
-            ? renderFlat(props.items, body)
-            : renderNodes([...root.children.values()], 0, body, collapsed, (path) =>
-                setCollapsed((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(path)) next.delete(path);
-                  else next.add(path);
-                  return next;
-                }),
-              )}
-        </tbody>
-      </table>
+      {filtered.length === 0 ? (
+        <Banner tone="muted">No capabilities match “{query.trim()}”.</Banner>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th className="col-cap">Capability</th>
+              <th className="col-src">Source</th>
+              {props.tools.map((t) => {
+                const adapter = adapterMap.get(t.id);
+                const off = adapter && !adapter.available;
+                return (
+                  <th key={t.id} className="col-tool" title={adapter?.unavailableReason ?? ""}>
+                    {t.label}
+                    {off && <span className="tool-off">off</span>}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {view === "flat"
+              ? renderFlat(filtered, ctx)
+              : renderNodes([...root.children.values()], 0, ctx, effectiveCollapsed, (path) =>
+                  setCollapsed((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(path)) next.delete(path);
+                    else next.add(path);
+                    return next;
+                  }),
+                )}
+          </tbody>
+        </table>
+      )}
     </section>
   );
 }
@@ -124,7 +145,60 @@ interface BodyContext {
   currentMap: Map<string, ToolCapabilityState>;
   desired: DesiredMap;
   onToggle: (tool: ToolId, itemId: string) => void;
+  onToggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
   colCount: number;
+}
+
+function filterItems(items: CapabilityItem[], query: string): CapabilityItem[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter(
+    (it) =>
+      it.name.toLowerCase().includes(q) ||
+      it.relativePath.toLowerCase().includes(q) ||
+      it.sourceLabel.toLowerCase().includes(q),
+  );
+}
+
+// Batch toggle cells for a group row (a kind or a folder subtree): one click
+// flips every togglable descendant for that tool. Shows ✓ (all on), – (mixed),
+// or empty (none).
+function AggregateCells(props: { items: CapabilityItem[]; ctx: BodyContext }) {
+  const { items, ctx } = props;
+  return (
+    <>
+      {ctx.tools.map((t) => {
+        const togglable = items.filter((it) => ctx.currentMap.has(key(t.id, it.id)));
+        if (togglable.length === 0) {
+          return (
+            <td key={t.id} className="cell">
+              <span className="dash">—</span>
+            </td>
+          );
+        }
+        const onCount = togglable.filter((it) => ctx.desired[key(t.id, it.id)]).length;
+        const allOn = onCount === togglable.length;
+        const mixed = onCount > 0 && !allOn;
+        return (
+          <td key={t.id} className="cell">
+            <button
+              className={`toggle batch${allOn ? " on" : ""}${mixed ? " mixed" : ""}`}
+              title={`${onCount}/${togglable.length} on — click to ${allOn ? "disable" : "enable"} all`}
+              onClick={() =>
+                ctx.onToggleMany(
+                  t.id,
+                  togglable.map((it) => it.id),
+                  !allOn,
+                )
+              }
+            >
+              {allOn ? "✓" : mixed ? "–" : ""}
+            </button>
+          </td>
+        );
+      })}
+    </>
+  );
 }
 
 function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge?: boolean) {
@@ -155,9 +229,11 @@ function renderFlat(items: CapabilityItem[], ctx: BodyContext): ReactNode {
     return (
       <Fragment key={kind}>
         <tr className="kind-row">
-          <td colSpan={ctx.colCount}>
+          <td className="col-cap">
             {KIND_LABEL[kind]} <span className="kind-count">{rows.length}</span>
           </td>
+          <td className="col-src" />
+          <AggregateCells items={rows} ctx={ctx} />
         </tr>
         {rows.map((item) => leafRow(item, ctx))}
       </Fragment>
@@ -202,17 +278,17 @@ function collectFolderPaths(node: TreeNode, out: string[] = []): string[] {
   return out;
 }
 
-function countLeaves(node: TreeNode): number {
-  let n = node.item && node.children.size === 0 ? 1 : 0;
-  for (const child of node.children.values()) n += countLeaves(child);
-  return n;
+function leavesUnder(node: TreeNode, out: CapabilityItem[] = []): CapabilityItem[] {
+  if (node.item && node.children.size === 0) out.push(node.item);
+  for (const child of node.children.values()) leavesUnder(child, out);
+  return out;
 }
 
 function renderNodes(
   nodes: TreeNode[],
   depth: number,
   ctx: BodyContext,
-  collapsed: Set<string>,
+  collapsed: ReadonlySet<string>,
   onToggleDir: (path: string) => void,
 ): ReactNode[] {
   const sorted = [...nodes].sort((a, b) => {
@@ -227,15 +303,18 @@ function renderNodes(
     const pad = depth * 16 + 12;
     if (node.children.size > 0) {
       const isCollapsed = collapsed.has(node.path);
+      const leaves = leavesUnder(node);
       out.push(
         <tr key={`d:${node.path}`} className="tree-dir-row">
-          <td className="col-cap" colSpan={ctx.colCount} style={{ paddingLeft: pad }}>
+          <td className="col-cap" style={{ paddingLeft: pad }}>
             <button className="tree-toggle" onClick={() => onToggleDir(node.path)}>
               {isCollapsed ? "▸" : "▾"}
             </button>
             <span className="tree-dir">{node.name}</span>
-            <span className="kind-count">{countLeaves(node)}</span>
+            <span className="kind-count">{leaves.length}</span>
           </td>
+          <td className="col-src" />
+          <AggregateCells items={leaves} ctx={ctx} />
         </tr>,
       );
       if (!isCollapsed) {

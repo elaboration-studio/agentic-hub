@@ -610,9 +610,34 @@ tr.invalid .cap-name {
 .matrix-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
+}
+
+.matrix-search {
+  flex: 1;
+  min-width: 160px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.matrix-search::placeholder {
+  color: var(--muted);
+}
+
+/* Batch (group-level) toggle: ✓ all on, – mixed */
+.toggle.batch {
+  color: var(--accent);
+}
+
+.toggle.batch.mixed {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #1a1830;
 }
 
 .tree-controls {

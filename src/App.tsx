@@ -132,6 +132,20 @@ export function App() {
     [currentMap],
   );
 
+  const toggleMany = useCallback(
+    (tool: ToolId, itemIds: string[], value: boolean) => {
+      setDesired((d) => {
+        const next = { ...d };
+        for (const id of itemIds) {
+          const k = key(tool, id);
+          if (currentMap.has(k)) next[k] = value;
+        }
+        return next;
+      });
+    },
+    [currentMap],
+  );
+
   const resetDesired = useCallback(() => {
     if (data) setDesired(seedDesired(data.result));
   }, [data]);
@@ -220,6 +234,7 @@ export function App() {
                   adapterStatuses={data.result.adapterStatuses}
                   desired={desired}
                   onToggle={toggle}
+                  onToggleMany={toggleMany}
                 />
               </>
             ) : (
