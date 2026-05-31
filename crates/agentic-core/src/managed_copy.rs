@@ -154,7 +154,10 @@ pub fn remove_managed_copy(target: &Path, target_root: &Path) -> std::io::Result
     write_manifest(target_root, &manifest)
 }
 
-fn remove_existing(target: &Path) -> std::io::Result<()> {
+/// Remove whatever sits at `target` — symlink, file, or directory — ignoring a
+/// missing path. Used both for managed-copy refresh and for confirmed
+/// `foreign_file` take-overs in the applier.
+pub(crate) fn remove_existing(target: &Path) -> std::io::Result<()> {
     match std::fs::symlink_metadata(target) {
         Ok(m) if m.file_type().is_symlink() => std::fs::remove_file(target),
         Ok(m) if m.is_dir() => std::fs::remove_dir_all(target),

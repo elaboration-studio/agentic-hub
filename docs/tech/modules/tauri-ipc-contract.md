@@ -174,6 +174,7 @@ type PlanInput = {
   toolId: ToolId;
   itemIds: string[];             // all currently-scanned item ids
   desiredEnabledByItemId: Record<string, boolean>;
+  force?: boolean;               // default false; confirmed foreign_file take-over
 };
 
 type PlannedOperation = {
@@ -186,10 +187,13 @@ type PlannedOperation = {
       | 'sync_json_section' | 'clear_json_section'
       | 'skip_conflict';
   reason: string;
+  force: boolean;                // applier may delete a real file/dir at the target
 };
 ```
 
 The plan is computed against fresh disk state. The caller does not pass current state; the planner re-inspects internally.
+
+`force` is the confirmed destructive resolution of a `foreign_file` conflict (a real, user-owned file/dir blocking a tool target). When `false` (default), `(foreign_file, enable)` yields a `skip_conflict` and nothing is written — real files are never overwritten silently. When `true`, the planner emits a take-over (`replace_link` / `replace_managed_copy` with `force: true`), and the applier deletes the blocking file/dir before projecting. The UI sets `force: true` only after the user confirms the Apply-time warning dialog; the watcher and suite/workspace applies always pass `false`.
 
 ### `cmd_apply(operations: PlannedOperation[]) -> ApplyResult`
 

@@ -758,6 +758,85 @@ tr.invalid .cap-name {
   color: var(--warn);
 }
 
+/* Modal overlay + dialog (conflict take-over confirmation) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000000a8;
+  padding: 24px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 540px;
+  max-height: 80vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 18px 50px #00000070;
+}
+
+.modal-danger {
+  border-color: #5b2326;
+}
+
+.modal h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.modal-lead {
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
+.conflict-list {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conflict-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.conflict-where {
+  font-weight: 600;
+}
+
+.conflict-path {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-danger {
+  background: var(--danger);
+}
+
 /* Config page */
 .config-page {
   display: flex;

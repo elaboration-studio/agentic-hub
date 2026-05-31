@@ -222,6 +222,11 @@ pub struct PlannedOperation {
     pub source_path: Option<PathBuf>,
     pub kind: OperationKind,
     pub reason: String,
+    /// User-authorized destructive take-over: the applier may delete a real
+    /// (non-managed) file/dir at the target before projecting. Set only for a
+    /// confirmed `foreign_file` resolution; always `false` for normal ops.
+    #[serde(default)]
+    pub force: bool,
 }
 
 /// A per-operation failure. One failing op never aborts the rest.

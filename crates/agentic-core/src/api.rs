@@ -103,9 +103,10 @@ pub fn plan(
     settings: &Settings,
     tool: ToolId,
     desired_enabled: &HashMap<String, bool>,
+    force: bool,
 ) -> Vec<PlannedOperation> {
     let adapter = adapter_registry::resolve(settings, tool);
-    planner::build_plan(items, &adapter, desired_enabled)
+    planner::build_plan(items, &adapter, desired_enabled, force)
 }
 
 /// Apply a batch of operations with a no-op progress sink. The Tauri shell uses
@@ -210,7 +211,8 @@ pub fn apply_suite(
         .collect();
 
     let adapter = adapter_registry::resolve(settings, tool);
-    let ops = planner::build_plan(items, &adapter, &desired);
+    // Suite apply is a non-destructive full reset; never take over real files.
+    let ops = planner::build_plan(items, &adapter, &desired, false);
     let apply_result = applier::apply(&ops, |_, _, _, _| {});
     let _ = sync_rules(items, settings, tool, &desired);
     let _ = sync_hooks(items, settings, tool, &desired);
