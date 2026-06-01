@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.1.2] — 2026-06-02
+
+### Changed
+
+- **Signed and notarized macOS releases.** CI now signs the universal DMG with a
+  Developer ID Application certificate and notarizes it via App Store Connect, so
+  installs pass Gatekeeper without manual Privacy & Security approval.
+
 ## [0.1.1] — 2026-06-01
 
 ### Added
@@ -67,4 +75,5 @@ and OpenClaw from one window.
   Open. Signing and notarization are planned for a later release.
 - Windows and Linux bundles are not produced yet.
 
+[0.1.2]: https://github.com/elaboration-studio/agentic-hub/releases/tag/v0.1.2
 [0.1.0]: https://github.com/elaboration-studio/agentic-hub/releases/tag/v0.1.0
