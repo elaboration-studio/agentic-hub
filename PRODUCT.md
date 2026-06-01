@@ -8,6 +8,14 @@ Source:
 - Module specs: `e-studio-copilot/docs/tech/modules/{rule-projection-sync,claude-flat-skill-layout,openclaw-tool-adapter,suite-presets,workspace-patch,agentic-demo-scaffold}.md`
 - VS Code architecture doc: `e-studio-copilot/ARCHITECTURE.md`
 
+## Mission
+
+> Help people manage their agentic resources — skills, agents, and rules — the AI Era's most important building blocks for crafting an AI world of their own.
+
+This is the core mission, and every ship serves it. In the AI Era, agentic resources are the fundamental units of capability: the more cleanly a person can collect, organize, and project them across tools, the more freely they can shape AI to their own intent. Agentic Hub exists to make those building blocks first-class, safe to manage, and effortless to move — so the user, not the tooling, owns the AI world they build.
+
+Every feature in this document is a means to that end. If a feature does not help someone better manage, control, and craft with their agentic resources, it does not belong here.
+
 ## Overview
 
 Agentic Hub is a Tauri 2.x desktop app that lets a power user manage shared agentic capabilities — `skills`, `agents`, and `rules` — across multiple AI coding tools (Codex, Claude Code, Cursor, OpenClaw) from one place. It scans a single shared root (`~/.agentic` by default), shows what is enabled per tool, lets the user stage and apply safe filesystem projection changes, and supports named suites and per-project workspace patches for one-click scenario switching.
