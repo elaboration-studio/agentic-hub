@@ -3,6 +3,12 @@
 Notable changes per release. Newest first. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for how releases are built and published.
 
+## [Unreleased]
+
+- fix(manager): the per-row "⋯" actions menu now opens on click in the macOS
+  WebView — Radix opened it on `pointerdown` (unreliable in WKWebView), so the
+  trigger now suppresses that and toggles a controlled open state on click.
+
 ## [0.2.0] — 2026-06-03
 
 ### Highlights

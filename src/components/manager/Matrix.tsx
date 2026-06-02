@@ -4,7 +4,7 @@
 // A shared search box filters both views. Group rows (kinds in flat, folders in
 // tree) carry batch toggles that flip every capability beneath them per tool.
 
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Check, Minus, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -378,8 +378,16 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
         !!x.state && x.state.state === "enabled" && !!x.state.targetPath,
     );
 
+  // Controlled open: Radix opens the menu on `pointerdown`, which the macOS
+  // WebView delivers unreliably, so a mouse click never opened the menu. We
+  // suppress Radix's pointer-down toggle (preventDefault makes Radix's composed
+  // handler skip it) and toggle on `click` instead. The `detail !== 0` guard
+  // skips keyboard-synthesized clicks so Enter/Space still flow through Radix's
+  // own keydown handler (which calls `onOpenChange`).
+  const [open, setOpen] = useState(false);
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -391,6 +399,10 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
           className="ml-2 align-middle opacity-0 transition-opacity [.group:hover_&]:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
           title="More actions"
           aria-label="More actions"
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            if (e.detail !== 0) setOpen((v) => !v);
+          }}
         >
           <MoreHorizontal className="size-3.5" />
         </Button>

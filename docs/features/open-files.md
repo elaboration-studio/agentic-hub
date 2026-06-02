@@ -67,6 +67,14 @@ wraps `hover:`/`group-hover:` in `@media (hover: hover)`, which the macOS
 WebView does not match reliably, which previously left the menu permanently
 invisible.
 
+Opening the menu is **controlled**, not left to Radix's default trigger. Radix
+`DropdownMenuTrigger` toggles open on `pointerdown`, which the macOS WebView
+delivers unreliably, so a mouse click never opened the menu. The trigger now
+suppresses that pointer-down toggle (`onPointerDown` `preventDefault`, which
+makes Radix's composed handler skip it) and toggles a controlled `open` state on
+`click`. A `detail !== 0` guard ignores keyboard-synthesized clicks so Enter /
+Space still open the menu through Radix's own keydown handler via `onOpenChange`.
+
 ## Security
 
 `tauri-plugin-opener` is the official, scoped successor to the (forbidden)
