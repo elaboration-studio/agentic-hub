@@ -3,6 +3,10 @@
 Notable changes per release. Newest first. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for how releases are built and published.
 
+## [0.1.2] — 2026-06-02
+
+- macOS releases are now code-signed with a Developer ID Application certificate and notarized via App Store Connect, so the DMG installs without Gatekeeper "Privacy & Security" prompts.
+
 ## [0.1.1] — 2026-06-01
 
 - Empty-start scaffold: a first-run empty state bootstraps a bundled demo shared root (skills, agents, rules, hooks) in one click so a fresh install is usable immediately.
