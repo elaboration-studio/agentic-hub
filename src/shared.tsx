@@ -1,18 +1,13 @@
-// Shared UI primitives, constants, and helpers used across the manager and
-// config views. Keeps App.tsx and the panel modules thin.
+// Shared constants and pure helpers used across the manager, suites, config,
+// and workspace views. Presentational components live under components/.
 
-import type { ReactNode } from "react";
 import type {
-  AdapterStatus,
-  CapabilityItem,
   CapabilityKind,
   LinkState,
   Settings,
   SourceConfig,
-  ToolCapabilityState,
   ToolId,
 } from "./types";
-import type { DesiredMap } from "./ipc";
 
 export type Scope = "global" | "workspace";
 export type Route = "manager" | "suites" | "config";
@@ -99,54 +94,4 @@ export function resolveSourceIds(sources: SourceConfig[]): string[] {
     counts[base] = n;
     return n === 1 ? base : `${base}-${n}`;
   });
-}
-
-export function Banner(props: { tone: "danger" | "muted"; children: ReactNode }) {
-  return <div className={`banner banner-${props.tone}`}>{props.children}</div>;
-}
-
-// Per-tool toggle cells for one capability row. Shared by the flat and tree
-// renderers so toggle behaviour stays identical across views.
-export function ToolCells(props: {
-  item: CapabilityItem;
-  tools: ToolDef[];
-  adapterMap: Map<ToolId, AdapterStatus>;
-  currentMap: Map<string, ToolCapabilityState>;
-  desired: DesiredMap;
-  onToggle: (tool: ToolId, itemId: string) => void;
-}) {
-  const { item, tools, adapterMap, currentMap, desired, onToggle } = props;
-  return (
-    <>
-      {tools.map((t) => {
-        const adapter = adapterMap.get(t.id);
-        const k = key(t.id, item.id);
-        const cur = currentMap.get(k);
-        if ((adapter && !adapter.available) || !cur) {
-          return (
-            <td key={t.id} className="cell">
-              <span className="dash">—</span>
-            </td>
-          );
-        }
-        const on = desired[k] ?? false;
-        const modified = on !== (cur.state === "enabled");
-        const abnormal = ABNORMAL[cur.state];
-        return (
-          <td key={t.id} className="cell">
-            <button
-              className={`toggle${on ? " on" : ""}${modified ? " mod" : ""}${
-                abnormal ? " warn" : ""
-              }`}
-              title={`current: ${cur.state}${abnormal ? ` — ${abnormal}` : ""}`}
-              onClick={() => onToggle(t.id, item.id)}
-            >
-              {on ? "✓" : ""}
-              {abnormal && <span className="warn-dot" />}
-            </button>
-          </td>
-        );
-      })}
-    </>
-  );
 }

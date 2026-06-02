@@ -94,15 +94,22 @@ agentic-hub/
     agentic-hub/              Tauri bin crate: commands, window mgmt, capability files
 
   package.json                pnpm workspace
+  components.json             shadcn/ui config (New York, @/ aliases)
   src/                        React + Vite + TS UI
     main.tsx
-    App.tsx
-    panels/
-      CapabilityManager/      main window
-      SuiteManager/           suite manager window
+    App.tsx                   thin shell: layout + hash routing
+    index.css                 Tailwind v4 entry + design tokens (see DESIGN.md)
+    ipc.ts                    typed wrappers around Tauri invoke()
+    shared.tsx                shared constants + pure helpers
+    lib/                      cn() and UI utilities
+    state/                    Zustand stores (manager, suites, workspace)
     components/
-    ipc/                      typed wrappers around Tauri invoke()
-    state/                    Zustand stores
+      ui/                     shadcn/ui primitives
+      layout/                 Header, ActionBar
+      manager/                Matrix, ToolCells, EmptyState, ConflictDialog
+      config/                 ConfigPage
+      suites/                 SuitesPage
+      workspace/              WorkspacePanel
     types/                    TS types mirrored from agentic-core via codegen
 
   src-tauri/                  Tauri config + capability files
@@ -175,9 +182,15 @@ Boring default. Vite is fast in dev, React's component model fits the panel + in
 
 Rejected: SolidJS (smaller bundle but smaller ecosystem), Svelte (good fit but team familiarity lower), vanilla (more boilerplate, no upside).
 
+### Tailwind v4 + shadcn/ui for styling
+
+The UI is components-first: shadcn/ui primitives (`src/components/ui/`) composed into feature views, styled with Tailwind v4 utility classes over a CSS-variable token set. No hand-rolled buttons, inputs, modals, or menus. Tailwind v4 uses the `@tailwindcss/vite` plugin and a CSS-first config (a single `@import "tailwindcss";` in `src/index.css`, no `tailwind.config.js`). shadcn components are owned source under `src/components/ui/`, not a runtime dependency — we can edit them freely. Radix primitives (via the unified `radix-ui` package) back the interactive components. Design tokens and component conventions are the source of truth in [DESIGN.md](DESIGN.md); the app is dark-first (`class="dark"` on `<html>`).
+
+Rejected: a bespoke CSS file (the prior approach — drifted to ~1200 lines with no component contract), CSS-in-JS (runtime cost, no token story), a heavyweight component kit like MUI (opinionated theming fights a custom dark aesthetic, larger bundle).
+
 ### Zustand for state
 
-The data model is small and local. We do not need React Query (no server). Zustand keeps stores tiny and per-window. Suite Manager window and main window each have their own store. Cross-window state (e.g. "a suite was created in Suite Manager") flows through Tauri events.
+The data model is small and local. We do not need React Query (no server). Zustand keeps stores tiny and focused: `manager` owns the scan/inspect/stage/apply loop, `suites` owns suite CRUD + draft, `workspace` owns the workspace-patch flow. The thin `App.tsx` shell only wires layout, hash routing, and Tauri event listeners; views read the stores directly, so prop-drilling is minimal. Cross-store refresh (e.g. "a suite was created") flows through Tauri events. Action errors surface as Sonner toasts; the initial-load failure surfaces as a full-page alert.
 
 Rejected: Redux (too much ceremony), React Query (no HTTP), Jotai/Recoil (no benefit over Zustand at this scale).
 
@@ -212,6 +225,10 @@ User launches Agentic Hub
 ```
 
 This flow works because the scan, adapter resolution, and state inspection are all idempotent reads. Any of them can be re-run on refresh without state machine complexity.
+
+### Window lifecycle (close vs quit)
+
+Agentic Hub is a standalone background app. Closing the window (red traffic-light button or Cmd+W) does **not** quit — the shell intercepts `WindowEvent::CloseRequested`, hides the **application** (macOS `NSApp hide:` via `AppHandle::hide()`), and calls `prevent_close()`. The process stays alive, the source watcher keeps reconciling, and window state is preserved. Because the app is hidden (not just the window ordered out), **Cmd+Tab** and clicking the Dock icon both re-activate the app and restore the window the macOS-native way; `RunEvent::Reopen` additionally re-shows and focuses on Dock click. The only intended hard exit is **Cmd+Q**, which goes through the default Quit menu item and bypasses the close handler to terminate the process.
 
 ### Apply changes flow
 
