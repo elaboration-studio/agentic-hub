@@ -40,6 +40,10 @@ As a power user managing multiple AI tools, I want a single desktop window that 
 - Per-tool state inspection: `enabled` / `disabled` / `broken` / `stale` / `foreign_file` / `foreign_link`
 - Search by capability name or relative path
 - Kind filter: all / skills / agents / rules / hooks
+- Source filter (when more than one source is configured)
+- "Enabled only" filter: show capabilities enabled (checked) in at least one tool
+- Flat or tree view; the matrix opens in tree view by default
+- Filters and view (search, kind, source, enabled-only, flat/tree, collapsed folders) persist across Manager/Suites/Config and Global/Workspace switches for the session (held in a `managerFilters` store, not component state)
 - Stage enable/disable changes before apply
 - Safe apply semantics:
   - Create missing symlink

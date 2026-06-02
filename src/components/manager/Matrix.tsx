@@ -4,7 +4,7 @@
 // A shared search box filters both views. Group rows (kinds in flat, folders in
 // tree) carry batch toggles that flip every capability beneath them per tool.
 
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import { Check, Minus, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -16,12 +16,23 @@ import type {
   ToolId,
 } from "@/types";
 import { openPath, revealPath } from "@/ipc";
-import { key, KIND_LABEL, KIND_ORDER, messageOf, type ToolDef, type View } from "@/shared";
+import {
+  key,
+  KIND_LABEL,
+  KIND_ORDER,
+  messageOf,
+  type KindFilter,
+  type ToolDef,
+  type View,
+} from "@/shared";
 import { useManagerStore } from "@/state/manager";
+import { useManagerFiltersStore } from "@/state/managerFilters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -65,11 +76,19 @@ export function Matrix() {
   const onToggle = useManagerStore((s) => s.toggle);
   const onToggleMany = useManagerStore((s) => s.toggleMany);
 
-  const [view, setView] = useState<View>("flat");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState("");
-  const [source, setSource] = useState("");
-  const [kind, setKind] = useState<KindFilter>("all");
+  const view = useManagerFiltersStore((s) => s.view);
+  const setView = useManagerFiltersStore((s) => s.setView);
+  const collapsed = useManagerFiltersStore((s) => s.collapsed);
+  const setCollapsed = useManagerFiltersStore((s) => s.setCollapsed);
+  const toggleCollapsed = useManagerFiltersStore((s) => s.toggleCollapsed);
+  const query = useManagerFiltersStore((s) => s.query);
+  const setQuery = useManagerFiltersStore((s) => s.setQuery);
+  const source = useManagerFiltersStore((s) => s.source);
+  const setSource = useManagerFiltersStore((s) => s.setSource);
+  const kind = useManagerFiltersStore((s) => s.kind);
+  const setKind = useManagerFiltersStore((s) => s.setKind);
+  const enabledOnly = useManagerFiltersStore((s) => s.enabledOnly);
+  const setEnabledOnly = useManagerFiltersStore((s) => s.setEnabledOnly);
 
   const items = data?.items ?? [];
   const adapterStatuses = data?.result.adapterStatuses ?? [];
@@ -86,9 +105,25 @@ export function Matrix() {
     return [...seen].map(([id, label]) => ({ id, label }));
   }, [items]);
 
+  // Item ids enabled (checked) in at least one tool — drives the "enabled only"
+  // filter. Keyed on `desired` so unapplied toggles count too.
+  const enabledItemIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const it of items) {
+      for (const t of tools) {
+        const k = key(t.id, it.id);
+        if (currentMap.has(k) && desired[k]) {
+          ids.add(it.id);
+          break;
+        }
+      }
+    }
+    return ids;
+  }, [items, tools, currentMap, desired]);
+
   const filtered = useMemo(
-    () => filterItems(items, query, source, kind),
-    [items, query, source, kind],
+    () => filterItems(items, query, source, kind, enabledOnly, enabledItemIds),
+    [items, query, source, kind, enabledOnly, enabledItemIds],
   );
   const root = useMemo(() => buildTree(filtered), [filtered]);
   const folderPaths = useMemo(() => collectFolderPaths(root), [root]);
@@ -158,6 +193,13 @@ export function Matrix() {
             </SelectContent>
           </Select>
         )}
+        <Label className="flex shrink-0 cursor-pointer items-center gap-2 text-muted-foreground">
+          <Checkbox
+            checked={enabledOnly}
+            onCheckedChange={(v) => setEnabledOnly(v === true)}
+          />
+          Enabled only
+        </Label>
         {view === "tree" && (
           <div className="flex gap-2">
             <Button variant="ghost" size="sm" onClick={() => setCollapsed(new Set())}>
@@ -203,13 +245,12 @@ export function Matrix() {
             <TableBody>
               {view === "flat"
                 ? renderFlat(filtered, ctx)
-                : renderNodes([...root.children.values()], 0, ctx, effectiveCollapsed, (path) =>
-                    setCollapsed((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(path)) next.delete(path);
-                      else next.add(path);
-                      return next;
-                    }),
+                : renderNodes(
+                    [...root.children.values()],
+                    0,
+                    ctx,
+                    effectiveCollapsed,
+                    toggleCollapsed,
                   )}
             </TableBody>
           </Table>
@@ -229,17 +270,18 @@ interface BodyContext {
   settings: Settings;
 }
 
-type KindFilter = "all" | CapabilityKind;
-
 function filterItems(
   items: CapabilityItem[],
   query: string,
   source: string,
   kind: KindFilter,
+  enabledOnly: boolean,
+  enabledItemIds: ReadonlySet<string>,
 ): CapabilityItem[] {
   const q = query.trim().toLowerCase();
-  if (!q && !source && kind === "all") return items;
+  if (!q && !source && kind === "all" && !enabledOnly) return items;
   return items.filter((it) => {
+    if (enabledOnly && !enabledItemIds.has(it.id)) return false;
     if (kind !== "all" && it.kind !== kind) return false;
     if (source && it.sourceId !== source) return false;
     if (!q) return true;
@@ -342,7 +384,11 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
         <Button
           variant="ghost"
           size="icon-xs"
-          className="ml-2 align-middle opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+          // Reveal on row hover via an ungated selector: Tailwind v4 wraps
+          // `group-hover:` in `@media (hover: hover)`, which the Tauri macOS
+          // WebView does not match reliably, leaving the trigger stuck at
+          // opacity-0. `focus-visible` keeps it reachable by keyboard.
+          className="ml-2 align-middle opacity-0 transition-opacity [.group:hover_&]:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
           title="More actions"
           aria-label="More actions"
         >

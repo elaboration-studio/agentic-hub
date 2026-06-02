@@ -60,6 +60,13 @@ The preferred editor is stored as `Settings.editor` (`EditorPref { kind,
 customApp }`) and mapped to an opener `openWith` app name via
 `EditorPref::app_name()` (mirrored in the UI for the `openWith` argument).
 
+The `⋯` trigger is hidden (`opacity-0`) and revealed on row hover. Reveal uses
+an ungated arbitrary variant (`[.group:hover_&]:opacity-100`) plus
+`focus-visible:opacity-100`, not Tailwind's `group-hover:` utility: Tailwind v4
+wraps `hover:`/`group-hover:` in `@media (hover: hover)`, which the macOS
+WebView does not match reliably, which previously left the menu permanently
+invisible.
+
 ## Security
 
 `tauri-plugin-opener` is the official, scoped successor to the (forbidden)

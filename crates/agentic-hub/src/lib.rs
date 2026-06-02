@@ -9,6 +9,7 @@ mod error;
 mod watcher;
 
 use agentic_core::settings::Settings;
+use tauri::webview::PageLoadEvent;
 use tauri::{Manager, RunEvent, WindowEvent};
 use watcher::WatcherState;
 
@@ -19,6 +20,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(WatcherState::default())
+        // The main window starts hidden (tauri.conf.json `visible: false`) to
+        // avoid a white paint flash before the WebView renders. Show it only
+        // once the page has finished loading.
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main" && payload.event() == PageLoadEvent::Finished {
+                let _ = webview.window().show();
+            }
+        })
         .setup(|app| {
             // Start the source watcher on launch when enabled in settings.
             let enabled = Settings::load().map(|s| s.watcher_enabled).unwrap_or(true);

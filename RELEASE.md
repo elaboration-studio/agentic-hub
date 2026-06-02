@@ -3,6 +3,12 @@
 Notable changes per release. Newest first. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for how releases are built and published.
 
+## [Unreleased]
+
+- Manager panel UX: capability filters (search, type, source, flat/tree view, collapsed folders) now persist across Manager/Suites/Config and Global/Workspace switches instead of resetting; the matrix defaults to tree view; and a new "Enabled only" filter narrows the list to capabilities enabled in at least one tool.
+- Fixed the per-row "..." actions menu disappearing in the desktop WebView: Tailwind v4 gates `group-hover` behind `@media (hover: hover)`, which the macOS WebView did not match, so the trigger is now revealed with an ungated hover selector plus keyboard focus.
+- Reduced the white background flash on first launch: the window starts hidden with a dark native background and is shown only once the WebView finishes loading.
+
 ## [0.1.2] — 2026-06-02
 
 - macOS releases are now code-signed with a Developer ID Application certificate and notarized via App Store Connect, so the DMG installs without Gatekeeper "Privacy & Security" prompts.
