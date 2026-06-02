@@ -384,11 +384,8 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
         <Button
           variant="ghost"
           size="icon-xs"
-          // Reveal on row hover via an ungated selector: Tailwind v4 wraps
-          // `group-hover:` in `@media (hover: hover)`, which the Tauri macOS
-          // WebView does not match reliably, leaving the trigger stuck at
-          // opacity-0. `focus-visible` keeps it reachable by keyboard.
-          className="ml-2 align-middle opacity-0 transition-opacity [.group:hover_&]:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+          // Hidden until the row is hovered or the trigger is focused.
+          className="ml-2 align-middle opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
           title="More actions"
           aria-label="More actions"
         >

@@ -60,12 +60,20 @@ The preferred editor is stored as `Settings.editor` (`EditorPref { kind,
 customApp }`) and mapped to an opener `openWith` app name via
 `EditorPref::app_name()` (mirrored in the UI for the `openWith` argument).
 
-The `⋯` trigger is hidden (`opacity-0`) and revealed on row hover. Reveal uses
-an ungated arbitrary variant (`[.group:hover_&]:opacity-100`) plus
-`focus-visible:opacity-100`, not Tailwind's `group-hover:` utility: Tailwind v4
-wraps `hover:`/`group-hover:` in `@media (hover: hover)`, which the macOS
-WebView does not match reliably, which previously left the menu permanently
-invisible.
+The `⋯` trigger is hidden (`opacity-0`) and revealed on row hover or keyboard
+focus via standard `group-hover:` / `focus-visible:` utilities.
+
+The menu uses the standard Radix `DropdownMenu` (Popper-positioned content in a
+portal). One non-obvious requirement: the trigger `Button` **must** use
+`React.forwardRef`. The shadcn `Button` ships as a React-19-style plain function
+component (ref-as-prop), but this project runs React 18, where refs are not
+passed to function components. With `DropdownMenuTrigger asChild`, Radix's `Slot`
+forwards a ref to measure the trigger as the Popper anchor; without it
+floating-ui has no reference element, never reaches `isPositioned`, and leaves
+the content at its off-screen placeholder (`transform: translate(0, -200%)`) —
+so the menu opens in the DOM but is invisible. `Button` therefore wraps its
+implementation in `forwardRef`. The same applies to any future primitive used as
+a Radix `asChild` anchor under React 18.
 
 ## Security
 
