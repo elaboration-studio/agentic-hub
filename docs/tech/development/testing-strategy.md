@@ -2,13 +2,39 @@
 
 Status: Active
 Mode: Detailed
-Last Updated: 2026-05-20
+Last Updated: 2026-06-02
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md)
 Related Docs: [docs/tech/development/getting-started.md](./getting-started.md)
 
 ## Purpose
 
 Define how Agentic Hub is tested across Rust core, Tauri shell, React UI, and end-to-end flows. The goal: every projection-layer change is covered by at least one test that exercises a real filesystem, and every IPC command is covered by at least one cross-layer test.
+
+## TDD is the default for the Rust core
+
+`agentic-core` is developed **test-first**. The core owns every filesystem mutation, so its behavior must be pinned by a test before it exists.
+
+**Red → Green → Refactor**
+
+1. **Red** — write the smallest failing test describing the next behavior. Run it; confirm it fails for the right reason.
+2. **Green** — write the minimum code to pass. Run `cargo test --workspace`; everything passes.
+3. **Refactor** — clean up production and test code while staying green.
+
+**Bug fixes use the prove-it pattern**: write a test that reproduces the bug (it fails against current code), then fix until it passes. A passing reproduction test is the definition of done — "seems fixed" is not.
+
+**Where TDD applies**
+
+- **Always** — `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync`, `hook_sync`, `suite_store`, `workspace_patch`, `workspace_target_store`, `scaffold`, `reconcile`, `settings`, `paths`, `managed_copy`, `open_targets`: all pure logic and tempfile-backed services with defined inputs → outputs.
+- **Exempt** — the `#[tauri::command]` wrappers in `agentic-hub` are marshalling-only (payload in, `agentic-core` call, error map out). Keep logic out of them so it stays unit-testable in the core. They are covered by integration tests (below), not unit TDD.
+
+**Enforced bar.** Every change keeps these green — they are wired into `[workspace.lints]`, so `cargo build`/`cargo test` fail on violations, not just CI:
+
+```bash
+cargo test --workspace
+cargo clippy --all-targets --all-features --locked -- -D warnings
+```
+
+Follow the `rust-best-practices` skill (borrowing over cloning, `Result` over panic, no redundant clones, idiomatic lifetimes).
 
 ## Test pyramid
 
@@ -29,9 +55,9 @@ Define how Agentic Hub is tested across Rust core, Tauri shell, React UI, and en
 
 ## Test layers
 
-### 1. Rust unit tests (`crates/agentic-core/src/**/tests.rs`)
+### 1. Rust unit tests (inline `#[cfg(test)] mod tests` per module)
 
-In-process tests for pure functions and tempfile-backed services.
+In-process tests for pure functions and tempfile-backed services. Each `agentic-core` module carries its own `#[cfg(test)] mod tests` block at the bottom of the file (colocated with the code under test), backed by `tempfile` tempdirs. As of this writing the core has 86 such tests across 17 modules.
 
 Coverage targets:
 - `scanner`: validation rules, nested categories, symlink resolution, cycle detection
@@ -45,9 +71,8 @@ Coverage targets:
 - `scaffold`: merge mode, overwrite mode, file-target guard
 
 Tools:
-- `tempfile` crate for tempdir fixtures
-- `pretty_assertions` for human-readable diffs
-- `rstest` for parameterized cases
+- `tempfile` crate for tempdir fixtures (the only test dependency today)
+- `pretty_assertions` (human-readable diffs) and `rstest` (parameterized cases) are optional adds — pull them in when a module's assertions or case matrix justify it
 
 Example pattern:
 
@@ -87,7 +112,9 @@ Tools:
 
 Run: `pnpm test`
 
-### 3. Integration tests (`tests/integration/*.rs`)
+### 3. Integration tests (`tests/integration/*.rs`) — planned
+
+> Status: not yet implemented. The contract below is the target; build it test-first when the IPC surface stabilizes.
 
 Cross-crate tests that exercise IPC handlers end-to-end against a tempdir filesystem.
 
@@ -129,7 +156,9 @@ Tools:
 
 ## Filesystem fixtures
 
-Common fixtures live in `crates/agentic-core/src/test_support/`:
+> Status: planned. Today each module builds its tempdir fixtures inline with small per-file helpers. Extract the shared builders below once duplication across modules justifies it.
+
+Common fixtures will live in `crates/agentic-core/src/test_support/`:
 
 ```rust
 pub struct SharedRootBuilder { /* ... */ }

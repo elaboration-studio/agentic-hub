@@ -12,7 +12,7 @@ use crate::error::{CoreError, Result};
 
 /// The bundled demo tree, embedded from `resources/agentic-demo/` at the repo
 /// root (relative to this crate's manifest).
-static DEMO: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../resources/agentic-demo");
+static DEMO: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../resources/agentic-demo");
 
 /// How an existing file at a scaffold target is handled.
 #[cfg_attr(
@@ -66,7 +66,7 @@ pub fn scaffold_demo(dest_root: &Path, mode: ScaffoldMode) -> Result<ScaffoldRes
         ..Default::default()
     };
 
-    let mut files: Vec<&include_dir::File> = Vec::new();
+    let mut files: Vec<&include_dir::File<'_>> = Vec::new();
     collect_files(&DEMO, &mut files);
 
     for file in files {

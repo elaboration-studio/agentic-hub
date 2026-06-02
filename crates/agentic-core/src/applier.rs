@@ -212,11 +212,7 @@ mod tests {
 
         let mut progress = 0;
         let res = apply(
-            &[op(
-                OperationKind::CreateLink,
-                target.clone(),
-                Some(source.clone()),
-            )],
+            &[op(OperationKind::CreateLink, target.clone(), Some(source))],
             |_, _, _, _| progress += 1,
         );
         assert_eq!(res.created, 1);
@@ -243,7 +239,7 @@ mod tests {
             &[op(
                 OperationKind::CreateManagedCopy,
                 target.clone(),
-                Some(source.clone()),
+                Some(source),
             )],
             |_, _, _, _| {},
         );
@@ -276,7 +272,11 @@ mod tests {
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::write(&target, "user owned").unwrap();
 
-        let mut forced = op(OperationKind::ReplaceLink, target.clone(), Some(source.clone()));
+        let mut forced = op(
+            OperationKind::ReplaceLink,
+            target.clone(),
+            Some(source.clone()),
+        );
         forced.force = true;
         let res = apply(&[forced], |_, _, _, _| {});
         assert_eq!(res.replaced, 1);
@@ -286,7 +286,7 @@ mod tests {
         // Real directory at the target is also taken over.
         let target_dir = dir.path().join("out/bar");
         fs::create_dir_all(target_dir.join("nested")).unwrap();
-        let mut forced_dir = op(OperationKind::ReplaceLink, target_dir.clone(), Some(source.clone()));
+        let mut forced_dir = op(OperationKind::ReplaceLink, target_dir.clone(), Some(source));
         forced_dir.force = true;
         let res = apply(&[forced_dir], |_, _, _, _| {});
         assert_eq!(res.replaced, 1);
@@ -325,7 +325,11 @@ mod tests {
         // Real user dir at the target.
         fs::create_dir_all(target.join("mine")).unwrap();
 
-        let mut forced = op(OperationKind::ReplaceManagedCopy, target.clone(), Some(source));
+        let mut forced = op(
+            OperationKind::ReplaceManagedCopy,
+            target.clone(),
+            Some(source),
+        );
         forced.target_root = root.clone();
         forced.force = true;
         let res = apply(&[forced], |_, _, _, _| {});

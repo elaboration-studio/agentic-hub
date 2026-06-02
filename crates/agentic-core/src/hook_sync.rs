@@ -628,7 +628,7 @@ mod tests {
 
         // Inspect: enabled (file hash matches the written marker).
         let mut manifests = HashMap::new();
-        manifests.insert(item.id.clone(), m.clone());
+        manifests.insert(item.id.clone(), m);
         let states = inspect_hooks(std::slice::from_ref(&item), &manifests, &adapter);
         assert_eq!(states[0].state, LinkState::Enabled);
 

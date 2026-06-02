@@ -239,7 +239,7 @@ mod tests {
         other_source.source_id = "team".into();
         let items = vec![
             item(CapabilityKind::Skill, "dev/a", "/s/dev/a".into()),
-            other_source.clone(),
+            other_source,
         ];
         let states = vec![
             state("skill:dev/a", LinkState::Enabled),
@@ -298,7 +298,10 @@ mod tests {
         );
 
         // Edit the source: the managed copy is now stale.
-        write(&root.path().join("skills/keep/SKILL.md"), "# keep v2 edited");
+        write(
+            &root.path().join("skills/keep/SKILL.md"),
+            "# keep v2 edited",
+        );
         let scanned = api::scan(&settings);
         assert_eq!(
             state_of(&scanned.items, &settings, ToolId::Claude, "skill:keep"),

@@ -11,3 +11,19 @@ rust-version = "1.78"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+
+# Shared lint policy — enforces the rust-best-practices bar at build time so the
+# `clippy --all-targets -D warnings` standard stays green by default, not by
+# convention. `pedantic`/`nursery` are intentionally left off (they surface
+# ~147 stylistic warnings that are out of scope for the current code).
+# Each crate opts in via `[lints] workspace = true`.
+[workspace.lints.rust]
+unsafe_code = "deny"
+future_incompatible = { level = "warn", priority = -1 }
+nonstandard_style = { level = "deny", priority = -1 }
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+redundant_clone = "deny"
+needless_collect = "deny"

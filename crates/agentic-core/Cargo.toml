@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 # Enable `ts-rs` derives + export tests. Off by default so production builds
 # never pull `ts-rs`. Run: `cargo test -p agentic-core --features ts-export`.

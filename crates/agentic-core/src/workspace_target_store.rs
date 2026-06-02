@@ -81,7 +81,7 @@ impl WorkspaceTargetStore {
             .find(|t| t.dir == canonical)
         {
             Some(existing) => {
-                existing.last_used_at = now.clone();
+                existing.last_used_at = now;
                 existing.label = label;
                 existing.id.clone()
             }
@@ -91,7 +91,7 @@ impl WorkspaceTargetStore {
                     id: id.clone(),
                     label,
                     dir: canonical.clone(),
-                    last_used_at: now.clone(),
+                    last_used_at: now,
                     last_applied: Vec::new(),
                 });
                 id
@@ -218,7 +218,9 @@ mod tests {
         let t = store.add(ws.path()).unwrap();
 
         store.record_apply(&t.id, ToolId::Codex, "suite-a").unwrap();
-        store.record_apply(&t.id, ToolId::Claude, "suite-b").unwrap();
+        store
+            .record_apply(&t.id, ToolId::Claude, "suite-b")
+            .unwrap();
         // Re-applying the same tool replaces, never duplicates.
         store.record_apply(&t.id, ToolId::Codex, "suite-c").unwrap();
 

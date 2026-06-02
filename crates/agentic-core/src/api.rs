@@ -293,7 +293,7 @@ mod tests {
         // Now apply a suite with only `keep`: full reset disables `drop`.
         let only_keep = SuiteDefinition {
             capabilities: vec!["skill:keep".into(), "skill:gone".into()],
-            ..both.clone()
+            ..both
         };
         let result = apply_suite(&scanned.items, &settings, ToolId::Codex, &only_keep);
         assert_eq!(result.skipped_stale, 1, "skill:gone not in scan");

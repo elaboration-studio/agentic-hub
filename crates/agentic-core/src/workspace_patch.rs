@@ -429,17 +429,12 @@ mod tests {
         fs::write(&rule, "> rule").unwrap();
 
         let items = vec![
-            item(
-                CapabilityKind::Skill,
-                "skill:dev/tdd",
-                "dev/tdd",
-                skill_dir.clone(),
-            ),
+            item(CapabilityKind::Skill, "skill:dev/tdd", "dev/tdd", skill_dir),
             item(
                 CapabilityKind::Rule,
                 "rule:precise.mdc",
                 "precise.mdc",
-                rule.clone(),
+                rule,
             ),
         ];
         let manifests = HashMap::new();

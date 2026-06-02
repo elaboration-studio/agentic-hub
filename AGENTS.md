@@ -60,7 +60,7 @@ See [docs/tech/development/getting-started.md](docs/tech/development/getting-sta
 
 ## Code style
 
-- Rust: strict `clippy`, `cargo fmt`, no `unwrap()` outside tests, errors via `thiserror` enums
+- Rust: **TDD is the default** for the core — write the failing test first (see [docs/tech/development/testing-strategy.md](docs/tech/development/testing-strategy.md)). Strict `clippy`, `cargo fmt`, no `unwrap()`/`expect()`/`panic!` outside tests (the Tauri `run()` entrypoint is the sole exception), errors via `thiserror` enums. Follow the `rust-best-practices` skill. The lint bar is enforced by `[workspace.lints]` in `Cargo.toml`, not by convention.
 - TS: strict `tsconfig`, no `any`, types mirrored from Rust via `ts-rs` (never hand-edited)
 - File size cap: 600 lines per source file (Arno workspace convention)
 - Comments explain non-obvious intent; never narrate what the code does
@@ -70,9 +70,10 @@ See [docs/tech/development/getting-started.md](docs/tech/development/getting-sta
 1. Identify the right module (use `docs/README.md` "how to read this" guide)
 2. Read the matching `docs/tech/modules/*.md` before touching code
 3. Touch the Rust core first if the change is FS-related; touch UI only after the IPC contract is stable
-4. Regenerate TS types if Rust shared types changed
-5. Add tests at the right layer (see [docs/tech/development/testing-strategy.md](docs/tech/development/testing-strategy.md))
-6. Update the matching `docs/` if behavior or contract changes
+4. For core logic, **start with a failing test** (Red → Green → Refactor); for bug fixes, write the reproducing test before the fix
+5. Regenerate TS types if Rust shared types changed
+6. Run `cargo test --workspace` and `cargo clippy --all-targets --all-features --locked -- -D warnings` — both must stay green
+7. Update the matching `docs/` if behavior or contract changes
 
 ## Hard rules
 
@@ -82,6 +83,7 @@ See [docs/tech/development/getting-started.md](docs/tech/development/getting-sta
 - `tauri-plugin-shell` is never added to `Cargo.toml`. If a feature seems to need it, raise security review first.
 - Every IPC command must appear in `src-tauri/capabilities/default.json`.
 - Every path parameter is canonicalized via the central validator before any FS op.
+- New `agentic-core` behavior lands test-first (Red → Green → Refactor). The thin `#[tauri::command]` wrappers in `agentic-hub` are marshalling-only and exempt — keep logic in `agentic-core` where it can be unit-tested. Never weaken `[workspace.lints]` or `#[allow]` a lint to land code; fix the cause or use a documented local `#[expect(...)]`.
 
 ## Migration from VS Code extension
 
