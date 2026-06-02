@@ -606,4 +606,189 @@ mod tests {
         assert_eq!(creates, 1, "one wins the flat target");
         assert_eq!(skips, 1, "the other is a skip_conflict");
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn disable_enabled_link_emits_remove_link() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/foo.md");
+        write(&source, "agent");
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
+        let target = adapter.target_path_for(&agent).unwrap();
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        symlink(&source, &target).unwrap();
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), false);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops.len(), 1);
+        assert_eq!(ops[0].kind, OperationKind::RemoveLink);
+        assert!(ops[0].source_path.is_none());
+    }
+
+    #[test]
+    fn disable_enabled_managed_copy_emits_remove_managed_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/agent.md");
+        write(&source, "agent v1");
+        let agents_dir = dir.path().join("cursor-agents");
+        let adapter = adapter_with(ToolId::Cursor, |s| {
+            s.tools.cursor.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "agent.md", source.clone());
+        let target = adapter.target_path_for(&agent).unwrap();
+        managed_copy::write_managed_copy(&source, &target, &agents_dir, &agent.id, false).unwrap();
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), false);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops.len(), 1);
+        assert_eq!(ops[0].kind, OperationKind::RemoveManagedCopy);
+        assert!(ops[0].source_path.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn broken_link_repairs_with_replace_or_removes() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/foo.md");
+        write(&source, "agent");
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
+        let target = adapter.target_path_for(&agent).unwrap();
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        symlink(&source, &target).unwrap();
+        // Source vanishes: the symlink now dangles -> Broken.
+        fs::remove_file(&source).unwrap();
+        assert_eq!(inspect_symlink(&agent, &target).0, LinkState::Broken);
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::ReplaceLink);
+        assert_eq!(ops[0].source_path.as_ref(), Some(&source));
+
+        desired.insert(agent.id.clone(), false);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::RemoveLink);
+        assert!(ops[0].source_path.is_none());
+    }
+
+    #[test]
+    fn stale_managed_copy_refreshes_or_removes() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/agent.md");
+        write(&source, "v1");
+        let agents_dir = dir.path().join("cursor-agents");
+        let adapter = adapter_with(ToolId::Cursor, |s| {
+            s.tools.cursor.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "agent.md", source.clone());
+        let target = adapter.target_path_for(&agent).unwrap();
+        managed_copy::write_managed_copy(&source, &target, &agents_dir, &agent.id, false).unwrap();
+        // Edit the copy so it drifts from the recorded hash -> Stale.
+        write(&target, "v2 edited");
+        assert_eq!(
+            inspect_managed_copy(&agent, &target, &agents_dir).0,
+            LinkState::Stale
+        );
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::ReplaceManagedCopy);
+        assert_eq!(ops[0].source_path.as_ref(), Some(&source));
+
+        desired.insert(agent.id.clone(), false);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::RemoveManagedCopy);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn foreign_link_replaces_on_enable_skips_on_disable() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/foo.md");
+        write(&source, "agent");
+        let other = dir.path().join("src/other.md");
+        write(&other, "other");
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
+        let target = adapter.target_path_for(&agent).unwrap();
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        symlink(&other, &target).unwrap();
+        assert_eq!(inspect_symlink(&agent, &target).0, LinkState::ForeignLink);
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::ReplaceLink);
+        assert_eq!(ops[0].source_path.as_ref(), Some(&source));
+
+        desired.insert(agent.id.clone(), false);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::SkipConflict);
+        assert!(ops[0].source_path.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn managed_copy_legacy_symlink_is_stale_or_foreign() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/agent.md");
+        write(&source, "v1");
+        let root = dir.path().join("cursor-agents");
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("agent.md");
+        let it = item(CapabilityKind::Agent, "agent.md", source.clone());
+
+        // A legacy symlink pointing at the right source: refresh into a copy.
+        symlink(&source, &target).unwrap();
+        assert_eq!(
+            inspect_managed_copy(&it, &target, &root).0,
+            LinkState::Stale
+        );
+
+        // Pointing elsewhere: owned by another source.
+        fs::remove_file(&target).unwrap();
+        let other = dir.path().join("src/other.md");
+        write(&other, "other");
+        symlink(&other, &target).unwrap();
+        assert_eq!(
+            inspect_managed_copy(&it, &target, &root).0,
+            LinkState::ForeignLink
+        );
+    }
+
+    #[test]
+    fn managed_copy_missing_skill_md_is_broken() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/skill");
+        fs::create_dir_all(&source).unwrap();
+        write(&source.join("SKILL.md"), "# s");
+        let root = dir.path().join("claude-skills");
+        let target = root.join("skill");
+        let it = item(CapabilityKind::Skill, "skill", source.clone());
+        managed_copy::write_managed_copy(&source, &target, &root, &it.id, false).unwrap();
+        // The copy's SKILL.md disappears: expected content is gone -> Broken.
+        fs::remove_file(target.join("SKILL.md")).unwrap();
+        assert_eq!(
+            inspect_managed_copy(&it, &target, &root).0,
+            LinkState::Broken
+        );
+    }
 }

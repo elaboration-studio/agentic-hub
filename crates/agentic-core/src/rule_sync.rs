@@ -199,7 +199,23 @@ fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use crate::model::CapabilityKind;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn rule_item(rel: &str, source: PathBuf) -> CapabilityItem {
+        CapabilityItem {
+            id: format!("rule:{rel}"),
+            kind: CapabilityKind::Rule,
+            name: rel.to_string(),
+            source_path: source,
+            relative_path: PathBuf::from(rel),
+            source_id: "arno".into(),
+            source_label: "Arno".into(),
+            valid: true,
+            validation_errors: vec![],
+        }
+    }
 
     fn block(rules: &[&str]) -> String {
         let mut s = String::from("# Instructions\n\nsome user content\n\n");
@@ -245,5 +261,173 @@ mod tests {
             Path::new("frontend/components.md")
         ));
         assert!(!block_lists_rule(&inner, Path::new("general/missing.mdc")));
+    }
+
+    // ---- strip_frontmatter --------------------------------------------------
+
+    #[test]
+    fn strip_frontmatter_handles_all_shapes() {
+        // Well-formed frontmatter: only the body survives.
+        assert_eq!(
+            strip_frontmatter("---\nname: x\n---\n\nbody line\n"),
+            "body line"
+        );
+        // BOM + leading whitespace before the opening marker is tolerated.
+        assert_eq!(
+            strip_frontmatter("\u{feff}\n---\nk: v\n---\nbody\n"),
+            "body"
+        );
+        // No frontmatter: the whole (trimmed) content is the body.
+        assert_eq!(strip_frontmatter("just a body\n\n"), "just a body");
+        // Unclosed frontmatter: treated as a plain body, kept verbatim (trimmed).
+        assert_eq!(
+            strip_frontmatter("---\nname: x\nstill open"),
+            "---\nname: x\nstill open"
+        );
+    }
+
+    // ---- build_managed_block ------------------------------------------------
+
+    #[test]
+    fn build_managed_block_emits_heading_source_and_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("rules/general/precise.mdc");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "---\nname: precise\n---\n\nbe precise").unwrap();
+        let rule = rule_item("general/precise.mdc", source);
+
+        let out = build_managed_block(&[&rule]);
+        assert!(out.starts_with(BLOCK_START));
+        assert!(out.ends_with(BLOCK_END));
+        assert!(out.contains("### general/precise.mdc"));
+        assert!(out.contains("Source: `"));
+        assert!(out.contains("be precise"), "frontmatter stripped from body");
+        assert!(!out.contains("name: precise"), "frontmatter not emitted");
+    }
+
+    #[test]
+    fn build_managed_block_missing_source_yields_empty_body() {
+        let rule = rule_item("gone.mdc", PathBuf::from("/no/such/file.mdc"));
+        let out = build_managed_block(&[&rule]);
+        assert!(out.contains("### gone.mdc"));
+        // No panic, and no body text beyond the heading + source line.
+        assert!(out.contains(BLOCK_END));
+    }
+
+    // ---- sync_markdown_rules (write half) ----------------------------------
+
+    fn instr(dir: &Path) -> PathBuf {
+        dir.join("AGENTS.md")
+    }
+
+    #[test]
+    fn sync_creates_file_when_absent_with_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("r.mdc");
+        fs::write(&src, "rule body").unwrap();
+        let rule = rule_item("r.mdc", src);
+        let path = instr(dir.path());
+
+        let outcome = sync_markdown_rules(&path, &[&rule]).unwrap();
+        assert_eq!(outcome, RuleSyncOutcome::Wrote);
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains(BLOCK_START));
+        assert!(written.contains("### r.mdc"));
+        assert!(written.contains("rule body"));
+    }
+
+    #[test]
+    fn sync_absent_file_with_no_rules_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = instr(dir.path());
+        let outcome = sync_markdown_rules(&path, &[]).unwrap();
+        assert_eq!(outcome, RuleSyncOutcome::NoOp);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn sync_appends_block_preserving_prior_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = instr(dir.path());
+        fs::write(&path, "# My Agents\n\nhand-written guidance\n").unwrap();
+        let src = dir.path().join("r.mdc");
+        fs::write(&src, "rule body").unwrap();
+        let rule = rule_item("r.mdc", src);
+
+        let outcome = sync_markdown_rules(&path, &[&rule]).unwrap();
+        assert_eq!(outcome, RuleSyncOutcome::Wrote);
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(
+            written.contains("hand-written guidance"),
+            "prior content kept"
+        );
+        assert!(written.contains(BLOCK_START));
+        assert!(written.contains("### r.mdc"));
+    }
+
+    #[test]
+    fn sync_rebuilds_present_block_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = instr(dir.path());
+        // Seed a file that already has a managed block listing an old rule.
+        fs::write(&path, block(&["old.mdc"])).unwrap();
+        let src = dir.path().join("new.mdc");
+        fs::write(&src, "new body").unwrap();
+        let rule = rule_item("new.mdc", src);
+
+        let outcome = sync_markdown_rules(&path, &[&rule]).unwrap();
+        assert_eq!(outcome, RuleSyncOutcome::Wrote);
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains("# Instructions"), "surrounding text kept");
+        assert!(written.contains("### new.mdc"));
+        assert!(!written.contains("### old.mdc"), "old rule replaced");
+        assert_eq!(written.matches(BLOCK_START).count(), 1, "single block");
+    }
+
+    #[test]
+    fn sync_empty_rules_removes_hooks_only_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = instr(dir.path());
+        let only_block = format!("{BLOCK_START}\n### r.mdc\n\nbody\n{BLOCK_END}\n");
+        fs::write(&path, only_block).unwrap();
+
+        let outcome = sync_markdown_rules(&path, &[]).unwrap();
+        assert_eq!(outcome, RuleSyncOutcome::Removed);
+        assert!(!path.exists(), "file deleted once nothing remains");
+    }
+
+    #[test]
+    fn sync_empty_rules_strips_block_but_keeps_surrounding() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = instr(dir.path());
+        fs::write(&path, block(&["r.mdc"])).unwrap();
+
+        let outcome = sync_markdown_rules(&path, &[]).unwrap();
+        assert_eq!(outcome, RuleSyncOutcome::Wrote);
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains("some user content"), "user content kept");
+        assert!(!written.contains(BLOCK_START), "managed block removed");
+    }
+
+    #[test]
+    fn sync_malformed_markers_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = instr(dir.path());
+        fs::write(&path, format!("text\n{BLOCK_START}\nno end marker")).unwrap();
+        let src = dir.path().join("r.mdc");
+        fs::write(&src, "body").unwrap();
+        let rule = rule_item("r.mdc", src);
+
+        let err = sync_markdown_rules(&path, &[&rule]).unwrap_err();
+        assert_eq!(err.code, "rule_sync_malformed_markers");
+    }
+
+    #[test]
+    fn sync_directory_at_target_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = instr(dir.path());
+        fs::create_dir_all(&path).unwrap();
+        let err = sync_markdown_rules(&path, &[]).unwrap_err();
+        assert_eq!(err.code, "conflict_real_file_at_target");
     }
 }

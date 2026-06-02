@@ -699,4 +699,183 @@ mod tests {
         assert_eq!(outcome, HookSyncOutcome::Wrote);
         assert!(claude_target.exists());
     }
+
+    fn cursor_adapter(target: &Path) -> ResolvedAdapter {
+        let mut s = Settings::default();
+        s.tools.cursor.hooks_file = Some(target.to_path_buf());
+        adapter_registry::resolve(&s, ToolId::Cursor)
+    }
+
+    fn codex_adapter(target: &Path) -> ResolvedAdapter {
+        let mut s = Settings::default();
+        s.tools.codex.hooks_file = Some(target.to_path_buf());
+        adapter_registry::resolve(&s, ToolId::Codex)
+    }
+
+    #[test]
+    fn sync_rejects_directory_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("hooks.json");
+        fs::create_dir_all(&target).unwrap();
+        let adapter = cursor_adapter(&target);
+        let m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
+        let item = hook_item("fmt", dir.path().join("hooks/fmt"));
+        let err = sync_json_hooks(&adapter, &[(&item, &m)]).unwrap_err();
+        assert_eq!(err.code, "conflict_real_file_at_target");
+    }
+
+    #[test]
+    fn sync_refuses_to_overwrite_broken_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("hooks.json");
+        fs::write(&target, "{ not valid json").unwrap();
+        let adapter = cursor_adapter(&target);
+        let m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
+        let item = hook_item("fmt", dir.path().join("hooks/fmt"));
+        let err = sync_json_hooks(&adapter, &[(&item, &m)]).unwrap_err();
+        assert_eq!(err.code, "hook_target_broken_json");
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "{ not valid json",
+            "broken file left untouched"
+        );
+    }
+
+    #[test]
+    fn codex_uses_group_shape_and_notes_unsupported_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("hooks.json");
+        let adapter = codex_adapter(&target);
+        // PostToolUse is supported; Notification is not on Codex.
+        let m = manifest(
+            "fmt",
+            vec![
+                ev(HookCanonicalEvent::PostToolUse, Some("Edit")),
+                ev(HookCanonicalEvent::Notification, None),
+            ],
+        );
+        let item = hook_item("fmt", dir.path().join("hooks/fmt"));
+
+        let (outcome, notes) = sync_json_hooks(&adapter, &[(&item, &m)]).unwrap();
+        assert_eq!(outcome, HookSyncOutcome::Wrote);
+        assert!(
+            notes.iter().any(|n| n.contains("Notification")),
+            "unsupported event noted: {notes:?}"
+        );
+
+        let written: Value = serde_json::from_str(&fs::read_to_string(&target).unwrap()).unwrap();
+        let group = &written["hooks"]["PostToolUse"][0];
+        assert_eq!(group["matcher"], json!("Edit"));
+        assert_eq!(group["hooks"][0]["type"], json!("command"));
+        assert_eq!(group["_agenticHub"]["hookId"], json!("fmt"));
+        assert!(
+            written["hooks"].get("Notification").is_none(),
+            "unsupported event not written"
+        );
+    }
+
+    #[test]
+    fn cursor_notes_unsupported_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("hooks.json");
+        let adapter = cursor_adapter(&target);
+        // PostCompact has no Cursor key.
+        let m = manifest("fmt", vec![ev(HookCanonicalEvent::PostCompact, None)]);
+        let item = hook_item("fmt", dir.path().join("hooks/fmt"));
+
+        let (outcome, notes) = sync_json_hooks(&adapter, &[(&item, &m)]).unwrap();
+        // Nothing managed to write and no pre-existing file -> NoOp.
+        assert_eq!(outcome, HookSyncOutcome::NoOp);
+        assert!(notes.iter().any(|n| n.contains("PostCompact")), "{notes:?}");
+    }
+
+    #[test]
+    fn inspect_reports_disabled_foreign_and_broken() {
+        let dir = tempfile::tempdir().unwrap();
+        let m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
+        let item = hook_item("fmt", dir.path().join("hooks/fmt"));
+        let mut manifests = HashMap::new();
+        manifests.insert(item.id.clone(), m);
+
+        // Missing file -> Disabled.
+        let target = dir.path().join("missing.json");
+        let adapter = cursor_adapter(&target);
+        let states = inspect_hooks(std::slice::from_ref(&item), &manifests, &adapter);
+        assert_eq!(states[0].state, LinkState::Disabled);
+
+        // Directory at the target -> ForeignFile.
+        let dir_target = dir.path().join("dir.json");
+        fs::create_dir_all(&dir_target).unwrap();
+        let adapter = cursor_adapter(&dir_target);
+        let states = inspect_hooks(std::slice::from_ref(&item), &manifests, &adapter);
+        assert_eq!(states[0].state, LinkState::ForeignFile);
+
+        // Non-JSON text -> Broken.
+        let broken = dir.path().join("broken.json");
+        fs::write(&broken, "{ nope").unwrap();
+        let adapter = cursor_adapter(&broken);
+        let states = inspect_hooks(std::slice::from_ref(&item), &manifests, &adapter);
+        assert_eq!(states[0].state, LinkState::Broken);
+
+        // Valid JSON without a managed entry -> Disabled.
+        let empty = dir.path().join("empty.json");
+        fs::write(&empty, r#"{ "hooks": {} }"#).unwrap();
+        let adapter = cursor_adapter(&empty);
+        let states = inspect_hooks(std::slice::from_ref(&item), &manifests, &adapter);
+        assert_eq!(states[0].state, LinkState::Disabled);
+    }
+
+    #[test]
+    fn targets_filter_excludes_untargeted_tool() {
+        // Default targets is the trio (Cursor included).
+        let default_m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
+        assert!(default_m.effective_targets().contains(&ToolId::Cursor));
+
+        // Explicit targets honored: a Claude-only hook excludes Cursor.
+        let mut claude_only = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
+        claude_only.targets = Some(vec![ToolId::Claude]);
+        assert_eq!(claude_only.effective_targets(), vec![ToolId::Claude]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("hooks.json");
+        let adapter = cursor_adapter(&target);
+        let item = hook_item("fmt", dir.path().join("hooks/fmt"));
+        let mut manifests = HashMap::new();
+        manifests.insert(item.id.clone(), claude_only);
+        let states = inspect_hooks(std::slice::from_ref(&item), &manifests, &adapter);
+        assert!(states.is_empty(), "untargeted tool yields no state");
+    }
+
+    #[test]
+    fn load_manifests_keys_by_id_and_drops_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = dir.path().join("hooks/good");
+        fs::create_dir_all(&good).unwrap();
+        fs::write(
+            good.join("hook.json"),
+            r#"{ "command": "run", "events": [{"name":"Stop"}] }"#,
+        )
+        .unwrap();
+        let bad = dir.path().join("hooks/bad");
+        fs::create_dir_all(&bad).unwrap();
+        // Missing the required `command` field -> fails to parse.
+        fs::write(bad.join("hook.json"), r#"{ "events": [{"name":"Stop"}] }"#).unwrap();
+
+        let items = vec![hook_item("good", good), hook_item("bad", bad)];
+        let map = load_manifests(&items);
+        assert!(map.contains_key("hook:good"));
+        assert!(!map.contains_key("hook:bad"), "invalid manifest dropped");
+    }
+
+    #[test]
+    fn annotate_validation_flags_bad_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = dir.path().join("hooks/bad");
+        fs::create_dir_all(&bad).unwrap();
+        fs::write(bad.join("hook.json"), r#"{ "events": [] }"#).unwrap();
+        let mut items = vec![hook_item("bad", bad)];
+        annotate_validation(&mut items);
+        assert!(!items[0].valid);
+        assert!(!items[0].validation_errors.is_empty());
+    }
 }

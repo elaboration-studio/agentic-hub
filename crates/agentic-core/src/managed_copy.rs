@@ -255,4 +255,89 @@ mod tests {
             hash_file(&source.join("SKILL.md")).unwrap()
         );
     }
+
+    #[test]
+    fn atomic_file_copy_leaves_no_tmp() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("agents");
+        let source = dir.path().join("src/agent.md");
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, "agent body").unwrap();
+        let target = root.join("agent.md");
+
+        write_managed_copy(&source, &target, &root, "agent:agent.md", true).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "agent body");
+        assert!(
+            !target.with_extension("agentic.tmp").exists(),
+            "staging file cleaned up"
+        );
+    }
+
+    #[test]
+    fn read_manifest_tolerates_malformed_and_wrong_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("agents");
+        std::fs::create_dir_all(&root).unwrap();
+        let target = root.join("agent.md");
+
+        // Malformed JSON -> empty manifest.
+        std::fs::write(root.join(MANIFEST_FILE), "{ not json").unwrap();
+        assert!(read_entry(&root, &target).is_none());
+
+        // A future schema version is ignored (treated as empty).
+        std::fs::write(
+            root.join(MANIFEST_FILE),
+            r#"{ "version": 2, "entries": { "agent.md": { "itemId": "x", "sourcePath": "/s", "sourceHash": "h" } } }"#,
+        )
+        .unwrap();
+        assert!(read_entry(&root, &target).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_existing_drops_symlink_not_its_target() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("real.md");
+        std::fs::write(&source, "keep me").unwrap();
+        let link = dir.path().join("link.md");
+        symlink(&source, &link).unwrap();
+
+        remove_existing(&link).unwrap();
+        assert!(!link.exists(), "symlink removed");
+        assert!(source.exists(), "link target untouched");
+        assert_eq!(std::fs::read_to_string(&source).unwrap(), "keep me");
+    }
+
+    #[test]
+    fn content_hash_is_none_when_expected_content_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        // A directory without SKILL.md has no content hash.
+        let skill_dir = dir.path().join("skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        assert!(content_hash(&skill_dir).is_none());
+        // A missing file likewise.
+        assert!(content_hash(&dir.path().join("missing.md")).is_none());
+    }
+
+    #[test]
+    fn rewrite_refreshes_content_and_source_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("agents");
+        let source = dir.path().join("src/agent.md");
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, "v1").unwrap();
+        let target = root.join("agent.md");
+
+        write_managed_copy(&source, &target, &root, "agent:agent.md", false).unwrap();
+        let first = read_entry(&root, &target).unwrap().source_hash;
+
+        // Source drifts; rewriting refreshes the copy and the recorded hash.
+        std::fs::write(&source, "v2 changed").unwrap();
+        write_managed_copy(&source, &target, &root, "agent:agent.md", false).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "v2 changed");
+        let second = read_entry(&root, &target).unwrap().source_hash;
+        assert_ne!(first, second, "source hash updated on refresh");
+        assert_eq!(second, content_hash(&source).unwrap());
+    }
 }

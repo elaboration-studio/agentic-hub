@@ -279,4 +279,59 @@ mod tests {
         let target = cursor.target_path_for(&rule).unwrap();
         assert!(target.ends_with(Path::new("rules/general/precise.mdc")));
     }
+
+    #[test]
+    fn workspace_adapter_paths_per_tool() {
+        let ws = Path::new("/ws");
+
+        let codex = create_workspace_adapter(ToolId::Codex, ws);
+        assert_eq!(codex.skills_path, ws.join(".agents/skills"));
+        assert_eq!(codex.agents_path, ws.join(".agents/agents"));
+        assert_eq!(codex.rules_path, ws.join(".codex/agentic-rules"));
+        assert_eq!(codex.instructions_path, Some(ws.join("AGENTS.md")));
+        assert_eq!(codex.hooks_file, Some(ws.join(".codex/hooks.json")));
+        assert!(codex.enabled && codex.hooks_enabled);
+
+        let claude = create_workspace_adapter(ToolId::Claude, ws);
+        assert_eq!(claude.skills_path, ws.join(".claude/skills"));
+        assert_eq!(claude.agents_path, ws.join(".claude/agents"));
+        assert_eq!(claude.rules_path, ws.join(".claude/agentic-rules"));
+        assert_eq!(claude.instructions_path, Some(ws.join("CLAUDE.md")));
+        assert_eq!(claude.hooks_file, Some(ws.join(".claude/settings.json")));
+
+        let cursor = create_workspace_adapter(ToolId::Cursor, ws);
+        assert_eq!(cursor.skills_path, ws.join(".cursor/skills"));
+        assert_eq!(cursor.agents_path, ws.join(".cursor/agents"));
+        assert_eq!(cursor.rules_path, ws.join(".cursor/rules"));
+        assert_eq!(cursor.instructions_path, None);
+        assert_eq!(cursor.hooks_file, Some(ws.join(".cursor/hooks.json")));
+    }
+
+    #[test]
+    fn workspace_adapter_openclaw_is_disabled() {
+        let ws = Path::new("/ws");
+        let oc = create_workspace_adapter(ToolId::Openclaw, ws);
+        assert!(!oc.enabled);
+        assert!(!oc.hooks_enabled);
+        assert_eq!(oc.hooks_file, None);
+        assert_eq!(oc.instructions_path, None);
+    }
+
+    #[test]
+    fn claude_agent_is_flat_and_link_synced() {
+        let s = Settings::default();
+        let claude = resolve(&s, ToolId::Claude);
+        assert_eq!(claude.layout_for(CapabilityKind::Agent), Layout::Flat);
+        assert_eq!(
+            claude.projection_mode_for(CapabilityKind::Agent),
+            Some(ProjectionMode::LinkSync)
+        );
+
+        let agent = item(CapabilityKind::Agent, "team/reviewer.md");
+        let target = claude.target_path_for(&agent).unwrap();
+        assert!(
+            target.ends_with("agents/reviewer.md"),
+            "claude flattens agents to basename: {target:?}"
+        );
+    }
 }

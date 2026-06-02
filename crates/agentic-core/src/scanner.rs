@@ -327,4 +327,62 @@ mod tests {
         assert_eq!(item.source_id, "arno");
         assert_eq!(item.source_label, "Arno");
     }
+
+    #[test]
+    fn hook_manifest_overrides_folder_id_and_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // Folder is "folder-name" but the manifest carries its own identity.
+        write(
+            &root.join("hooks/folder-name/hook.json"),
+            r#"{ "id": "custom-id", "name": "Custom Name", "command": "run", "events": [{"name":"Stop"}] }"#,
+        );
+
+        let result = scan(root);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        let hook = result
+            .items
+            .iter()
+            .find(|i| i.kind == CapabilityKind::Hook)
+            .unwrap();
+        assert_eq!(hook.id, "hook:custom-id");
+        assert_eq!(hook.name, "Custom Name");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolves_symlinked_skill_folder() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // A real skill living outside the skills/ tree.
+        let external = root.join("external/repo-research");
+        write(&external.join("SKILL.md"), "# external");
+        // Symlinked into the scanned source root.
+        fs::create_dir_all(root.join("skills")).unwrap();
+        symlink(&external, root.join("skills/linked")).unwrap();
+
+        let result = scan(root);
+        let ids: Vec<&str> = result.items.iter().map(|i| i.id.as_str()).collect();
+        assert!(
+            ids.contains(&"skill:linked"),
+            "symlinked folder scanned: {ids:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_cycle_terminates_within_depth_bound() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let skill = root.join("skills/x");
+        write(&skill.join("SKILL.md"), "# x");
+        // A self-referential symlink would recurse forever without the guard.
+        symlink(&skill, skill.join("loop")).unwrap();
+
+        // The bounded walk returns rather than hanging or panicking.
+        let result = scan(root);
+        assert!(result.items.iter().any(|i| i.id == "skill:x"));
+    }
 }

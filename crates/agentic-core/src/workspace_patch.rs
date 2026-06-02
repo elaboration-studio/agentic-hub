@@ -520,4 +520,172 @@ mod tests {
         assert!(agents.contains("agentic-hub:start"));
         assert!(agents.contains("be precise"));
     }
+
+    fn hook_manifest(id: &str) -> HookManifest {
+        HookManifest {
+            id: id.to_string(),
+            name: None,
+            description: None,
+            events: vec![hook_sync::HookEventSpec {
+                name: hook_sync::HookCanonicalEvent::Stop,
+                matcher: None,
+            }],
+            command: "${HOOK_DIR}/run.sh".to_string(),
+            timeout: Some(30),
+            loop_limit: None,
+            targets: None,
+        }
+    }
+
+    #[test]
+    fn hook_in_suite_writes_cursor_hooks_file() {
+        let src = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let hook_dir = src.path().join("hooks/fmt");
+        fs::create_dir_all(&hook_dir).unwrap();
+
+        let items = vec![item(CapabilityKind::Hook, "hook:fmt", "fmt", hook_dir)];
+        let mut manifests = HashMap::new();
+        manifests.insert("hook:fmt".to_string(), hook_manifest("fmt"));
+
+        let result = apply_workspace_patch(
+            ws.path(),
+            ToolId::Cursor,
+            &suite(&["hook:fmt"]),
+            &items,
+            &manifests,
+        )
+        .unwrap();
+
+        let real_ws = ws.path().canonicalize().unwrap();
+        assert!(real_ws.join(".cursor/hooks.json").is_file());
+        assert!(
+            result.applied.iter().any(|p| p.ends_with(HOOKS_SENTINEL)),
+            "hooks sentinel recorded: {:?}",
+            result.applied
+        );
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+    }
+
+    #[test]
+    fn tool_switch_clears_prior_markdown_section() {
+        let src = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let rule = src.path().join("precise.mdc");
+        fs::write(&rule, "> be precise").unwrap();
+        let skill = src.path().join("s");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "# s").unwrap();
+        let items = vec![
+            item(
+                CapabilityKind::Rule,
+                "rule:precise.mdc",
+                "precise.mdc",
+                rule,
+            ),
+            item(CapabilityKind::Skill, "skill:s", "s", skill),
+        ];
+        let m = HashMap::new();
+        let real_ws = ws.path().canonicalize().unwrap();
+
+        // Codex writes the managed markdown section into AGENTS.md.
+        apply_workspace_patch(
+            ws.path(),
+            ToolId::Codex,
+            &suite(&["rule:precise.mdc"]),
+            &items,
+            &m,
+        )
+        .unwrap();
+        assert!(real_ws.join("AGENTS.md").exists());
+
+        // Switching to Cursor cleans the prior Codex markdown section.
+        apply_workspace_patch(ws.path(), ToolId::Cursor, &suite(&["skill:s"]), &items, &m).unwrap();
+        let agents = real_ws.join("AGENTS.md");
+        if agents.exists() {
+            let body = fs::read_to_string(&agents).unwrap();
+            assert!(
+                !body.contains("agentic-hub:start"),
+                "managed section cleared"
+            );
+        }
+        assert!(real_ws.join(".cursor/skills/s/SKILL.md").is_file());
+    }
+
+    #[test]
+    fn malformed_prior_manifest_is_noted() {
+        let ws = tempfile::tempdir().unwrap();
+        let real_ws = ws.path().canonicalize().unwrap();
+        fs::create_dir_all(real_ws.join(".agentic-hub")).unwrap();
+        fs::write(
+            real_ws.join(".agentic-hub/workspace-patch.json"),
+            "{ not valid json",
+        )
+        .unwrap();
+
+        let result =
+            apply_workspace_patch(ws.path(), ToolId::Cursor, &suite(&[]), &[], &HashMap::new())
+                .unwrap();
+        assert!(
+            result
+                .notes
+                .iter()
+                .any(|n| n.contains("Prior manifest was malformed")),
+            "{:?}",
+            result.notes
+        );
+    }
+
+    #[test]
+    fn missing_dir_and_file_path_error() {
+        let parent = tempfile::tempdir().unwrap();
+        let missing = parent.path().join("nope");
+        let err =
+            apply_workspace_patch(&missing, ToolId::Cursor, &suite(&[]), &[], &HashMap::new())
+                .unwrap_err();
+        assert!(matches!(err, CoreError::PathNotFound(_)));
+
+        let file = parent.path().join("a-file");
+        fs::write(&file, "x").unwrap();
+        let err = apply_workspace_patch(&file, ToolId::Cursor, &suite(&[]), &[], &HashMap::new())
+            .unwrap_err();
+        assert!(matches!(err, CoreError::NotADirectory(_)));
+    }
+
+    #[test]
+    fn reapply_prunes_emptied_parent_dir() {
+        let src = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let skill = src.path().join("nested");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "# nested").unwrap();
+        let items = vec![item(
+            CapabilityKind::Skill,
+            "skill:deep",
+            "deep/nested",
+            skill,
+        )];
+        let m = HashMap::new();
+        let real_ws = ws.path().canonicalize().unwrap();
+
+        apply_workspace_patch(
+            ws.path(),
+            ToolId::Cursor,
+            &suite(&["skill:deep"]),
+            &items,
+            &m,
+        )
+        .unwrap();
+        assert!(real_ws
+            .join(".cursor/skills/deep/nested/SKILL.md")
+            .is_file());
+
+        // Reapply with an empty suite: the skill and its now-empty parent vanish.
+        apply_workspace_patch(ws.path(), ToolId::Cursor, &suite(&[]), &items, &m).unwrap();
+        assert!(!real_ws.join(".cursor/skills/deep/nested").exists());
+        assert!(
+            !real_ws.join(".cursor/skills/deep").exists(),
+            "emptied parent pruned"
+        );
+    }
 }

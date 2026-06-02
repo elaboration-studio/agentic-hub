@@ -354,4 +354,134 @@ mod tests {
         assert_eq!(res.skipped, 1);
         assert!(res.errors.is_empty());
     }
+
+    #[test]
+    fn remove_link_on_real_file_is_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("out/real.md");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "user owned").unwrap();
+
+        let res = apply(
+            &[op(OperationKind::RemoveLink, target.clone(), None)],
+            |_, _, _, _| {},
+        );
+        assert_eq!(res.errors.len(), 1);
+        assert_eq!(res.errors[0].code, "conflict_real_file_at_target");
+        assert!(target.exists(), "real file untouched");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_force_replace_link_swaps_existing_symlink() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let old_src = dir.path().join("src/old.md");
+        let new_src = dir.path().join("src/new.md");
+        fs::create_dir_all(old_src.parent().unwrap()).unwrap();
+        fs::write(&old_src, "old").unwrap();
+        fs::write(&new_src, "new").unwrap();
+        let target = dir.path().join("out/x.md");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        symlink(&old_src, &target).unwrap();
+
+        // No force needed: a symlink is a managed target, replaced safely.
+        let res = apply(
+            &[op(
+                OperationKind::ReplaceLink,
+                target.clone(),
+                Some(new_src.clone()),
+            )],
+            |_, _, _, _| {},
+        );
+        assert_eq!(res.replaced, 1);
+        assert!(res.errors.is_empty());
+        assert_eq!(fs::read_link(&target).unwrap(), new_src);
+    }
+
+    #[test]
+    fn non_force_replace_managed_copy_refreshes_existing() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/agent.md");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "v1").unwrap();
+        let root = dir.path().join("out");
+        let target = root.join("agent.md");
+        managed_copy::write_managed_copy(&source, &target, &root, "agent:x.md", false).unwrap();
+        // The source drifts; replace refreshes the copy from it.
+        fs::write(&source, "v2").unwrap();
+
+        let res = apply(
+            &[op(
+                OperationKind::ReplaceManagedCopy,
+                target.clone(),
+                Some(source),
+            )],
+            |_, _, _, _| {},
+        );
+        assert_eq!(res.refreshed, 1);
+        assert!(res.errors.is_empty());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "v2");
+    }
+
+    #[test]
+    fn create_link_without_source_is_internal_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("out/x.md");
+        let res = apply(
+            &[op(OperationKind::CreateLink, target, None)],
+            |_, _, _, _| {},
+        );
+        assert_eq!(res.errors.len(), 1);
+        assert_eq!(res.errors[0].code, "internal");
+    }
+
+    #[test]
+    fn remove_managed_copy_succeeds_and_drops_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/agent.md");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "v1").unwrap();
+        let root = dir.path().join("out");
+        let target = root.join("agent.md");
+        managed_copy::write_managed_copy(&source, &target, &root, "agent:x.md", false).unwrap();
+        assert!(managed_copy::read_entry(&root, &target).is_some());
+
+        let res = apply(
+            &[op(OperationKind::RemoveManagedCopy, target.clone(), None)],
+            |_, _, _, _| {},
+        );
+        assert_eq!(res.removed, 1);
+        assert!(res.errors.is_empty());
+        assert!(!target.exists());
+        assert!(managed_copy::read_entry(&root, &target).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn partial_apply_tolerates_one_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        // First op fails: RemoveLink on a real (non-symlink) file.
+        let blocker = dir.path().join("out/real.md");
+        fs::create_dir_all(blocker.parent().unwrap()).unwrap();
+        fs::write(&blocker, "user owned").unwrap();
+        // Second op succeeds: a fresh CreateLink.
+        let source = dir.path().join("src/foo");
+        fs::create_dir_all(&source).unwrap();
+        let good_target = dir.path().join("out/foo");
+
+        let mut progress = 0;
+        let res = apply(
+            &[
+                op(OperationKind::RemoveLink, blocker.clone(), None),
+                op(OperationKind::CreateLink, good_target.clone(), Some(source)),
+            ],
+            |_, _, _, _| progress += 1,
+        );
+        assert_eq!(res.errors.len(), 1, "one op failed");
+        assert_eq!(res.created, 1, "the rest still applied");
+        assert_eq!(progress, 2, "progress fired for every op");
+        assert!(is_symlink(&good_target));
+        assert!(blocker.exists(), "real file left untouched");
+    }
 }
