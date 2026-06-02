@@ -3,14 +3,24 @@
 Notable changes per release. Newest first. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for how releases are built and published.
 
-## [Unreleased]
+## [0.2.1] — 2026-06-03
 
-- fix(ui): the per-row "⋯" actions menu now appears when opened. `Button` was a
-  plain function component (React-19 shadcn style) while the app runs React 18,
-  so Radix's `asChild` trigger ref never reached the DOM node; floating-ui had
-  no anchor and rendered the menu off-screen at its `translate(0, -200%)`
-  placeholder. `Button` now uses `forwardRef`. Reverted the earlier hover/
-  pointer-event workarounds, which were chasing symptoms.
+### Highlights
+
+- The per-row "⋯" actions menu actually opens now.
+
+### Fixed
+
+- The "⋯" menu opened but rendered off-screen, so it looked like nothing
+  happened. `Button` shipped in the React-19 shadcn style (a plain function
+  component) while the app runs React 18, so Radix's `asChild` trigger ref never
+  reached the DOM node; floating-ui then had no anchor and parked the menu at its
+  `translate(0, -200%)` placeholder. `Button` now uses `forwardRef`. The earlier
+  hover- and pointer-event workarounds were reverted as symptom-chasing.
+
+### Migration
+
+- None.
 
 ## [0.2.0] — 2026-06-03
 
