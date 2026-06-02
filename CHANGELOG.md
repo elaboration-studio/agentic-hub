@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.2.0] — 2026-06-03
+
+### Added
+
+- **"Enabled only" filter.** A checkbox in the capability matrix narrows the list
+  to capabilities enabled in at least one tool.
+
+### Changed
+
+- **Filters now persist across views.** Search, type/source filters, the
+  flat/tree view, the enabled-only toggle, and collapsed folders survive
+  switching between Manager, Suites, and Config and between Global and Workspace
+  scope, instead of resetting each time.
+- **The matrix opens in tree view by default** instead of the flat list.
+- **Smoother first launch.** The window starts hidden with a dark background and
+  appears only once the WebView has finished rendering, removing the white flash
+  on startup.
+
+### Fixed
+
+- **Restored the per-row "⋯" actions menu.** It had stopped appearing in the
+  desktop app because Tailwind v4 gates hover styles behind `@media (hover:
+  hover)`, which the macOS WebView does not match; the menu now reveals on row
+  hover (and keyboard focus) again.
+
+[0.2.0]: https://github.com/elaboration-studio/agentic-hub/releases/tag/v0.2.0
+
 ## [0.1.2] — 2026-06-02
 
 ### Changed

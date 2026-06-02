@@ -1,6 +1,6 @@
 [package]
 name = "agentic-hub"
-version = "0.1.2"
+version = "0.2.0"
 description = "Tauri 2.x desktop shell for Agentic Hub. Thin #[tauri::command] wrappers over agentic-core."
 edition.workspace = true
 license.workspace = true

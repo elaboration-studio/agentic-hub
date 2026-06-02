@@ -12,6 +12,7 @@ import type {
 export type Scope = "global" | "workspace";
 export type Route = "manager" | "suites" | "config";
 export type View = "flat" | "tree";
+export type KindFilter = "all" | CapabilityKind;
 
 export interface ToolDef {
   id: ToolId;
