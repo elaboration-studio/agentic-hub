@@ -30,6 +30,7 @@ Tauri 2.x desktop app that manages shared agentic capabilities — skills, agent
 - Tauri 2.x (Rust core + WebView shell)
 - Rust workspace: `agentic-core` (domain) + `agentic-hub` (bin)
 - React 18 + Vite + TypeScript + Zustand
+- Tailwind v4 + shadcn/ui (components-first UI; tokens in `DESIGN.md`)
 - pnpm 9.x, Rust stable, Node 20.x
 - `ts-rs` for Rust → TS type codegen
 - `tauri-plugin-dialog`, `tauri-plugin-store` (no `shell` plugin)
