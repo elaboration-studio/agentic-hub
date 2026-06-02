@@ -5,9 +5,12 @@ for how releases are built and published.
 
 ## [Unreleased]
 
-- fix(manager): the per-row "⋯" actions menu now opens on click in the macOS
-  WebView — Radix opened it on `pointerdown` (unreliable in WKWebView), so the
-  trigger now suppresses that and toggles a controlled open state on click.
+- fix(ui): the per-row "⋯" actions menu now appears when opened. `Button` was a
+  plain function component (React-19 shadcn style) while the app runs React 18,
+  so Radix's `asChild` trigger ref never reached the DOM node; floating-ui had
+  no anchor and rendered the menu off-screen at its `translate(0, -200%)`
+  placeholder. `Button` now uses `forwardRef`. Reverted the earlier hover/
+  pointer-event workarounds, which were chasing symptoms.
 
 ## [0.2.0] — 2026-06-03
 
