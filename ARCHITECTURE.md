@@ -226,6 +226,10 @@ User launches Agentic Hub
 
 This flow works because the scan, adapter resolution, and state inspection are all idempotent reads. Any of them can be re-run on refresh without state machine complexity.
 
+### Window lifecycle (close vs quit)
+
+Agentic Hub is a standalone background app. Closing the window (red traffic-light button or Cmd+W) does **not** quit — the shell intercepts `WindowEvent::CloseRequested`, hides the **application** (macOS `NSApp hide:` via `AppHandle::hide()`), and calls `prevent_close()`. The process stays alive, the source watcher keeps reconciling, and window state is preserved. Because the app is hidden (not just the window ordered out), **Cmd+Tab** and clicking the Dock icon both re-activate the app and restore the window the macOS-native way; `RunEvent::Reopen` additionally re-shows and focuses on Dock click. The only intended hard exit is **Cmd+Q**, which goes through the default Quit menu item and bypasses the close handler to terminate the process.
+
 ### Apply changes flow
 
 ```

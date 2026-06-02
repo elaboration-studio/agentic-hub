@@ -9,7 +9,7 @@ mod error;
 mod watcher;
 
 use agentic_core::settings::Settings;
-use tauri::Manager;
+use tauri::{Manager, RunEvent, WindowEvent};
 use watcher::WatcherState;
 
 /// Build and run the Tauri application.
@@ -26,6 +26,26 @@ pub fn run() {
                 app.state::<WatcherState>().start(app.handle().clone());
             }
             Ok(())
+        })
+        // Closing the window hides it instead of quitting: the app keeps running
+        // in the background (watcher stays live, state is preserved). On macOS
+        // Cmd+Q goes through the default Quit menu item, which bypasses this
+        // handler and terminates the process — the only intended hard exit.
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    // Hide the whole application (NSApp hide:), not just the
+                    // window. App-level hide lets Cmd+Tab and the Dock icon
+                    // re-activate and restore the window the macOS-native way.
+                    // Ordering only the window out leaves the app windowless, and
+                    // Cmd+Tab to a windowless app shows nothing.
+                    #[cfg(target_os = "macos")]
+                    let _ = window.app_handle().hide();
+                    #[cfg(not(target_os = "macos"))]
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::cmd_load_settings,
@@ -55,6 +75,16 @@ pub fn run() {
             commands::cmd_set_active_workspace_target,
             commands::cmd_apply_workspace_patch,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running the Agentic Hub Tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building the Agentic Hub Tauri application")
+        // Re-show the hidden window when the user clicks the Dock icon (macOS
+        // `applicationShouldHandleReopen`), so a background app is never stranded.
+        .run(|app, event| {
+            if let RunEvent::Reopen { .. } = event {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        });
 }
