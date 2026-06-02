@@ -3,11 +3,32 @@
 Notable changes per release. Newest first. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for how releases are built and published.
 
-## [Unreleased]
+## [0.2.0] — 2026-06-03
 
-- Manager panel UX: capability filters (search, type, source, flat/tree view, collapsed folders) now persist across Manager/Suites/Config and Global/Workspace switches instead of resetting; the matrix defaults to tree view; and a new "Enabled only" filter narrows the list to capabilities enabled in at least one tool.
-- Fixed the per-row "..." actions menu disappearing in the desktop WebView: Tailwind v4 gates `group-hover` behind `@media (hover: hover)`, which the macOS WebView did not match, so the trigger is now revealed with an ungated hover selector plus keyboard focus.
-- Reduced the white background flash on first launch: the window starts hidden with a dark native background and is shown only once the WebView finishes loading.
+### Highlights
+
+- A calmer, stickier Manager panel: your filters stay put as you move around the
+  app, the matrix opens in tree view, and the per-row actions menu works again.
+
+### Changes
+
+- Capability filters (search, type, source, flat/tree view, collapsed folders)
+  now persist across Manager/Suites/Config and Global/Workspace switches instead
+  of resetting.
+- The matrix defaults to tree view.
+- New "Enabled only" filter narrows the list to capabilities enabled in at least
+  one tool.
+- Fixed the per-row "⋯" actions menu disappearing in the desktop WebView:
+  Tailwind v4 gates `group-hover` behind `@media (hover: hover)`, which the macOS
+  WebView did not match, so the trigger is now revealed with an ungated hover
+  selector plus keyboard focus.
+- Reduced the white background flash on first launch: the window starts hidden
+  with a dark native background and is shown only once the WebView finishes
+  loading.
+
+### Migration
+
+- None. No config, storage, or contract changes.
 
 ## [0.1.2] — 2026-06-02
 
