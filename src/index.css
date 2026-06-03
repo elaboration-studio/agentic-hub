@@ -108,6 +108,20 @@
     @apply border-border outline-ring/50;
   }
 
+  /* Tailwind v4 Preflight no longer sets cursor:pointer on buttons, and the
+     shadcn variants don't restore it. Re-apply it to native buttons and the
+     Radix role-based controls (tabs, checkbox, switch) so every interactive
+     surface reads as clickable. Disabled controls keep the default cursor. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  [role="radio"]:not([aria-disabled="true"]),
+  label:has(> [role="checkbox"], > [role="switch"], > [role="radio"]) {
+    cursor: pointer;
+  }
+
   html,
   body,
   #root {

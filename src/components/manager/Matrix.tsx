@@ -5,7 +5,20 @@
 // tree) carry batch toggles that flip every capability beneath them per tool.
 
 import { Fragment, useMemo, type ReactNode } from "react";
-import { Check, Minus, MoreHorizontal } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Database,
+  FolderTree,
+  List,
+  Minus,
+  MoreHorizontal,
+  Search,
+  Tag,
+} from "lucide-react";
 import { toast } from "sonner";
 import type {
   AdapterStatus,
@@ -49,6 +62,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -156,19 +170,42 @@ export function Matrix() {
           onValueChange={(v) => v && setView(v as View)}
           variant="outline"
         >
-          <ToggleGroupItem value="flat">Flat</ToggleGroupItem>
-          <ToggleGroupItem value="tree">Tree</ToggleGroupItem>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem value="flat" aria-label="Flat view — grouped by kind">
+                <List />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>Flat — by kind</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem value="tree" aria-label="Tree view — grouped by folder">
+                <FolderTree />
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent>Tree — by folder</TooltipContent>
+          </Tooltip>
         </ToggleGroup>
-        <Input
-          type="search"
-          className="flex-1"
-          placeholder="Search by name, path, or source…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <div className="relative flex-1">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            className="pl-9"
+            placeholder="Search by name, path, or source…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
         <Select value={kind} onValueChange={(v) => setKind(v as KindFilter)}>
-          <SelectTrigger className="w-[130px]" title="Filter by type">
-            <SelectValue />
+          <SelectTrigger className="w-[140px]" title="Filter by type">
+            <span className="flex min-w-0 items-center gap-2">
+              <Tag />
+              <SelectValue />
+            </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
@@ -180,8 +217,11 @@ export function Matrix() {
         </Select>
         {sources.length > 1 && (
           <Select value={source || "all"} onValueChange={(v) => setSource(v === "all" ? "" : v)}>
-            <SelectTrigger className="w-[150px]" title="Filter by source">
-              <SelectValue />
+            <SelectTrigger className="w-[160px]" title="Filter by source">
+              <span className="flex min-w-0 items-center gap-2">
+                <Database />
+                <SelectValue />
+              </span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All sources</SelectItem>
@@ -193,7 +233,7 @@ export function Matrix() {
             </SelectContent>
           </Select>
         )}
-        <Label className="flex shrink-0 cursor-pointer items-center gap-2 text-muted-foreground">
+        <Label className="flex shrink-0 items-center gap-2 text-muted-foreground">
           <Checkbox
             checked={enabledOnly}
             onCheckedChange={(v) => setEnabledOnly(v === true)}
@@ -201,13 +241,33 @@ export function Matrix() {
           Enabled only
         </Label>
         {view === "tree" && (
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setCollapsed(new Set())}>
-              Expand all
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setCollapsed(new Set(folderPaths))}>
-              Collapse all
-            </Button>
+          <div className="flex gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Expand all folders"
+                  onClick={() => setCollapsed(new Set())}
+                >
+                  <ChevronsUpDown />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Expand all</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Collapse all folders"
+                  onClick={() => setCollapsed(new Set(folderPaths))}
+                >
+                  <ChevronsDownUp />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Collapse all</TooltipContent>
+            </Tooltip>
           </div>
         )}
       </div>
@@ -524,10 +584,11 @@ function renderNodes(
         <TableRow key={`d:${node.path}`} className="bg-secondary/40 hover:bg-secondary/40">
           <TableCell style={{ paddingLeft: pad }}>
             <button
-              className="mr-1 w-4 cursor-pointer text-[11px] text-muted-foreground"
+              className="mr-1 inline-flex size-4 cursor-pointer items-center justify-center align-middle text-muted-foreground hover:text-foreground"
               onClick={() => onToggleDir(node.path)}
+              aria-label={isCollapsed ? `Expand ${node.name}` : `Collapse ${node.name}`}
             >
-              {isCollapsed ? "▸" : "▾"}
+              {isCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
             </button>
             <span className="font-semibold">{node.name}</span>
             <span className="ml-1.5 text-primary">{leaves.length}</span>
