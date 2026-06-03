@@ -16,6 +16,10 @@ file verbatim as the GitHub Release body. For the full version history see
 - The old "apply a suite into a workspace" flow is gone for good. Capabilities
   are still written only through the global projection engine, where the
   plan-then-apply safety net lives.
+- The command palette can now **search across every remembered workspace** and
+  **locate** an item — search a project by name, hit Enter, and the Manager
+  jumps to workspace scope and highlights that row in the matrix (no file is
+  opened). The palette also renders as a clean floating card on macOS again.
 
 ### Changes
 
@@ -28,6 +32,12 @@ file verbatim as the GitHub Release body. For the full version history see
 - The filesystem watcher now also subscribes to the active workspace's tool
   dirs and emits a new `workspace-changed` event so the inventory live-refreshes.
   Picking, activating, or removing a workspace restarts the watcher.
+- The command palette searches every remembered workspace's inventory (matched
+  by project name + item name / path / source) and, on Enter, emits a new
+  `hub-locate` event that surfaces the item in the Manager's workspace matrix.
+  Palette window rendering on macOS is fixed: the `NSPanel` re-applies
+  transparency and drops its native shadow after the style-mask change, sizes to
+  its content, and no longer collapses the result list to one row.
 
 ### Removed (breaking)
 
