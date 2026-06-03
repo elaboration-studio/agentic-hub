@@ -5,32 +5,24 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.3.0] — 2026-06-03
+## [0.4.0] — 2026-06-03
 
 ### Highlights
 
-- Command palette: an Alfred-style floating panel summoned by a configurable
-  global shortcut (default Cmd+Alt+A) that searches resources and opens the
-  original file in your editor — plus native macOS menus with Cmd+, for Config.
-- Palette suite apply: search a suite, drill in, and apply it to one tool as a
-  full reset — and a persisted suite↔tool binding auto re-syncs every bound tool
-  whenever a suite's capabilities change.
-- Source-aware suites: suites now remember which source each capability came
-  from, so a suite synced across devices resolves per-source and skips — never
-  deletes or mis-resolves — capabilities whose source isn't on the machine.
-- Base suite: mark one suite as the base and its rules/skills merge into every
-  applied suite, so your global resources are always present. The Manager locks
+- Apply a whole suite from the command palette: search a suite, drill in, and
+  apply it to one tool as a full reset — and a persisted suite↔tool binding then
+  auto re-syncs every bound tool whenever that suite's capabilities change.
+- Suites are now portable across devices: each capability remembers the source
+  it came from, so a synced suite resolves per-source and skips — never deletes
+  or mis-resolves — capabilities whose source isn't present on the machine.
+- Mark one suite as the base and its rules/skills merge into every applied
+  suite, so your global resources are always present. The Manager locks the
   cells a suite manages and names the owning suite (and base) on hover.
+- A smoother Manager: the filter bar and table header stay pinned while long
+  lists scroll, locked cells read clearly, and enabled cells stand out.
 
 ### Changes
 
-- New floating `palette` window toggled by a global accelerator
-  (`Settings.paletteShortcut`, default `Cmd+Alt+A`), dismissed on blur or Esc.
-- Flat resource search opens the original file via the existing opener allowlist;
-  an extensible command-provider registry also ships navigation commands.
-- Native application menu (App / Edit / View / Window); "Settings…" (Cmd+,) routes
-  to Config and "Command Palette" toggles the panel. Cmd+Q stays the hard exit.
-- Config gains a Command Palette panel to edit the shortcut; saving re-registers it.
 - Two-level palette: a suite row drills into a suite-tools view (`‹ <suite>`
   breadcrumb, Backspace-to-back) where each tool row runs a full-reset apply.
 - New `~/.agentic-hub/suite-bindings.json` records suite↔tool bindings;
@@ -45,10 +37,13 @@ file verbatim as the GitHub Release body. For the full version history see
   binding stays the selected suite. New `cmd_set_base_suite` re-syncs all bound
   tools, and editing the base re-syncs every binding. `cmd_suite_ownership`
   surfaces which suite owns each `(tool, item)` so the Manager can lock the cell.
+- Manager: the toolbar and table header are sticky over a scrolling list;
+  suite-locked cells show an indigo dashed lock with a not-allowed cursor; the
+  enabled-cell highlight is clearer. Applying a suite or changing the base now
+  refreshes the matrix so its state and locks stay in sync.
 
 ### Migration
 
-- The new `paletteShortcut` field defaults to `Cmd+Alt+A` for existing configs.
 - `~/.agentic-hub/suite-bindings.json` is created on first suite apply; a missing
   file is treated as empty, so existing installs need no migration.
 - Suite files (`~/.agentic-suites.json`) with legacy bare-string capabilities

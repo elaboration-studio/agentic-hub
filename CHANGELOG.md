@@ -6,19 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
-## [0.3.0] — 2026-06-03
+## [0.4.0] — 2026-06-03
 
 ### Added
 
-- **Command palette.** An Alfred-style floating panel, summoned by a
-  configurable global shortcut (default `Cmd+Alt+A`), searches your resources
-  and opens the original file in your editor. It dismisses on blur or `Esc`.
-- **Native macOS menus.** Standard App / Edit / View / Window menus. "Settings…"
-  (`Cmd+,`) jumps to Config and "Command Palette" toggles the panel; `Cmd+Q`
-  remains the hard exit.
-- **Command-provider registry.** An extensible registry backs the palette,
-  shipping navigation and suite-apply commands alongside flat resource search.
-  Resource search opens files through the existing opener allowlist.
 - **Palette suite apply (two-level).** Search a suite, drill into a suite-tools
   view (`‹ <suite>` breadcrumb, Backspace-to-back), and apply it to one tool as
   a full reset (clean + replace).
@@ -27,9 +18,6 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   `cmd_update_suite` re-applies the new capability set to every bound tool
   (serialized via the reconcile guard, emits `sources-changed`), and
   `cmd_delete_suite` drops the bindings without touching tool projections.
-- **Configurable palette shortcut.** Config gains a Command Palette panel to
-  edit the global shortcut; saving re-registers it live. The new
-  `Settings.paletteShortcut` field defaults to `Cmd+Alt+A` for existing configs.
 - **Source-aware suites (cross-device portability).** Every scanned
   `CapabilityItem` now carries a portable `source` identity (`SourceRef`:
   home-relative path + folder name), and suite entries are source-qualified
@@ -54,6 +42,35 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   bare-string suite files load unchanged and upgrade in place on the next save
   (non-breaking); apply/update opportunistically backfill a source for
   unqualified refs that resolve to exactly one scanned item.
+- **Manager UX polish.** The filter bar and table header stay pinned while a long
+  capability list scrolls. Suite-locked cells now read as a distinct indigo
+  dashed lock with a not-allowed cursor (and still name the owning suite on
+  hover), and an enabled cell's green highlight is clearer in both the flat and
+  tree views.
+
+### Fixed
+
+- **The Manager refreshes after a suite apply or base-suite change.** Applying a
+  suite and setting or clearing the base now emit `sources-changed`, so the
+  matrix reloads and keeps cell state and suite locks in sync without a manual
+  rescan.
+
+## [0.3.0] — 2026-06-03
+
+### Added
+
+- **Command palette.** An Alfred-style floating panel, summoned by a
+  configurable global shortcut (default `Cmd+Alt+A`), searches your resources
+  and opens the original file in your editor. It dismisses on blur or `Esc`.
+- **Native macOS menus.** Standard App / Edit / View / Window menus. "Settings…"
+  (`Cmd+,`) jumps to Config and "Command Palette" toggles the panel; `Cmd+Q`
+  remains the hard exit.
+- **Command-provider registry.** An extensible registry backs the palette,
+  shipping navigation commands alongside flat resource search. Resource search
+  opens files through the existing opener allowlist.
+- **Configurable palette shortcut.** Config gains a Command Palette panel to
+  edit the global shortcut; saving re-registers it live. The new
+  `Settings.paletteShortcut` field defaults to `Cmd+Alt+A` for existing configs.
 
 ## [0.2.1] — 2026-06-03
 
