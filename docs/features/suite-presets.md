@@ -5,7 +5,7 @@ Mode: Detailed
 Owner: Arno
 Last Updated: 2026-05-20
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [docs/features/mvp-unified-agentic-capability-manager.md](./mvp-unified-agentic-capability-manager.md)
-Related Docs: [docs/tech/modules/suite-presets.md](../tech/modules/suite-presets.md), [docs/features/workspace-suite-sync.md](./workspace-suite-sync.md)
+Related Docs: [docs/tech/modules/suite-presets.md](../tech/modules/suite-presets.md), [docs/features/workspace-inventory.md](./workspace-inventory.md)
 
 ## Why now
 

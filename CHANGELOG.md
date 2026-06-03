@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.5.0] — 2026-06-04
+
+### Added
+
+- **Read-only workspace inventory.** Workspace scope now audits a project
+  instead of writing into it. A left rail lists remembered workspaces; selecting
+  one runs the new `cmd_scan_workspace` (`agentic-core::workspace_inventory::scan_workspace`),
+  which walks each workspace tool's own dirs (`.cursor`/`.claude`/`.agents`
+  skills + agents, `.cursor/rules`, `AGENTS.md`/`CLAUDE.md`), dedupes resources
+  across tools, and returns `WorkspaceInventory { items, states, errors }` with
+  present-only `enabled` states. The global Manager matrix renders it read-only
+  (static present cells, inert aggregates).
+- **Live workspace refresh.** The filesystem watcher subscribes to the active
+  workspace's tool dirs and emits a new `workspace-changed` event; the UI
+  re-scans on change. Picking / activating / removing a workspace restarts the
+  watcher so it tracks the new active dirs.
+
+### Removed
+
+- **Suite-apply-into-workspace (breaking).** The `cmd_apply_workspace_patch`
+  command, the `agentic-core::workspace_patch` module, the `WorkspacePatchResult`
+  / `WorkspaceApply` types, the `WorkspaceTarget.lastApplied` field +
+  `record_apply`, the `<ws>/.agentic-hub/workspace-patch.json` manifest, and the
+  `workspace-apply-progress` event are all gone. Workspace scope no longer writes
+  anything; capabilities are still written only via the global projection engine.
+
+### Migration
+
+- No on-disk migration needed. Obsolete `workspace-patch.json` manifests are
+  ignored. Workspace targets in `~/.agentic-hub/state.json` load unchanged; the
+  dropped `lastApplied` field is removed on the next write.
+
 ## [0.4.0] — 2026-06-03
 
 ### Added

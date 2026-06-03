@@ -99,7 +99,7 @@ The core is split into focused modules, each owning one concern:
 | `rule_sync` | Managed markdown block in instruction files |
 | `hook_sync` | Managed JSON entries in tool hook configs |
 | `suite_store` | CRUD over `~/.agentic-suites.json` |
-| `workspace_patch` | Hard-copy a suite into a project folder |
+| `workspace_inventory` | Read-only scan of a project's own tool dirs |
 | `workspace_target_store` | Track active workspace folders (LRU) |
 | `api` | High-level orchestration the shell wraps 1:1 |
 | `paths` | Home dir, `~` expand/tildify helpers |
@@ -216,13 +216,16 @@ the suite is enabled and everything else is disabled, then runs the same
 plan/apply/sync pipeline as Flow 1. An empty suite disables everything for the
 tool (the UI confirms first).
 
-### Flow 3: Patch a workspace
+### Flow 3: Audit a workspace (read-only)
 
-In Workspace scope (`WorkspacePanel` in `src/App.tsx`): `pickWorkspaceDir()` ->
-`cmd_pick_workspace_dir` opens the native picker and registers the folder, then
-`applyWorkspacePatch()` -> `cmd_apply_workspace_patch` hard-copies the chosen
-suite into `<ws>/.agentic-hub/`, dereferencing symlinks and writing managed
-markdown/JSON sections for rules and hooks. Prior payload is cleaned first.
+In Workspace scope (`WorkspaceView` in `src/App.tsx`): `pickWorkspaceDir()` ->
+`cmd_pick_workspace_dir` opens the native picker and registers the folder in the
+left rail. Selecting a workspace runs `scanWorkspace()` ->
+`cmd_scan_workspace`, which walks the project's own per-tool dirs (`.cursor`,
+`.claude`, `.agents` skills/agents, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`)
+and returns a `WorkspaceInventory`. The Manager matrix renders it read-only —
+nothing is written into the project. The watcher emits `workspace-changed` to
+live-refresh the view.
 
 ---
 

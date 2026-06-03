@@ -6,7 +6,7 @@ Tauri 2.x desktop app that manages shared agentic capabilities — skills, agent
 
 | Path | Purpose |
 |------|---------|
-| `crates/agentic-core/` | Pure domain crate: `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync`, `suite_store`, `workspace_patch`, `scaffold`. No Tauri dependency. |
+| `crates/agentic-core/` | Pure domain crate: `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync`, `suite_store`, `workspace_inventory`, `scaffold`. No Tauri dependency. |
 | `crates/agentic-hub/` | Tauri 2.x bin crate: `#[tauri::command]` wrappers, window mgmt, capability JSON files. Depends on `agentic-core`. |
 | `src/` | React + Vite + TypeScript UI. `components/ui/` (shadcn primitives), `components/*` (feature views), `state/` (Zustand stores — all UI logic, unit-tested), `lib/utils.ts`, `index.css` (Tailwind v4 tokens). Main window + Suite Manager window. |
 | `src-tauri/capabilities/` | Tauri 2.x capability JSON files. Scope = FS-restricted; `shell` plugin not loaded. |
@@ -98,7 +98,7 @@ See [docs/tech/development/getting-started.md](docs/tech/development/getting-sta
 
 - Markdown managed-block markers stay verbatim: `<!-- agentic-hub:start -->` / `:end` (heading `## Agentic Hub Managed Rules`). Migration parity with the rebranded VS Code extension. Managed-copy metadata lives in a per-root `.agentic-hub-managed.json` manifest; hook entries carry the `_agenticHub` marker keyed by the bare manifest id. Do not reintroduce the legacy `e-studio-*` names.
 - Suite storage path stays `~/.agentic-suites.json`. Same reason.
-- Workspace manifest folder is `<ws>/.agentic-hub/`.
+- Workspace scope is **read-only** — it scans a project's own tool dirs and reports what each tool already has. It never writes into a workspace. Do not reintroduce a workspace apply / patch / manifest path.
 - `RELEASE.md` holds **only the current release's** notes. The release workflow publishes it verbatim as the GitHub Release body (`body_path: RELEASE.md` in `.github/workflows/release.yml`), so any older versions left in the file show up on every release. When cutting a release, **replace** `RELEASE.md` with the new version's notes — never prepend. The cumulative history lives in `CHANGELOG.md` (append there, newest first).
 - `tauri-plugin-shell` is never added to `Cargo.toml`. If a feature seems to need it, raise security review first.
 - Every IPC command must appear in `src-tauri/capabilities/default.json`.
@@ -110,9 +110,9 @@ See [docs/tech/development/getting-started.md](docs/tech/development/getting-sta
 This product is a Tauri-native port of the Unified Agentic Capability Manager originally shipping inside `e-studio-copilot/packages/vs-code/`. The product semantics are preserved 1:1:
 
 - Same `~/.agentic` shared root contract
-- Same per-tool projection rules (flat for Claude, managed copy for Cursor agents, markdown section for Codex/Claude/OpenClaw rules)
+- Same per-tool projection rules (flat for Claude skills, managed copy for Cursor agents, markdown section for Codex/Claude/OpenClaw rules)
 - Same `~/.agentic-suites.json` for suites
 - Same managed-block markers
-- Workspace manifest folder renamed from `.e-studio-copilot/` to `.agentic-hub/` (the only breaking change)
+- Workspace scope is the one intentional divergence: the VS Code extension hard-copied suites into a project; the hub instead treats each workspace as a read-only inventory of what its tools already have.
 
 Users coming from the VS Code extension keep working without reconfiguring their tools.

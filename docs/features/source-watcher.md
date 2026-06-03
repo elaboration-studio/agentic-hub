@@ -4,7 +4,7 @@ Status: Draft
 Mode: Detailed
 Owner: Arno
 Last Updated: 2026-05-31
-Depends On: [docs/features/mvp-unified-agentic-capability-manager.md](./mvp-unified-agentic-capability-manager.md), [docs/features/workspace-suite-sync.md](./workspace-suite-sync.md), [ARCHITECTURE.projection.md](../../ARCHITECTURE.projection.md)
+Depends On: [docs/features/mvp-unified-agentic-capability-manager.md](./mvp-unified-agentic-capability-manager.md), [docs/features/workspace-inventory.md](./workspace-inventory.md), [ARCHITECTURE.projection.md](../../ARCHITECTURE.projection.md)
 Related Docs: [docs/tech/modules/watcher.md](../tech/modules/watcher.md), [docs/tech/modules/multi-source-roots.md](../tech/modules/multi-source-roots.md)
 
 ## Why now

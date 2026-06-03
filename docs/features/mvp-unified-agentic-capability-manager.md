@@ -5,7 +5,7 @@ Mode: Detailed
 Owner: Arno
 Last Updated: 2026-05-20
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [ARCHITECTURE.projection.md](../../ARCHITECTURE.projection.md)
-Related Docs: [docs/features/suite-presets.md](./suite-presets.md), [docs/features/workspace-suite-sync.md](./workspace-suite-sync.md), [docs/features/agentic-demo-scaffold.md](./agentic-demo-scaffold.md), [docs/tech/modules/rule-projection-sync.md](../tech/modules/rule-projection-sync.md), [docs/tech/modules/claude-flat-skill-layout.md](../tech/modules/claude-flat-skill-layout.md)
+Related Docs: [docs/features/suite-presets.md](./suite-presets.md), [docs/features/workspace-inventory.md](./workspace-inventory.md), [docs/features/agentic-demo-scaffold.md](./agentic-demo-scaffold.md), [docs/tech/modules/rule-projection-sync.md](../tech/modules/rule-projection-sync.md), [docs/tech/modules/claude-flat-skill-layout.md](../tech/modules/claude-flat-skill-layout.md)
 
 ## Why now
 
@@ -56,8 +56,8 @@ As a power user managing multiple AI tools, I want a single desktop window that 
 - Tool-specific projections:
   - Cursor agents: managed file copies under `~/.cursor/agents` with sync metadata sidecars
   - OpenClaw agents/skills: symlinks under `~/.openclaw/{agents,skills}`
-  - Codex skills/agents: symlinks under `~/.agents/skills` and `~/.agents/agents` (matches OpenAI Codex's documented `$HOME/.agents/skills` user scope)
-  - Claude skills/agents: flat symlinks at the top level of `~/.claude/skills/` and `~/.claude/agents/`
+  - Codex skills: symlinks under `~/.agents/skills` (matches OpenAI Codex's documented `$HOME/.agents/skills` user scope); Codex subagents are TOML files under `~/.codex/agents`
+  - Claude skills: **flat** symlinks at the top level of `~/.claude/skills/` (non-recursive loader); Claude agents: **nested** symlinks under `~/.claude/agents/` (recursive loader, identity from `name` frontmatter)
 - Rule projection:
   - Cursor: `link_sync` via symlinks under `~/.cursor/rules`, preserving nested folders
   - Claude Code: `markdown_section_sync` into `~/.claude/CLAUDE.md`
@@ -70,7 +70,7 @@ As a power user managing multiple AI tools, I want a single desktop window that 
 ### Out of scope (this MVP)
 
 - Suite presets (separate feature; see [suite-presets.md](./suite-presets.md))
-- Workspace patch (separate feature; see [workspace-suite-sync.md](./workspace-suite-sync.md))
+- Workspace inventory (separate feature; see [workspace-inventory.md](./workspace-inventory.md))
 - Demo scaffold command (separate feature; see [agentic-demo-scaffold.md](./agentic-demo-scaffold.md))
 - Background watchers
 - Auto-detection of installed tools

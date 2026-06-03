@@ -338,7 +338,7 @@ The managed block format is documented in [docs/tech/modules/rule-projection-syn
 
 ## Claude flat-layout collision contract
 
-Claude Code's loader scans only the top level of `~/.claude/skills/` and `~/.claude/agents/`. Nested folders are treated as opaque single entries. Two source items with the same basename project to the same flat target — a silent overwrite risk.
+Claude Code's **skill** loader scans only the top level of `~/.claude/skills/` — nested folders are treated as opaque single entries, so two source skills with the same basename project to the same flat target (a silent overwrite risk). Claude **agents** are scanned recursively (`~/.claude/agents/`, identity from the `name` frontmatter), so the agent layout is `Nested` and this collision pass applies to Claude skills only.
 
 The planner's flat-layout collision pass:
 

@@ -1,27 +1,31 @@
-//! Filesystem watcher for the source roots. On a debounced batch of changes
-//! (e.g. an external `git pull`), it re-scans, reconciles every enabled tool's
-//! projections, re-patches the active workspace, and emits `sources-changed`
-//! so the UI live-refreshes. We never run git — we only react to file events.
+//! Filesystem watcher for the source roots and the active workspace. On a
+//! debounced batch of changes (e.g. an external `git pull` or an edit inside a
+//! workspace's tool dirs), it re-scans, reconciles every enabled tool's global
+//! projections, and emits `sources-changed` + `workspace-changed` so the UI
+//! live-refreshes both the global matrix and the read-only workspace inventory.
+//! We never run git — we only react to file events.
 //!
 //! The pure reconcile decision lives in `agentic-core`; this module owns the
 //! OS subscription, debounce, and Tauri event bridge only.
 
 use std::collections::HashSet;
+use std::path::Path;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::Duration;
 
 use agentic_core::api;
-use agentic_core::hook_sync;
-use agentic_core::model::CapabilityItem;
 use agentic_core::reconcile;
 use agentic_core::settings::Settings;
-use agentic_core::suite_store::SuiteStore;
-use agentic_core::workspace_patch;
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use notify::{recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter};
+
+/// The per-tool directories and instruction files inside a workspace that the
+/// inventory scan reads; watched (when present) so edits live-refresh the view.
+const WORKSPACE_WATCH_DIRS: [&str; 4] = [".agents", ".claude", ".cursor", ".codex"];
+const WORKSPACE_WATCH_FILES: [&str; 2] = ["AGENTS.md", "CLAUDE.md"];
 
 /// Quiet window after the last change before a reconcile fires. Coalesces the
 /// burst of writes a `git pull` (or bulk edit) produces into a single pass.
@@ -138,6 +142,7 @@ fn replace(slot: &mut MutexGuard<'_, Option<Running>>, app: AppHandle) {
             let _ = watcher.watch(&source.path, RecursiveMode::Recursive);
         }
     }
+    watch_active_workspace(&mut watcher);
 
     // Seed the snapshot so the first change diffs against startup state
     // (no auto-enable flood on launch).
@@ -174,9 +179,11 @@ fn worker_loop(rx: mpsc::Receiver<Msg>, app: AppHandle, mut prev: HashSet<String
     }
 }
 
-/// One reconcile pass: scan, reconcile every enabled tool, re-patch the active
-/// workspace, then notify the UI. Best-effort — errors never crash the worker.
-/// Holds the process-wide reconcile guard so it never overlaps another pass.
+/// One reconcile pass: scan, reconcile every enabled tool, then notify the UI.
+/// Emits both `sources-changed` (global matrix) and `workspace-changed`
+/// (read-only inventory) since a single batch can touch either watched tree.
+/// Best-effort — errors never crash the worker. Holds the process-wide
+/// reconcile guard so it never overlaps another pass.
 fn run_once(app: &AppHandle, prev: &mut HashSet<String>) {
     let _guard = reconcile_guard();
     let Ok(settings) = Settings::load() else {
@@ -184,15 +191,15 @@ fn run_once(app: &AppHandle, prev: &mut HashSet<String>) {
     };
     let scanned = api::scan(&settings);
     reconcile::reconcile_all(&scanned.items, &settings, prev);
-    reapply_active_workspace(&settings, &scanned.items);
     *prev = scanned.items.iter().map(|i| i.id.clone()).collect();
     let _ = app.emit("sources-changed", ());
+    let _ = app.emit("workspace-changed", ());
 }
 
 /// Full rescan + resync with no newcomer auto-enable (the Config fallback /
-/// recovery path). Reconciles every enabled tool against current state and
-/// re-patches the active workspace, then notifies the UI. Serialized against
-/// the watcher worker via the process-wide reconcile guard.
+/// recovery path). Reconciles every enabled tool against current state, then
+/// notifies the UI. Serialized against the watcher worker via the process-wide
+/// reconcile guard.
 pub fn resync_now(app: &AppHandle) {
     let _guard = reconcile_guard();
     let Ok(settings) = Settings::load() else {
@@ -203,31 +210,28 @@ pub fn resync_now(app: &AppHandle) {
     // newcomer — a pure refresh/repair pass.
     let all: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
     reconcile::reconcile_all(&scanned.items, &settings, &all);
-    reapply_active_workspace(&settings, &scanned.items);
     let _ = app.emit("sources-changed", ());
+    let _ = app.emit("workspace-changed", ());
 }
 
-/// Replay the active workspace's recorded `lastApplied` patches so its hard
-/// copies refresh from fresh source content. No-op when nothing is recorded.
-fn reapply_active_workspace(settings: &Settings, items: &[CapabilityItem]) {
-    let store = WorkspaceTargetStore::new();
-    let Ok(Some(active)) = store.get_active() else {
+/// Subscribe to the active workspace's existing tool dirs and instruction files
+/// so edits there live-refresh the inventory. Lightweight: only the per-tool
+/// folders, never the whole repo. No-op when no workspace is active.
+fn watch_active_workspace(watcher: &mut RecommendedWatcher) {
+    let Ok(Some(active)) = WorkspaceTargetStore::new().get_active() else {
         return;
     };
-    if active.last_applied.is_empty() {
-        return;
+    let dir: &Path = &active.dir;
+    for sub in WORKSPACE_WATCH_DIRS {
+        let path = dir.join(sub);
+        if path.is_dir() {
+            let _ = watcher.watch(&path, RecursiveMode::Recursive);
+        }
     }
-    let suites = SuiteStore::with_path(settings.resolved_suites_path());
-    let manifests = hook_sync::load_manifests(items);
-    for applied in &active.last_applied {
-        if let Ok(Some(suite)) = suites.get(&applied.suite_id) {
-            let _ = workspace_patch::apply_workspace_patch(
-                &active.dir,
-                applied.tool_id,
-                &suite,
-                items,
-                &manifests,
-            );
+    for file in WORKSPACE_WATCH_FILES {
+        let path = dir.join(file);
+        if path.is_file() {
+            let _ = watcher.watch(&path, RecursiveMode::NonRecursive);
         }
     }
 }

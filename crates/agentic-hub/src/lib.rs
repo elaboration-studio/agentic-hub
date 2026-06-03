@@ -131,7 +131,7 @@ pub fn run() {
             commands::cmd_list_workspace_targets,
             commands::cmd_remove_workspace_target,
             commands::cmd_set_active_workspace_target,
-            commands::cmd_apply_workspace_patch,
+            commands::cmd_scan_workspace,
         ])
         .build(tauri::generate_context!())
         .expect("error while building the Agentic Hub Tauri application")

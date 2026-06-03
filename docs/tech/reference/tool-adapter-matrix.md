@@ -2,9 +2,9 @@
 
 Status: Stable
 Mode: Detailed
-Last Updated: 2026-05-20
+Last Updated: 2026-06-04
 Depends On: [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md)
-Related Docs: [docs/tech/modules/claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md), [docs/tech/modules/openclaw-tool-adapter.md](../modules/openclaw-tool-adapter.md), [docs/tech/modules/rule-projection-sync.md](../modules/rule-projection-sync.md), [docs/tech/modules/workspace-patch.md](../modules/workspace-patch.md)
+Related Docs: [docs/tech/modules/claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md), [docs/tech/modules/openclaw-tool-adapter.md](../modules/openclaw-tool-adapter.md), [docs/tech/modules/rule-projection-sync.md](../modules/rule-projection-sync.md), [docs/tech/modules/workspace-inventory.md](../modules/workspace-inventory.md)
 
 ## Purpose
 
@@ -17,13 +17,13 @@ Single-page reference table for every tool adapter: target paths, projection mod
 | Tool id | `codex` | `claude` | `cursor` | `openclaw` |
 | Default `enabled` | `true` | `true` | `true` | `true` |
 | `skillsPath` default | `~/.agents/skills` | `~/.claude/skills` | `~/.cursor/skills` | `~/.openclaw/skills` |
-| `agentsPath` default | `~/.agents/agents` | `~/.claude/agents` | `~/.cursor/agents` | `~/.openclaw/agents` |
+| `agentsPath` default | `~/.codex/agents` | `~/.claude/agents` | `~/.cursor/agents` | `~/.openclaw/agents` |
 | `rulesPath` default | `~/.codex/agentic-rules` | `~/.claude/rules` | `~/.cursor/rules` | `~/.openclaw/agentic-rules` |
 | `instructionsPath` default | `~/.codex/AGENTS.md` | `~/.claude/CLAUDE.md` | _unused_ | `~/.openclaw/workspace/SOUL.md` |
 | `skillLayout` | `Nested` | `Flat` | `Nested` | `Nested` |
-| `agentLayout` | `Nested` | `Flat` | `Nested` | `Nested` |
+| `agentLayout` | `Nested` | `Nested` | `Nested` | `Nested` |
 | Skill projection | symlink | **managed copy** (flat) | symlink | symlink |
-| Agent projection | symlink | symlink (flat) | **managed copy** | symlink |
+| Agent projection | symlink | symlink (nested) | **managed copy** | symlink |
 | Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `link_sync` | `markdown_section_sync` |
 | Rule target | `~/.codex/AGENTS.md` (managed block) | `~/.claude/CLAUDE.md` (managed block) | symlinks under `~/.cursor/rules/` | `~/.openclaw/workspace/SOUL.md` (managed block) |
 | Mirrored rule files | optional at `~/.codex/agentic-rules/` (annotated when present) | optional at `~/.claude/rules/` (rarely used) | n/a (rules are real files via symlink) | optional at `~/.openclaw/agentic-rules/` |
@@ -32,34 +32,37 @@ Single-page reference table for every tool adapter: target paths, projection mod
 | Hook projection mode | `json_section` | `json_section` | `json_section` | not supported |
 | Hook JSON shape | two-level (PascalCase events) | two-level (PascalCase events) | flat (camelCase events) | n/a |
 
-### Why Codex uses `~/.agents/`
+### Why Codex skills use `~/.agents/` but agents use `~/.codex/agents`
 
-OpenAI Codex's documented skill scan paths are `$CWD/.agents/skills` walking up to `$REPO_ROOT/.agents/skills`, and `$HOME/.agents/skills` for user scope. Agents follow the same `.agents/` root for consistency. This is distinct from Codex's tool config dir `~/.codex/` which is used for `AGENTS.md` instruction projection.
+OpenAI Codex's documented **skill** scan paths are `$CWD/.agents/skills` walking up to `$REPO_ROOT/.agents/skills`, and `$HOME/.agents/skills` for user scope ([Codex skills](https://developers.openai.com/codex/skills/)). The `.agents/` root holds **skills only**. Codex **subagents** are TOML files under `~/.codex/agents/` (user) and `.codex/agents/` (project), each with `name` / `description` / `developer_instructions` ([Codex subagents](https://developers.openai.com/codex/subagents)). Codex's `~/.codex/` dir is also where `AGENTS.md` instruction projection lands.
 
 ### Why Cursor agents and Claude skills are managed copies
 
 Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
 
-### Why Claude is flat
+### Why only Claude *skills* are flat
 
-Claude Code's loader scans only the top level of `~/.claude/skills/` and `~/.claude/agents/`. Nested folders are treated as opaque single entries. Flat layout collapses the source's `relative_path` to its basename for the target path. See [claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md).
+Claude Code's **skill** loader scans only the top level of `~/.claude/skills/` — nested folders are not discovered ([docs](https://code.claude.com/docs/en/skills); issues [#18192](https://github.com/anthropics/claude-code/issues/18192) / [#10238](https://github.com/anthropics/claude-code/issues/10238)). Flat layout collapses a skill's `relative_path` to its basename. Claude **agents**, by contrast, are scanned **recursively** — `~/.claude/agents/` subfolders are honored and identity comes from the `name` frontmatter, not the path ([sub-agents docs](https://code.claude.com/docs/en/sub-agents)) — so agents stay nested (flattening would collide same-basename agents). See [claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md).
 
 ## Workspace scope (writes into project directories)
 
 OpenClaw is **not supported** in workspace scope.
 
+Workspace scope is **read-only inventory** (`workspace_inventory`): it scans these per-tool dirs and reports what each tool already has. It never writes. The "scan source" column is the directory/file each tool actually reads.
+
 | Aspect | Codex | Claude Code | Cursor |
 |--------|-------|-------------|--------|
-| `skills_path` | `<ws>/.agents/skills` | `<ws>/.claude/skills` | `<ws>/.cursor/skills` |
-| `agents_path` | `<ws>/.agents/agents` | `<ws>/.claude/agents` | `<ws>/.cursor/agents` |
-| `rules_path` | `<ws>/.codex/agentic-rules` | `<ws>/.claude/agentic-rules` | `<ws>/.cursor/rules` |
-| `instructions_path` | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | _unused_ |
-| Skill projection | hard copy (deref symlinks) | hard copy | hard copy |
-| Agent projection | hard copy | hard copy | hard copy |
-| Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `file_sync` (raw copy) |
-| Layout | `Nested` | `Nested` | `Nested` |
+| Skills scan source | `<ws>/.agents/skills` | `<ws>/.claude/skills` | `<ws>/.cursor/skills` + `<ws>/.agents/skills` |
+| Agents scan source | `<ws>/.codex/agents/*.toml` | `<ws>/.claude/agents/*.md` | `<ws>/.cursor/agents` + `<ws>/.agents/agents` |
+| Rules scan source | (in `AGENTS.md`) | (in `CLAUDE.md`) | `<ws>/.cursor/rules/*.mdc` |
+| Instructions scan source | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | `<ws>/AGENTS.md` |
+| Skill nesting | nested | nested | nested (recursive) |
 
-In workspace scope every projection is hard copy (no symlinks). Claude's flat constraint only applies to its global home; workspace `<ws>/.claude/skills/` can be nested because users own that path entirely.
+Notes:
+- **Codex agents are TOML** (`.codex/agents/*.toml`), distinct from Claude/Cursor markdown agents — the scanner matches `*.toml` for Codex, `*.md` otherwise.
+- **`AGENTS.md` is read by both Codex and Cursor**, so the inventory attributes that row to both tools; `CLAUDE.md` is Claude-only.
+- **Cursor also honors the shared `.agents/` dir** (skills) in addition to its own `.cursor/` dirs.
+- Claude's flat skill constraint is a global-home loader quirk; the workspace scanner reports nested skills as-is because users own the project path.
 
 ## Per-kind projection summary
 
@@ -71,9 +74,9 @@ In workspace scope every projection is hard copy (no symlinks). Claude's flat co
 
 ### Agent
 
-- Global Codex / Claude / OpenClaw: symlink (flat for Claude)
+- Global Codex / Claude / OpenClaw: symlink (nested for all — Claude scans `~/.claude/agents/` recursively)
 - Global Cursor: managed copy (per-root manifest)
-- Workspace: hard copy (nested)
+- Workspace: read-only inventory (Codex reads `.codex/agents/*.toml`; Claude/Cursor read `*.md`)
 
 ### Rule
 
@@ -142,9 +145,8 @@ OpenClaw + Workspace returns `Err(UnsupportedInWorkspaceScope)`. A hook targetin
 ```
 fn layout(tool: ToolId, kind: CapabilityKind, scope: SyncScope) -> Layout {
     match (tool, kind, scope) {
-        (Claude, Skill, Global) => Flat,
-        (Claude, Agent, Global) => Flat,
-        _ => Nested,
+        (Claude, Skill, Global) => Flat,  // skill loader is non-recursive
+        _ => Nested,                       // incl. Claude agents (recursive loader)
     }
 }
 ```

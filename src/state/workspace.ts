@@ -1,59 +1,47 @@
-// Workspace-scope state, extracted from WorkspacePanel: target dirs, the active
-// target, suite/tool selection, and the hard-copy apply. Errors surface as
-// toasts.
+// Workspace-scope state: the remembered project dirs (left rail) and the active
+// one. Selecting a workspace loads its read-only inventory into the manager
+// store, which reuses the global matrix render. No suites, no apply — workspace
+// scope is a read-only audit. Errors surface as toasts.
 
 import { create } from "zustand";
 import { toast } from "sonner";
 import {
-  applyWorkspacePatch,
-  listSuites,
   listWorkspaceTargets,
   pickWorkspaceDir,
   removeWorkspaceTarget,
   setActiveWorkspaceTarget,
 } from "../ipc";
-import type {
-  SuiteDefinition,
-  ToolId,
-  WorkspacePatchResult,
-  WorkspaceTarget,
-} from "../types";
+import type { WorkspaceTarget } from "../types";
 import { messageOf } from "../shared";
+import { useManagerStore } from "./manager";
 
 interface WorkspaceState {
   targets: WorkspaceTarget[];
   activeId: string;
-  suites: SuiteDefinition[];
-  suiteId: string;
-  tool: ToolId;
   busy: boolean;
-  result: WorkspacePatchResult | null;
 
   reload: () => Promise<void>;
   pick: () => Promise<void>;
   activate: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  apply: () => Promise<void>;
-  setSuiteId: (id: string) => void;
-  setTool: (tool: ToolId) => void;
+}
+
+/// Load the active workspace's inventory into the manager store, when one
+/// exists. Centralizes the manager handoff so every mutation refreshes the view.
+async function loadActive(id: string): Promise<void> {
+  if (id) await useManagerStore.getState().loadWorkspace(id);
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   targets: [],
   activeId: "",
-  suites: [],
-  suiteId: "",
-  tool: "codex",
   busy: false,
-  result: null,
 
   reload: async () => {
     try {
-      const [state, suiteList] = await Promise.all([listWorkspaceTargets(), listSuites()]);
+      const state = await listWorkspaceTargets();
       const activeId = state.workspaceActiveId ?? state.workspaceTargets[0]?.id ?? "";
-      const cur = get().suiteId;
-      const suiteId = suiteList.some((s) => s.id === cur) ? cur : (suiteList[0]?.id ?? "");
-      set({ targets: state.workspaceTargets, activeId, suites: suiteList, suiteId });
+      set({ targets: state.workspaceTargets, activeId });
     } catch (e) {
       toast.error(messageOf(e));
     }
@@ -65,6 +53,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const target = await pickWorkspaceDir();
       await get().reload();
       set({ activeId: target.id });
+      await loadActive(target.id);
     } catch (e) {
       const msg = messageOf(e);
       if (!msg.includes("No folder selected")) toast.error(msg);
@@ -77,6 +66,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ activeId: id });
     try {
       await setActiveWorkspaceTarget(id);
+      await loadActive(id);
     } catch (e) {
       toast.error(messageOf(e));
     }
@@ -86,25 +76,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     try {
       await removeWorkspaceTarget(id);
       await get().reload();
+      await loadActive(get().activeId);
     } catch (e) {
       toast.error(messageOf(e));
     }
   },
-
-  apply: async () => {
-    const { activeId, suiteId, tool } = get();
-    if (!activeId || !suiteId) return;
-    set({ busy: true, result: null });
-    try {
-      const res = await applyWorkspacePatch(activeId, tool, suiteId);
-      set({ result: res });
-    } catch (e) {
-      toast.error(messageOf(e));
-    } finally {
-      set({ busy: false });
-    }
-  },
-
-  setSuiteId: (id) => set({ suiteId: id }),
-  setTool: (tool) => set({ tool }),
 }));

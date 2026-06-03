@@ -93,9 +93,9 @@ does not have.
 
 ## Scope boundary
 
-This binding covers **global-scope** tools only. Workspace patches keep their
-own per-workspace binding and watcher replay (see
-[workspace-patch.md](./workspace-patch.md)); the two mechanisms do not overlap.
+This binding covers **global-scope** tools only. Workspace scope is a read-only
+inventory (see [workspace-inventory.md](./workspace-inventory.md)) and has no
+bindings, so the two mechanisms do not overlap.
 
 ## Tests
 

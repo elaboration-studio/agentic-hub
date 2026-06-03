@@ -208,7 +208,7 @@ impl ToolSettings {
             ToolId::Codex => ToolSettings {
                 enabled: true,
                 skills_path: expand_tilde("~/.agents/skills"),
-                agents_path: expand_tilde("~/.agents/agents"),
+                agents_path: expand_tilde("~/.codex/agents"),
                 rules_path: expand_tilde("~/.codex/agentic-rules"),
                 instructions_path: Some(expand_tilde("~/.codex/AGENTS.md")),
                 hooks_enabled: true,
@@ -428,7 +428,9 @@ mod tests {
         assert!(s.tools.cursor.enabled);
         assert!(!s.tools.openclaw.enabled);
         assert!(s.tools.codex.skills_path.ends_with(".agents/skills"));
-        assert!(s.tools.codex.agents_path.ends_with(".agents/agents"));
+        // Codex subagents are TOML files under `.codex/agents` (the `.agents/`
+        // dir holds only skills). Source: developers.openai.com/codex/subagents.
+        assert!(s.tools.codex.agents_path.ends_with(".codex/agents"));
         assert!(s.tools.codex.rules_path.ends_with(".codex/agentic-rules"));
         assert!(s
             .tools
