@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.3.0] — 2026-06-03
+
+### Added
+
+- **Command palette.** An Alfred-style floating panel, summoned by a
+  configurable global shortcut (default `Cmd+Alt+A`), searches your resources
+  and opens the original file in your editor. It dismisses on blur or `Esc`.
+- **Native macOS menus.** Standard App / Edit / View / Window menus. "Settings…"
+  (`Cmd+,`) jumps to Config and "Command Palette" toggles the panel; `Cmd+Q`
+  remains the hard exit.
+- **Command-provider registry.** An extensible registry backs the palette,
+  shipping navigation commands alongside flat resource search. Resource search
+  opens files through the existing opener allowlist.
+- **Configurable palette shortcut.** Config gains a Command Palette panel to
+  edit the global shortcut; saving re-registers it live. The new
+  `Settings.paletteShortcut` field defaults to `Cmd+Alt+A` for existing configs.
+
 ## [0.2.1] — 2026-06-03
 
 ### Fixed
