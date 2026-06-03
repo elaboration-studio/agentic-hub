@@ -30,11 +30,19 @@ audit**: pick a project, see exactly what each tool has, live-updated.
   workspace tool's own directories. The result reuses the global manager's matrix
   render — rows are resources (skills, agents, rules, the tool instruction file),
   columns are tools, a cell is a static check when that tool has the resource.
-- **Global × local in one view.** Because the same matrix component renders both
-  scopes, a developer can flip the header toggle and compare what's installed
-  globally on their machine against what a given project ships.
+- **Global × local in one view.** The workspace matrix merges the project's local
+  resources with the globally-applied ones (resources projected into each tool's
+  home dir apply to every project). Each row is tagged with its **source** — a
+  shared root (`.agentic-arno`, `.helper`, …) or `Workspace` — and a **source
+  filter** lets the developer narrow to just the local resources or to any one
+  shared directory. This shows, at a glance, every resource that actually applies
+  to the project, global and local together.
+- **Cursor reads `.agents/` too.** Cursor honors the shared `.agents/` standard
+  dir as well as its own `.cursor/`, so skills/agents dropped in `.agents/` show
+  up under both Codex and Cursor.
 - **Live refresh.** Editing the project's tool dirs (dropping a skill, editing
-  `AGENTS.md`) re-scans and updates the view via a `workspace-changed` event.
+  `AGENTS.md`) re-scans via `workspace-changed`; a change to a shared root
+  (`sources-changed`) reloads the merged inventory too.
 - **No writes, ever.** Workspace scope never touches the filesystem. Toggles,
   apply, and ownership locks are all inert in read-only mode.
 
@@ -56,6 +64,9 @@ audit**: pick a project, see exactly what each tool has, live-updated.
 
 1. Toggle the header scope to **Workspace**.
 2. Click **Add workspace…**, pick a project directory.
-3. The project becomes active and its inventory renders in the matrix.
-4. Edit the project's tool dirs in another tool — the matrix updates on save.
-5. Remove the workspace from the rail when finished; nothing is left behind.
+3. The project becomes active; the matrix renders its local resources merged
+   with the globally-applied ones, each tagged by source.
+4. Use the **source filter** to narrow to `Workspace` (local only) or to a single
+   shared root.
+5. Edit the project's tool dirs in another tool — the matrix updates on save.
+6. Remove the workspace from the rail when finished; nothing is left behind.

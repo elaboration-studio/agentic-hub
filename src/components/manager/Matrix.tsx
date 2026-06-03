@@ -156,7 +156,7 @@ export function Matrix() {
       <Alert>
         <AlertDescription>
           {readOnly
-            ? "No agentic resources installed in this workspace yet."
+            ? "No agentic resources apply to this project — nothing installed locally or projected from a shared source yet."
             : "No capabilities found in the configured sources."}
         </AlertDescription>
       </Alert>
@@ -248,13 +248,17 @@ export function Matrix() {
             </SelectContent>
           </Select>
         )}
-        <Label className="flex shrink-0 items-center gap-2 text-muted-foreground">
-          <Checkbox
-            checked={enabledOnly}
-            onCheckedChange={(v) => setEnabledOnly(v === true)}
-          />
-          Enabled only
-        </Label>
+        {/* In read-only inventory every shown resource is present (enabled),
+            so an "enabled only" toggle would be a no-op — hide it. */}
+        {!readOnly && (
+          <Label className="flex shrink-0 items-center gap-2 text-muted-foreground">
+            <Checkbox
+              checked={enabledOnly}
+              onCheckedChange={(v) => setEnabledOnly(v === true)}
+            />
+            Enabled only
+          </Label>
+        )}
         {view === "tree" && (
           <div className="flex gap-1">
             <Tooltip>

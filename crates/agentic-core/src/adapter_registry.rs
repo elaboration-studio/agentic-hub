@@ -10,7 +10,7 @@ use crate::settings::{Settings, ToolSettings};
 /// How a kind's relative path maps onto the tool's target directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
-    /// Collapse to basename (Claude's non-recursive loader).
+    /// Collapse to basename (Claude's non-recursive *skill* loader).
     Flat,
     /// Preserve nested folder structure.
     Nested,
@@ -72,7 +72,10 @@ pub const WORKSPACE_TOOL_IDS: [ToolId; 3] = [ToolId::Codex, ToolId::Claude, Tool
 
 /// Materialize a workspace-scoped adapter rooted at `ws`. Paths are hard-coded
 /// per tool (v1). OpenClaw is unsupported and returns a disabled adapter so
-/// callers reject it. See `docs/tech/modules/workspace-patch.md`.
+/// callers reject it. Notes: Codex subagents live in `.codex/agents/*.toml`
+/// (not `.agents/`, which holds only skills); Cursor reads `AGENTS.md` and the
+/// shared `.agents/` dir in addition to its own `.cursor/` dirs. See
+/// `docs/tech/modules/workspace-inventory.md`.
 pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedAdapter {
     let j = |p: &str| ws.join(p);
     match tool {
@@ -80,7 +83,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             tool_id: tool,
             enabled: true,
             skills_path: j(".agents/skills"),
-            agents_path: j(".agents/agents"),
+            agents_path: j(".codex/agents"),
             rules_path: j(".codex/agentic-rules"),
             instructions_path: Some(j("AGENTS.md")),
             hooks_enabled: true,
@@ -102,7 +105,10 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             skills_path: j(".cursor/skills"),
             agents_path: j(".cursor/agents"),
             rules_path: j(".cursor/rules"),
-            instructions_path: None,
+            // Cursor reads a project-root `AGENTS.md` as agent instructions
+            // (in addition to `.cursor/rules`), so the inventory attributes it
+            // to Cursor too. Source: https://cursor.com/docs/rules (2026).
+            instructions_path: Some(j("AGENTS.md")),
             hooks_enabled: true,
             hooks_file: Some(j(".cursor/hooks.json")),
         },
@@ -120,10 +126,15 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
 }
 
 impl ResolvedAdapter {
-    /// Layout for a kind. Claude skills/agents are flat; everything else nested.
+    /// Layout for a kind. Only Claude *skills* are flat — Claude's skill loader
+    /// scans `~/.claude/skills/` non-recursively, so nested source folders must
+    /// collapse to their basename. Claude *agents* are scanned recursively (the
+    /// loader walks `~/.claude/agents/` subfolders; identity comes from the
+    /// `name` frontmatter), so they keep nesting like every other kind. See
+    /// `docs/tech/reference/tool-adapter-matrix.md`.
     pub fn layout_for(&self, kind: CapabilityKind) -> Layout {
         match (self.tool_id, kind) {
-            (ToolId::Claude, CapabilityKind::Skill | CapabilityKind::Agent) => Layout::Flat,
+            (ToolId::Claude, CapabilityKind::Skill) => Layout::Flat,
             _ => Layout::Nested,
         }
     }
@@ -290,7 +301,7 @@ mod tests {
 
         let codex = create_workspace_adapter(ToolId::Codex, ws);
         assert_eq!(codex.skills_path, ws.join(".agents/skills"));
-        assert_eq!(codex.agents_path, ws.join(".agents/agents"));
+        assert_eq!(codex.agents_path, ws.join(".codex/agents"));
         assert_eq!(codex.rules_path, ws.join(".codex/agentic-rules"));
         assert_eq!(codex.instructions_path, Some(ws.join("AGENTS.md")));
         assert_eq!(codex.hooks_file, Some(ws.join(".codex/hooks.json")));
@@ -307,7 +318,8 @@ mod tests {
         assert_eq!(cursor.skills_path, ws.join(".cursor/skills"));
         assert_eq!(cursor.agents_path, ws.join(".cursor/agents"));
         assert_eq!(cursor.rules_path, ws.join(".cursor/rules"));
-        assert_eq!(cursor.instructions_path, None);
+        // Cursor reads a project-root AGENTS.md as instructions.
+        assert_eq!(cursor.instructions_path, Some(ws.join("AGENTS.md")));
         assert_eq!(cursor.hooks_file, Some(ws.join(".cursor/hooks.json")));
     }
 
@@ -322,10 +334,16 @@ mod tests {
     }
 
     #[test]
-    fn claude_agent_is_flat_and_link_synced() {
+    fn claude_agent_is_nested_and_link_synced() {
+        // Claude scans `~/.claude/agents/` recursively (subfolders allowed;
+        // identity is the `name` frontmatter), so agents keep their nesting —
+        // flattening would collide same-basename agents from different folders.
+        // Source: https://code.claude.com/docs/en/sub-agents (2026).
         let s = Settings::default();
         let claude = resolve(&s, ToolId::Claude);
-        assert_eq!(claude.layout_for(CapabilityKind::Agent), Layout::Flat);
+        assert_eq!(claude.layout_for(CapabilityKind::Agent), Layout::Nested);
+        // Skills stay flat (the skill loader is non-recursive).
+        assert_eq!(claude.layout_for(CapabilityKind::Skill), Layout::Flat);
         assert_eq!(
             claude.projection_mode_for(CapabilityKind::Agent),
             Some(ProjectionMode::LinkSync)
@@ -334,8 +352,8 @@ mod tests {
         let agent = item(CapabilityKind::Agent, "team/reviewer.md");
         let target = claude.target_path_for(&agent).unwrap();
         assert!(
-            target.ends_with("agents/reviewer.md"),
-            "claude flattens agents to basename: {target:?}"
+            target.ends_with("agents/team/reviewer.md"),
+            "claude preserves agent nesting: {target:?}"
         );
     }
 }

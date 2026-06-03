@@ -74,7 +74,7 @@ If `skills:check` reports missing folders, the upstream package may not expose a
 Use **Agentic Hub: Open Capability Manager** to create symlinks safely, or mirror the manual pattern:
 
 - Cursor: `~/.cursor/skills` and `~/.cursor/agents` (defaults in settings)
-- Codex: `~/.agents/skills` and `~/.agents/agents` (matches OpenAI Codex's documented scan paths)
+- Codex: `~/.agents/skills` (documented skill scan path) and `~/.codex/agents` (subagent TOML files)
 - Claude Code: `~/.claude/skills` and `~/.claude/agents`
 
 Point each skill or agent entry in the shared root at the matching tool path via the panel so you do not overwrite real files by mistake.

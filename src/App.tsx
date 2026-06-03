@@ -74,13 +74,19 @@ export function App() {
     };
   }, []);
 
-  // Live-refresh the global matrix on watcher / resync events. Only in global
-  // scope, and only when idle so an incoming event never discards an
-  // in-progress selection.
+  // Live-refresh on watcher / resync events. In global scope, rescan the
+  // editable matrix (only when idle, so an incoming event never discards an
+  // in-progress selection). In workspace scope, the inventory merges
+  // globally-applied resources, so a shared-source change must reload it too.
   useEffect(() => {
     const unlisten = onSourcesChanged(() => {
       const s = useManagerStore.getState();
-      if (s.scope === "global" && s.pendingKeys.length === 0) void refresh();
+      if (s.scope === "global") {
+        if (s.pendingKeys.length === 0) void refresh();
+        return;
+      }
+      const id = useWorkspaceStore.getState().activeId;
+      if (id) void s.loadWorkspace(id);
     });
     return () => void unlisten.then((fn) => fn());
   }, [refresh]);

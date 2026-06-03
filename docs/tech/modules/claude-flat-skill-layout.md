@@ -1,17 +1,19 @@
-# Module: Claude Flat Skill / Agent Layout
+# Module: Claude Flat Skill Layout
 
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-05-20
+Last Updated: 2026-06-04
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md)
 Related Docs: [docs/features/mvp-unified-agentic-capability-manager.md](../../features/mvp-unified-agentic-capability-manager.md), [docs/tech/modules/rule-projection-sync.md](./rule-projection-sync.md), [docs/tech/reference/tool-adapter-matrix.md](../reference/tool-adapter-matrix.md)
 
 ## Why this exists
 
-Claude Code's skill discovery scans only the top level of `~/.claude/skills/` and `~/.claude/agents/`. It does **not** recurse into subdirectories. A folder like `~/.claude/skills/dev/` is treated as one opaque skill named `dev`, not as a `dev/` namespace, so any skill nested below becomes invisible to Claude Code.
+Claude Code's **skill** discovery scans only the top level of `~/.claude/skills/`. It does **not** recurse into subdirectories ([docs](https://code.claude.com/docs/en/skills); issues [#18192](https://github.com/anthropics/claude-code/issues/18192) / [#10238](https://github.com/anthropics/claude-code/issues/10238)). A folder like `~/.claude/skills/dev/` is treated as one opaque skill named `dev`, so any skill nested below becomes invisible to Claude Code.
 
-Codex, Cursor, and OpenClaw all recurse into subdirectories, so they tolerate the nested category layout that the shared root (`~/.agentic/skills/dev/repo-research/SKILL.md`, `~/.agentic/agents/group/foo.md`) uses by convention.
+Claude **agents** are different: the agent loader scans `~/.claude/agents/` **recursively**, and a subagent's identity comes from its `name` frontmatter, not its path ([sub-agents docs](https://code.claude.com/docs/en/sub-agents)). So agents keep their nesting like every other tool — only skills need flattening.
+
+Codex, Cursor, and OpenClaw all recurse for both kinds, so they tolerate the nested category layout that the shared root (`~/.agentic/skills/dev/repo-research/SKILL.md`) uses by convention.
 
 Agentic Hub's projection layer reconciles these two contracts deterministically.
 
@@ -21,18 +23,18 @@ Each tool adapter declares a per-kind **layout strategy**:
 
 | Tool | `skill_layout` | `agent_layout` |
 |------|----------------|----------------|
-| Claude Code | `Flat` | `Flat` |
+| Claude Code | `Flat` | `Nested` |
 | Codex | `Nested` | `Nested` |
 | Cursor | `Nested` | `Nested` |
 | OpenClaw | `Nested` | `Nested` |
 
-`Flat` collapses `item.relative_path` to its basename when computing the target path. `Nested` preserves `item.relative_path` verbatim.
+`Flat` collapses `item.relative_path` to its basename when computing the target path. `Nested` preserves `item.relative_path` verbatim. Only `(Claude, Skill)` is `Flat`.
 
 | Source (`~/.agentic/skills/...`) | Codex / Cursor target | Claude target |
 |----------------------------------|------------------------|---------------|
 | `dev/repo-research/SKILL.md` | `<skillsPath>/dev/repo-research/` | `<skillsPath>/repo-research/` |
 | `arno/cto/code-review/SKILL.md` | `<skillsPath>/arno/cto/code-review/` | `<skillsPath>/code-review/` |
-| `agents/group/foo.md` | `<agentsPath>/group/foo.md` | `<agentsPath>/foo.md` |
+| `agents/group/foo.md` (agent) | `<agentsPath>/group/foo.md` | `<agentsPath>/group/foo.md` |
 
 Rules are not affected — rules always use their `relativePath` verbatim regardless of tool, because Claude reads rules from a single instruction file (`CLAUDE.md`) via `markdown_section_sync`, not from the filesystem.
 
@@ -78,7 +80,7 @@ When the manager inspects current disk state, both colliding items resolve to th
 
 `crates/agentic-core/src/planner/tests.rs` covers:
 
-- Claude flattens `dev/repo-research` → `repo-research` for skills and agents
+- Claude flattens `dev/repo-research` → `repo-research` for skills; Claude **agents** stay nested (`team/reviewer.md` → `agents/team/reviewer.md`, asserted in `adapter_registry.rs`)
 - Codex and Cursor preserve nested paths
 - `planner::build_plan` emits exactly one `CreateLink` and one `SkipConflict` when two items collide on the same flat target
 - Inspect-time: colliding items show one `Enabled` and one `ForeignLink`

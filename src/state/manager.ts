@@ -107,6 +107,38 @@ function buildCurrentMap(result: InspectResult): Map<string, ToolCapabilityState
   return map;
 }
 
+// Workspace items are tagged with this id prefix so they never collide with a
+// global resource that happens to share the same relative path — both render
+// as their own source-filterable row. The `::` matches `key()`'s delimiter, so
+// `toolOfKey` still parses the tool from the head of the composite key.
+const WORKSPACE_ID_PREFIX = "ws::";
+
+function namespaceItem(it: CapabilityItem): CapabilityItem {
+  return { ...it, id: WORKSPACE_ID_PREFIX + it.id };
+}
+
+function namespaceState(s: ToolCapabilityState): ToolCapabilityState {
+  return { ...s, itemId: WORKSPACE_ID_PREFIX + s.itemId };
+}
+
+// Global resources project into each tool's home dir, so a globally-enabled
+// resource applies to *every* project. Scan the shared roots, inspect, then
+// keep only the states that are actually projected (enabled) for a workspace
+// tool — those are the ones that genuinely "apply" to the audited project.
+async function loadGlobalApplied(settings: Settings): Promise<{
+  items: CapabilityItem[];
+  states: ToolCapabilityState[];
+  errors: ScanError[];
+}> {
+  const { items, errors } = await scan(settings.sources);
+  const result = await inspect(items, settings.tools);
+  const states = result.states.filter(
+    (s) => s.state === "enabled" && WORKSPACE_TOOL_IDS.has(s.tool),
+  );
+  const liveIds = new Set(states.map((s) => s.itemId));
+  return { items: items.filter((it) => liveIds.has(it.id)), states, errors };
+}
+
 // Suite-managed cells, keyed by `key(tool, itemId)`. A failure here must not
 // break the matrix, so it degrades to an empty (no-lock) map.
 async function loadOwnership(): Promise<Map<string, OwnershipInfo>> {
@@ -204,19 +236,34 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     }
   },
 
-  // Workspace scope: a read-only audit of one project. Walk the workspace's own
-  // tool dirs (`scanWorkspace`), then reuse the matrix render. Only present
-  // resources come back, so `desired` mirrors `current` and `pendingKeys` stays
-  // empty — there is nothing to apply.
+  // Workspace scope: a read-only audit of one project. It answers "what agentic
+  // resources actually apply here?" by merging two sources:
+  //   - Global: resources projected into each tool's home dir (apply to every
+  //     project). Only the *enabled* ones for workspace tools are kept.
+  //   - Local: the workspace's own tool dirs (`scanWorkspace`), always present.
+  // Local ids are namespaced so a global and a local resource that share a path
+  // stay distinct rows, each tagged with its own source for the source filter.
+  // Only present resources are emitted, so `desired` mirrors `current` and
+  // `pendingKeys` stays empty — there is nothing to apply.
   loadWorkspace: async (id) => {
     set({ status: "loading", error: "" });
     try {
       const settings = await loadSettings();
-      const inv = await scanWorkspace(id);
-      const result: InspectResult = { states: inv.states, adapterStatuses: [] };
+      const [global, inv] = await Promise.all([
+        loadGlobalApplied(settings),
+        scanWorkspace(id),
+      ]);
+      const items = [...global.items, ...inv.items.map(namespaceItem)];
+      const states = [...global.states, ...inv.states.map(namespaceState)];
+      const result: InspectResult = { states, adapterStatuses: [] };
       const currentMap = buildCurrentMap(result);
       set({
-        data: { settings, items: inv.items, scanErrors: inv.errors, result },
+        data: {
+          settings,
+          items,
+          scanErrors: [...global.errors, ...inv.errors],
+          result,
+        },
         desired: seedDesired(result),
         currentMap,
         tools: WORKSPACE_TOOLS,

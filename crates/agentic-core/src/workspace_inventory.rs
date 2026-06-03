@@ -5,7 +5,7 @@
 //! the manager matrix in read-only mode (only present resources are emitted, so
 //! every cell shown is "enabled"). See `docs/tech/modules/workspace-inventory.md`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -69,19 +69,37 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
         }
 
         let mut found: Vec<Found> = Vec::new();
-        collect_skills(&adapter.skills_path, &mut found, &mut errors);
-        collect_files(
-            &adapter.agents_path,
-            CapabilityKind::Agent,
-            &mut found,
-            &mut errors,
-        );
+        // Skill / agent dirs this tool honors. Cursor also reads the shared
+        // `.agents/` standard dir (the same one Codex uses for skills), in
+        // addition to its own `.cursor/` dirs — so resources dropped in
+        // `.agents/` show up for Cursor too.
+        let mut skill_dirs = vec![adapter.skills_path.clone()];
+        let mut agent_dirs = vec![adapter.agents_path.clone()];
+        if tool == ToolId::Cursor {
+            skill_dirs.push(ws.join(".agents/skills"));
+            agent_dirs.push(ws.join(".agents/agents"));
+        }
+        for dir in &skill_dirs {
+            collect_skills(dir, &mut found, &mut errors);
+        }
+        // Codex subagents are TOML files under `.codex/agents`; Claude and
+        // Cursor agents are markdown. Source: the per-tool agent dir resolves
+        // via the adapter; only the file extension differs by format.
+        let agent_exts: &[&str] = if tool == ToolId::Codex {
+            &["toml"]
+        } else {
+            &["md"]
+        };
+        for dir in &agent_dirs {
+            collect_files(dir, CapabilityKind::Agent, agent_exts, &mut found, &mut errors);
+        }
         // Codex/Claude rules live in their managed instruction block, not a
         // rules dir; only Cursor keeps per-file rules under `.cursor/rules`.
         if tool == ToolId::Cursor {
             collect_files(
                 &adapter.rules_path,
                 CapabilityKind::Rule,
+                CapabilityKind::Rule.file_extensions(),
                 &mut found,
                 &mut errors,
             );
@@ -101,7 +119,14 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
             }
         }
 
+        // A resource can surface from more than one of this tool's dirs (e.g.
+        // Cursor reading both `.cursor/skills` and `.agents/skills`); emit one
+        // state per id so the matrix shows a single cell per (tool, item).
+        let mut seen: HashSet<String> = HashSet::new();
         for f in found {
+            if !seen.insert(f.id.clone()) {
+                continue;
+            }
             states.push(ToolCapabilityState {
                 tool,
                 item_id: f.id.clone(),
@@ -198,24 +223,28 @@ fn walk_skills(
     }
 }
 
-/// Walk a file-based directory (agents or Cursor rules) for the kind's allowed
-/// extensions; each matching file is one resource.
+/// Walk a file-based directory (agents or Cursor rules) for `exts`; each
+/// matching file is one resource. Extensions are passed explicitly because a
+/// kind can use a different on-disk format per tool (Codex agents are `.toml`,
+/// other agents are `.md`).
 fn collect_files(
     base: &Path,
     kind: CapabilityKind,
+    exts: &[&str],
     out: &mut Vec<Found>,
     errors: &mut Vec<ScanError>,
 ) {
     if !base.is_dir() {
         return;
     }
-    walk_files(base, base, kind, 0, out, errors);
+    walk_files(base, base, kind, exts, 0, out, errors);
 }
 
 fn walk_files(
     base: &Path,
     dir: &Path,
     kind: CapabilityKind,
+    exts: &[&str],
     depth: usize,
     out: &mut Vec<Found>,
     errors: &mut Vec<ScanError>,
@@ -237,9 +266,9 @@ fn walk_files(
         let path = entry.path();
         if path.is_dir() {
             if entry.file_name() != std::ffi::OsStr::new(ARCHIVED) {
-                walk_files(base, &path, kind, depth + 1, out, errors);
+                walk_files(base, &path, kind, exts, depth + 1, out, errors);
             }
-        } else if path.is_file() && has_allowed_ext(&path, kind.file_extensions()) {
+        } else if path.is_file() && has_allowed_ext(&path, exts) {
             let rel = path.strip_prefix(base).unwrap_or(&path).to_path_buf();
             let name = path
                 .file_stem()
@@ -288,9 +317,10 @@ mod tests {
     fn discovers_resources_per_tool() {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path();
-        // Codex skill/agent under .agents, Cursor rule + a workspace AGENTS.md.
+        // Codex skill under .agents, Codex subagent under .codex/agents (TOML),
+        // Cursor rule + a workspace AGENTS.md.
         write(&ws.join(".agents/skills/dev/tdd/SKILL.md"), "# tdd");
-        write(&ws.join(".agents/agents/coder.md"), "# coder");
+        write(&ws.join(".codex/agents/coder.toml"), "name = \"coder\"");
         write(&ws.join(".cursor/rules/precise.mdc"), "> rule");
         write(&ws.join("AGENTS.md"), "# project agents");
 
@@ -299,7 +329,7 @@ mod tests {
 
         let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();
         assert!(ids.contains(&"skill:dev/tdd"));
-        assert!(ids.contains(&"agent:coder.md"));
+        assert!(ids.contains(&"agent:coder.toml"));
         assert!(ids.contains(&"rule:precise.mdc"));
         assert!(ids.contains(&"rule:AGENTS.md"), "instruction file row: {ids:?}");
 
@@ -312,6 +342,15 @@ mod tests {
         assert_eq!(skill_state.tool, ToolId::Codex);
         assert_eq!(skill_state.state, LinkState::Enabled);
         assert!(skill_state.target_path.ends_with(".agents/skills/dev/tdd"));
+
+        // The Codex subagent state targets `.codex/agents` (TOML format).
+        let agent_state = inv
+            .states
+            .iter()
+            .find(|s| s.item_id == "agent:coder.toml")
+            .unwrap();
+        assert_eq!(agent_state.tool, ToolId::Codex);
+        assert!(agent_state.target_path.ends_with(".codex/agents/coder.toml"));
     }
 
     #[test]
@@ -337,6 +376,141 @@ mod tests {
     }
 
     #[test]
+    fn cursor_also_reads_the_shared_agents_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        // A skill + a markdown agent dropped only in the shared `.agents/` dir.
+        write(&ws.join(".agents/skills/dev/web-design/adapt/SKILL.md"), "# adapt");
+        write(&ws.join(".agents/agents/coder.md"), "# coder");
+
+        let inv = scan_workspace(ws, &WS_TOOLS);
+
+        // Skills under `.agents/skills` are shared by Codex and Cursor; not
+        // Claude (which scans only `.claude/skills`).
+        let skill_tools: Vec<ToolId> = inv
+            .states
+            .iter()
+            .filter(|s| s.item_id == "skill:dev/web-design/adapt")
+            .map(|s| s.tool)
+            .collect();
+        assert!(skill_tools.contains(&ToolId::Codex), "{skill_tools:?}");
+        assert!(skill_tools.contains(&ToolId::Cursor), "{skill_tools:?}");
+        assert!(!skill_tools.contains(&ToolId::Claude), "{skill_tools:?}");
+
+        // The markdown agent in `.agents/agents` is Cursor-only — Codex
+        // subagents are TOML files under `.codex/agents`, so Codex does not
+        // claim this one.
+        let agent_tools: Vec<ToolId> = inv
+            .states
+            .iter()
+            .filter(|s| s.item_id == "agent:coder.md")
+            .map(|s| s.tool)
+            .collect();
+        assert!(agent_tools.contains(&ToolId::Cursor), "{agent_tools:?}");
+        assert!(!agent_tools.contains(&ToolId::Codex), "{agent_tools:?}");
+    }
+
+    #[test]
+    fn cursor_resource_in_both_dirs_emits_one_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        // Same skill id present under both `.cursor/skills` and `.agents/skills`.
+        write(&ws.join(".cursor/skills/shared/SKILL.md"), "# shared");
+        write(&ws.join(".agents/skills/shared/SKILL.md"), "# shared");
+
+        let inv = scan_workspace(ws, &[ToolId::Cursor]);
+        let cursor_states = inv
+            .states
+            .iter()
+            .filter(|s| s.item_id == "skill:shared" && s.tool == ToolId::Cursor)
+            .count();
+        assert_eq!(cursor_states, 1, "deduped to one Cursor state");
+    }
+
+    #[test]
+    fn cursor_skills_are_discovered_recursively_with_folder_name() {
+        // Verified: Cursor walks the skills root recursively, so category
+        // subfolders work for grouping; the skill name comes from the folder
+        // that holds SKILL.md, not the category above it.
+        // Source: https://cursor.com/help/customization/skills (2026).
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(
+            &ws.join(".cursor/skills/shipping/deploy-staging/SKILL.md"),
+            "# deploy",
+        );
+
+        let inv = scan_workspace(ws, &[ToolId::Cursor]);
+        let item = inv
+            .items
+            .iter()
+            .find(|i| i.id == "skill:shipping/deploy-staging")
+            .expect("nested skill discovered");
+        assert_eq!(item.name, "deploy-staging", "name is the leaf folder");
+        assert!(inv
+            .states
+            .iter()
+            .any(|s| s.item_id == "skill:shipping/deploy-staging" && s.tool == ToolId::Cursor));
+    }
+
+    #[test]
+    fn cursor_rules_discovers_nested_mdc_files() {
+        // Verified: Cursor project rules are `.mdc` files under `.cursor/rules`,
+        // and may be organized into subfolders.
+        // Source: https://cursor.com/docs/rules (2026).
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(&ws.join(".cursor/rules/general/precise.mdc"), "---\n---\n> rule");
+
+        let inv = scan_workspace(ws, &WS_TOOLS);
+        let rule = inv
+            .states
+            .iter()
+            .find(|s| s.item_id == "rule:general/precise.mdc")
+            .expect("nested .mdc rule discovered");
+        assert_eq!(rule.tool, ToolId::Cursor, "rules dir is Cursor-only");
+    }
+
+    #[test]
+    fn codex_skills_in_dot_agents_subagents_in_dot_codex_agents() {
+        // Verified: Codex reads repo skills from `.agents/skills` (CWD→repo
+        // root) and project AGENTS.md as instructions, but subagents are TOML
+        // files under `.codex/agents` — not `.agents/agents`.
+        // Sources: developers.openai.com/codex/{skills,subagents,guides/agents-md}.
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(&ws.join(".agents/skills/dev/tdd/SKILL.md"), "# tdd");
+        write(&ws.join(".codex/agents/reviewer.toml"), "name = \"reviewer\"");
+        // A markdown file in `.agents/agents` is NOT a Codex subagent.
+        write(&ws.join(".agents/agents/stray.md"), "# stray");
+        write(&ws.join("AGENTS.md"), "# project");
+
+        let inv = scan_workspace(ws, &[ToolId::Codex]);
+        let skill = inv
+            .states
+            .iter()
+            .find(|s| s.item_id == "skill:dev/tdd")
+            .expect("codex skill under .agents/skills");
+        assert_eq!(skill.tool, ToolId::Codex);
+        assert!(skill.target_path.ends_with(".agents/skills/dev/tdd"));
+
+        assert!(
+            inv.states
+                .iter()
+                .any(|s| s.item_id == "agent:reviewer.toml" && s.tool == ToolId::Codex),
+            "codex subagent discovered under .codex/agents"
+        );
+        assert!(
+            !inv.states.iter().any(|s| s.item_id == "agent:stray.md"),
+            "markdown in .agents/agents is not a Codex subagent"
+        );
+        assert!(inv
+            .states
+            .iter()
+            .any(|s| s.item_id == "rule:AGENTS.md" && s.tool == ToolId::Codex));
+    }
+
+    #[test]
     fn instruction_file_is_per_tool() {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path();
@@ -348,18 +522,24 @@ mod tests {
         assert!(ids.contains(&"rule:AGENTS.md"));
         assert!(ids.contains(&"rule:CLAUDE.md"));
 
-        let agents = inv
+        // AGENTS.md is read by both Codex and Cursor; CLAUDE.md by Claude only.
+        let agents_tools: Vec<ToolId> = inv
             .states
             .iter()
-            .find(|s| s.item_id == "rule:AGENTS.md")
-            .unwrap();
-        assert_eq!(agents.tool, ToolId::Codex);
-        let claude = inv
+            .filter(|s| s.item_id == "rule:AGENTS.md")
+            .map(|s| s.tool)
+            .collect();
+        assert!(agents_tools.contains(&ToolId::Codex), "{agents_tools:?}");
+        assert!(agents_tools.contains(&ToolId::Cursor), "{agents_tools:?}");
+        assert!(!agents_tools.contains(&ToolId::Claude), "{agents_tools:?}");
+
+        let claude_tools: Vec<ToolId> = inv
             .states
             .iter()
-            .find(|s| s.item_id == "rule:CLAUDE.md")
-            .unwrap();
-        assert_eq!(claude.tool, ToolId::Claude);
+            .filter(|s| s.item_id == "rule:CLAUDE.md")
+            .map(|s| s.tool)
+            .collect();
+        assert_eq!(claude_tools, vec![ToolId::Claude]);
     }
 
     #[test]

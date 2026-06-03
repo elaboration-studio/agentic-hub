@@ -87,12 +87,12 @@ Persisted in `~/.agentic-hub/state.json`:
 
 | Tool | `skills_path` | `agents_path` | `rules_path` (scanned) | `instructions_path` |
 |------|---------------|---------------|------------------------|---------------------|
-| Codex | `<ws>/.agents/skills` | `<ws>/.agents/agents` | — | `<ws>/AGENTS.md` |
-| Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` | — | `<ws>/CLAUDE.md` |
-| Cursor | `<ws>/.cursor/skills` | `<ws>/.cursor/agents` | `<ws>/.cursor/rules` | — |
+| Codex | `<ws>/.agents/skills` | `<ws>/.codex/agents` (`*.toml`) | — | `<ws>/AGENTS.md` |
+| Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` (`*.md`) | — | `<ws>/CLAUDE.md` |
+| Cursor | `<ws>/.cursor/skills` (+ `.agents/skills`) | `<ws>/.cursor/agents` (+ `.agents/agents`) | `<ws>/.cursor/rules` | `<ws>/AGENTS.md` |
 | OpenClaw | (adapter disabled in workspace scope) | | | |
 
-The scanner reads `rules_path` only for Cursor (per-file `.cursor/rules`). Codex/Claude keep their rules in the managed block inside `AGENTS.md` / `CLAUDE.md`; the inventory surfaces the presence of those instruction files as a single `rule` row (`rule:AGENTS.md` / `rule:CLAUDE.md`) rather than parsing the block (deferred).
+The scanner reads `rules_path` only for Cursor (per-file `.cursor/rules`). Codex/Claude keep their rules in the managed block inside `AGENTS.md` / `CLAUDE.md`; the inventory surfaces the presence of those instruction files as a single `rule` row (`rule:AGENTS.md` / `rule:CLAUDE.md`) rather than parsing the block (deferred). `AGENTS.md` is read by both Codex and Cursor, so its row is attributed to both; `CLAUDE.md` is Claude-only. Codex subagents are TOML files under `.codex/agents` (the `.agents/` dir holds skills only).
 
 ## Inventory scan
 

@@ -110,7 +110,7 @@ See [docs/tech/development/getting-started.md](docs/tech/development/getting-sta
 This product is a Tauri-native port of the Unified Agentic Capability Manager originally shipping inside `e-studio-copilot/packages/vs-code/`. The product semantics are preserved 1:1:
 
 - Same `~/.agentic` shared root contract
-- Same per-tool projection rules (flat for Claude, managed copy for Cursor agents, markdown section for Codex/Claude/OpenClaw rules)
+- Same per-tool projection rules (flat for Claude skills, managed copy for Cursor agents, markdown section for Codex/Claude/OpenClaw rules)
 - Same `~/.agentic-suites.json` for suites
 - Same managed-block markers
 - Workspace scope is the one intentional divergence: the VS Code extension hard-copied suites into a project; the hub instead treats each workspace as a read-only inventory of what its tools already have.

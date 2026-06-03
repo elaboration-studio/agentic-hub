@@ -51,7 +51,7 @@ Out of scope for now: teams, multi-machine sync, cloud profiles, organizational 
 - Scan a configurable shared root (default `~/.agentic`) for `skills/`, `agents/`, `rules/`
 - Four tool adapters: Codex, Claude Code, Cursor, OpenClaw
 - Per-tool projection of skills and agents using the existing layout strategies:
-  - Claude Code: `flat` layout (basename only at `~/.claude/skills/`, `~/.claude/agents/`)
+  - Claude Code: `flat` layout for **skills** (basename only at `~/.claude/skills/`; the skill loader is non-recursive). Claude **agents** are `nested` — the agent loader scans `~/.claude/agents/` recursively.
   - Codex, Cursor, OpenClaw: `nested` layout (preserve category hierarchy)
 - Per-tool rule projection modes:
   - `link_sync` (Cursor → `~/.cursor/rules`)
@@ -91,7 +91,7 @@ Out of scope for now: teams, multi-machine sync, cloud profiles, organizational 
 - As a power user, I want to stage enable/disable changes and apply them in one batch, so that I do not mutate disk file-by-file.
 - As a power user, I want apply to safely create missing symlinks, replace wrong or broken symlinks, and refuse to overwrite real files, so that I cannot lose hand-edited content by accident.
 - As a Cursor user, I want enabled agents to be written as managed file copies (not symlinks) and refreshed when the shared source changes, so that Cursor's runtime loader picks them up correctly.
-- As a Claude Code user, I want my nested-category skills and agents to project flat into `~/.claude/skills/` and `~/.claude/agents/` with basename-only targets, so that Claude's top-level loader actually discovers them.
+- As a Claude Code user, I want my nested-category skills to project flat into `~/.claude/skills/` with basename-only targets, so that Claude's non-recursive skill loader actually discovers them (agents keep their nesting — Claude's agent loader is recursive).
 - As a Claude Code user, I want basename collisions to surface as explicit conflicts I must resolve, so that two source skills with the same basename never silently overwrite each other.
 - As a Codex / Claude / OpenClaw user, I want enabling a shared rule to write a managed marker-delimited block inside the right instruction file (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.openclaw/workspace/SOUL.md`), so that the rule actually takes effect for that tool's next session.
 - As a first-time user, I want a one-shot "scaffold demo resources" command that creates a starter `~/.agentic/` tree, so that I can use the app immediately on a fresh machine without copying a personal repo.
@@ -259,7 +259,7 @@ Out of scope for now: teams, multi-machine sync, cloud profiles, organizational 
 - [ ] Workspace folder picker (Tauri dialog plugin) persists choices across app restarts with LRU ordering (cap 12)
 - [ ] Tool tabs in Workspace scope are filtered to Codex, Claude, Cursor only
 - [ ] Per-tool workspace targets:
-  - Codex: `<ws>/.agents/skills/`, `<ws>/.agents/agents/`, managed section in `<ws>/AGENTS.md`
+  - Codex: `<ws>/.agents/skills/`, `<ws>/.codex/agents/` (subagent TOML), managed section in `<ws>/AGENTS.md`
   - Claude: `<ws>/.claude/skills/`, `<ws>/.claude/agents/`, managed section in `<ws>/CLAUDE.md`
   - Cursor: `<ws>/.cursor/skills/`, `<ws>/.cursor/agents/`, raw file copies at `<ws>/.cursor/rules/`
 - [ ] Apply runs only after confirmation dialog showing workspace dir and suite name

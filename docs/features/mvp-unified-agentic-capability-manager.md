@@ -56,8 +56,8 @@ As a power user managing multiple AI tools, I want a single desktop window that 
 - Tool-specific projections:
   - Cursor agents: managed file copies under `~/.cursor/agents` with sync metadata sidecars
   - OpenClaw agents/skills: symlinks under `~/.openclaw/{agents,skills}`
-  - Codex skills/agents: symlinks under `~/.agents/skills` and `~/.agents/agents` (matches OpenAI Codex's documented `$HOME/.agents/skills` user scope)
-  - Claude skills/agents: flat symlinks at the top level of `~/.claude/skills/` and `~/.claude/agents/`
+  - Codex skills: symlinks under `~/.agents/skills` (matches OpenAI Codex's documented `$HOME/.agents/skills` user scope); Codex subagents are TOML files under `~/.codex/agents`
+  - Claude skills: **flat** symlinks at the top level of `~/.claude/skills/` (non-recursive loader); Claude agents: **nested** symlinks under `~/.claude/agents/` (recursive loader, identity from `name` frontmatter)
 - Rule projection:
   - Cursor: `link_sync` via symlinks under `~/.cursor/rules`, preserving nested folders
   - Claude Code: `markdown_section_sync` into `~/.claude/CLAUDE.md`
