@@ -17,8 +17,16 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   (`Cmd+,`) jumps to Config and "Command Palette" toggles the panel; `Cmd+Q`
   remains the hard exit.
 - **Command-provider registry.** An extensible registry backs the palette,
-  shipping navigation commands alongside flat resource search. Resource search
-  opens files through the existing opener allowlist.
+  shipping navigation and suite-apply commands alongside flat resource search.
+  Resource search opens files through the existing opener allowlist.
+- **Palette suite apply (two-level).** Search a suite, drill into a suite-tools
+  view (`‹ <suite>` breadcrumb, Backspace-to-back), and apply it to one tool as
+  a full reset (clean + replace).
+- **Suite↔tool bindings.** A new `~/.agentic-hub/suite-bindings.json` records
+  which suite is applied to each tool. `cmd_apply_suite` records the binding,
+  `cmd_update_suite` re-applies the new capability set to every bound tool
+  (serialized via the reconcile guard, emits `sources-changed`), and
+  `cmd_delete_suite` drops the bindings without touching tool projections.
 - **Configurable palette shortcut.** Config gains a Command Palette panel to
   edit the global shortcut; saving re-registers it live. The new
   `Settings.paletteShortcut` field defaults to `Cmd+Alt+A` for existing configs.

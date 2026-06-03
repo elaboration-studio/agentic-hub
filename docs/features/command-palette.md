@@ -5,7 +5,7 @@ Mode: Detailed
 Owner: Arno
 Last Updated: 2026-06-03
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [ARCHITECTURE.permissions.md](../../ARCHITECTURE.permissions.md)
-Related Docs: [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md), [docs/features/open-files.md](./open-files.md)
+Related Docs: [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md), [docs/features/open-files.md](./open-files.md), [docs/tech/modules/suite-bindings.md](../tech/modules/suite-bindings.md)
 
 ## Why now
 
@@ -31,16 +31,21 @@ type to find a capability, and press Enter to open its original file in my edito
 - Flat resource search: match by name, relative path, or source; Enter opens the
   original file (skill/hook marker file, or the agent/rule file itself) in the
   configured editor — reusing the same opener path as the manager row menu.
-- An extensible command-provider registry. v1 ships two providers: resource
-  search and navigation (Open Manager / Suites / Config).
+- An extensible command-provider registry. Root providers ship resource
+  search, suite apply, and navigation (Open Manager / Suites / Config).
+- A two-level suite-apply flow: search a suite by name, drill into it, then
+  pick one tool to apply the suite to as a full reset (clean + replace every
+  resource for that tool). The applied tool is bound to the suite so a later
+  capability edit re-syncs it (see [suite-bindings.md](../tech/modules/suite-bindings.md)).
 - Native top menus: App (About, Settings `Cmd+,`, Hide, Quit), Edit, View
   (Command Palette), Window. `Cmd+,` routes the main window to Config.
 - A Config panel to edit the shortcut (validated, re-registered on save).
 
 ### Out of scope (registry extension points)
 
-- Install-a-skill-from-vendor and switch-a-suite-to-a-tool commands — left as
-  provider stubs for later; the registry is built to accept them with no UI change.
+- Install-a-skill-from-vendor — left as a provider stub for later.
+- Multi-tool apply in one step — the suite-tools view applies to one tool per
+  Enter (the binding still re-syncs every bound tool on a capability edit).
 - Fuzzy ranking / recency — v1 uses case-insensitive substring matching.
 - Per-window themes — the palette reuses the app's dark tokens.
 
@@ -54,6 +59,8 @@ flowchart LR
   ui --> store["usePaletteStore -> computeResults(providers)"]
   store --> resource["resource -> cmd_open_path(original, editor)"]
   store --> nav["nav -> emit hub-navigate + cmd_show_main"]
+  store --> suite["suite row -> enterSuite (suite-tools view)"]
+  suite --> applyRow["tool row -> cmd_apply_suite(tool, suite) + record binding"]
   blur["blur / Esc"] --> hide["hide palette"]
 ```
 
@@ -78,9 +85,13 @@ flowchart LR
   launch falls back to the default so summon never breaks.
 - **UI.** One bundle, two windows: `main.tsx` renders `<CommandPalette/>` when the
   window label is `palette`, else `<App/>`. `usePaletteStore` loads settings +
-  scans on summon, holds the query/selection, and derives results from the
-  registry in `components/palette/commands.ts`. Navigation commands emit
-  `hub-navigate`; the main window listens and switches route.
+  scans + lists suites on summon, holds the query/selection and a `view`
+  (`root` or `suite-tools`), and derives results from the registry in
+  `components/palette/commands.ts`. Navigation commands emit `hub-navigate`;
+  the main window listens and switches route. A suite row sets
+  `dismissOnRun: false` and calls `enterSuite`, switching to the suite-tools
+  view (a `‹ <suite>` breadcrumb, Backspace-on-empty steps back); each tool row
+  there runs `applySuite(tool, suiteId)` and dismisses.
 
 ## Security
 

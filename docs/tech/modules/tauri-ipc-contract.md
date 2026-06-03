@@ -294,7 +294,15 @@ type SuiteUpdateInput = {
 };
 ```
 
+Side effect: after the update, every tool currently bound to this suite (see
+[suite-bindings.md](./suite-bindings.md)) is re-applied as a full reset so its
+projection tracks the new capability set, serialized against the watcher via
+the reconcile guard. Emits `sources-changed` when any tool was re-applied.
+
 ### `cmd_delete_suite(id: string) -> ()`
+
+Side effect: drops every suite<->tool binding referencing this suite. The
+tools' on-disk projections are left untouched (delete is not a tool wipe).
 
 ### `cmd_apply_suite(input: ApplySuiteInput) -> ApplySuiteResult`
 
@@ -310,6 +318,10 @@ type ApplySuiteResult = {
   suite: { id: string; name: string };
 };
 ```
+
+Side effect: records a suite<->tool binding (`record(toolId, suiteId)`,
+upsert per tool) so a later `cmd_update_suite` re-syncs this tool. Both the
+palette suite-apply flow and the Suites page flow through here.
 
 ## Workspace commands
 

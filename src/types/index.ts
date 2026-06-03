@@ -12,6 +12,7 @@ export type { ApplySuiteResult } from "./generated/ApplySuiteResult";
 export type { EditorPref } from "./generated/EditorPref";
 export type { ScaffoldMode } from "./generated/ScaffoldMode";
 export type { ScaffoldResult } from "./generated/ScaffoldResult";
+export type { SuiteBinding } from "./generated/SuiteBinding";
 export type { SuiteDefinition } from "./generated/SuiteDefinition";
 export type { SuiteValidationResult } from "./generated/SuiteValidationResult";
 export type { SuiteStoreChangedEvent } from "./generated/SuiteStoreChangedEvent";

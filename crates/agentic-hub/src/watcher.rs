@@ -38,6 +38,13 @@ fn reconcile_guard() -> MutexGuard<'static, ()> {
         .unwrap_or_else(|e| e.into_inner())
 }
 
+/// Run `f` while holding the process-wide reconcile guard, so a suite-binding
+/// re-apply never overlaps a watcher reconcile pass on the same tool dirs.
+pub fn with_reconcile_guard<T>(f: impl FnOnce() -> T) -> T {
+    let _guard = reconcile_guard();
+    f()
+}
+
 /// Control/event messages from the OS watcher callback to the worker thread.
 enum Msg {
     Changed,

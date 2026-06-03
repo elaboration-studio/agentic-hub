@@ -390,6 +390,22 @@ pub struct ApplySuiteResult {
     pub suite: SuiteDefinition,
 }
 
+/// The suite currently applied to one tool in global scope. Persisted so a
+/// suite-capability edit can re-apply (full reset) to every bound tool. One
+/// binding per tool — a full-reset apply makes a tool reflect exactly one
+/// suite. See `docs/tech/modules/suite-bindings.md`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiteBinding {
+    pub tool_id: ToolId,
+    pub suite_id: String,
+}
+
 /// The suite last applied to a workspace for one tool. Lets the watcher
 /// re-patch a workspace's hard copies from fresh source content on change.
 #[cfg_attr(

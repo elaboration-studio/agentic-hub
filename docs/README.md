@@ -34,6 +34,7 @@ Detailed technical design for each subsystem of the projection engine and adjace
 - [claude-flat-skill-layout.md](tech/modules/claude-flat-skill-layout.md) — Claude's flat layout constraint and basename-collision rules
 - [openclaw-tool-adapter.md](tech/modules/openclaw-tool-adapter.md) — OpenClaw filesystem conventions and SOUL.md managed block
 - [suite-presets.md](tech/modules/suite-presets.md) — suite store, full-reset apply pipeline
+- [suite-bindings.md](tech/modules/suite-bindings.md) — suite↔tool binding store; auto re-sync on capability edits
 - [workspace-patch.md](tech/modules/workspace-patch.md) — workspace target store, manifest format, apply algorithm
 - [watcher.md](tech/modules/watcher.md) — source watcher + reconcile engine, auto-enable heuristic, debounce, loop avoidance
 - [tauri-ipc-contract.md](tech/modules/tauri-ipc-contract.md) — complete IPC command surface and event schemas

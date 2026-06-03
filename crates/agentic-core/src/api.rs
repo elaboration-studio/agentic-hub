@@ -230,6 +230,22 @@ pub fn apply_suite(
     }
 }
 
+/// Apply one suite to several tools as independent full resets. The testable
+/// core of the suite<->tool binding re-sync: when a suite's capabilities
+/// change, every bound tool is re-applied so its projection matches the new
+/// set. Returns one [`ApplySuiteResult`] per tool, in the given order.
+pub fn apply_suite_to_tools(
+    items: &[CapabilityItem],
+    settings: &Settings,
+    suite: &SuiteDefinition,
+    tools: &[ToolId],
+) -> Vec<ApplySuiteResult> {
+    tools
+        .iter()
+        .map(|&tool| apply_suite(items, settings, tool, suite))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,6 +322,227 @@ mod tests {
             .map(|s| s.item_id.as_str())
             .collect();
         assert_eq!(enabled, vec!["skill:keep"]);
+    }
+
+    /// Item ids currently `Enabled` for one tool, sorted for stable asserts.
+    fn enabled_ids(settings: &Settings, items: &[CapabilityItem], tool: ToolId) -> Vec<String> {
+        let mut ids: Vec<String> = inspect(items, settings)
+            .states
+            .into_iter()
+            .filter(|s| s.tool == tool && s.state == crate::model::LinkState::Enabled)
+            .map(|s| s.item_id)
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    fn suite(name: &str, caps: &[&str]) -> SuiteDefinition {
+        SuiteDefinition {
+            id: name.into(),
+            name: name.into(),
+            description: None,
+            capabilities: caps.iter().map(|s| s.to_string()).collect(),
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        }
+    }
+
+    #[test]
+    fn apply_suite_removes_dropped_managed_copy_on_reapply() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        // Claude skills are managed copies (FileSync) — a real file lands on disk.
+        write(&root.path().join("skills/keep/SKILL.md"), "# keep");
+        write(&root.path().join("skills/drop/SKILL.md"), "# drop");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Claude,
+            &suite("both", &["skill:keep", "skill:drop"]),
+        );
+        let copy = settings.tools.claude.skills_path.join("drop");
+        assert!(copy.exists(), "drop projected before re-apply");
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Claude),
+            vec!["skill:drop", "skill:keep"]
+        );
+
+        // Re-apply a suite without `drop`: the full reset removes its copy.
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Claude,
+            &suite("only-keep", &["skill:keep"]),
+        );
+        assert!(!copy.exists(), "drop's managed copy cleaned on re-apply");
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Claude),
+            vec!["skill:keep"]
+        );
+    }
+
+    #[test]
+    fn apply_suite_rewrites_rules_block_to_exactly_the_suite_set() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("rules/a.mdc"), "rule A body");
+        write(&root.path().join("rules/b.mdc"), "rule B body");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let instr = settings.tools.codex.instructions_path.clone().unwrap();
+        fs::create_dir_all(instr.parent().unwrap()).unwrap();
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("a-only", &["rule:a.mdc"]),
+        );
+        let written = fs::read_to_string(&instr).unwrap();
+        assert!(written.contains("### a.mdc"), "suite rule listed");
+        assert!(!written.contains("### b.mdc"), "non-suite rule absent");
+
+        // Re-apply with the other rule: the block flips to exactly {b}.
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("b-only", &["rule:b.mdc"]),
+        );
+        let written = fs::read_to_string(&instr).unwrap();
+        assert!(written.contains("### b.mdc"), "new suite rule listed");
+        assert!(!written.contains("### a.mdc"), "dropped rule removed");
+    }
+
+    #[test]
+    fn apply_suite_hooks_reflect_exactly_the_suite_set() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        // Default-target hook (Cursor/Claude/Codex) with a Claude-supported event.
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{ "id": "fmt", "command": "run", "events": [{"name":"Stop"}] }"#,
+        );
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Claude,
+            &suite("with-hook", &["hook:fmt"]),
+        );
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Claude),
+            vec!["hook:fmt"],
+            "hook projected when in the suite"
+        );
+
+        // Re-apply an empty suite: the hook is cleared from the tool's config.
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Claude,
+            &suite("empty", &[]),
+        );
+        assert!(
+            enabled_ids(&settings, &scanned.items, ToolId::Claude).is_empty(),
+            "hook cleared by the full reset"
+        );
+    }
+
+    #[test]
+    fn apply_empty_suite_disables_everything() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/a/SKILL.md"), "# a");
+        write(&root.path().join("skills/b/SKILL.md"), "# b");
+        write(&root.path().join("rules/r.mdc"), "rule body");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let instr = settings.tools.codex.instructions_path.clone().unwrap();
+        fs::create_dir_all(instr.parent().unwrap()).unwrap();
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("all", &["skill:a", "skill:b", "rule:r.mdc"]),
+        );
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Codex).len(),
+            3
+        );
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("empty", &[]),
+        );
+        assert!(
+            enabled_ids(&settings, &scanned.items, ToolId::Codex).is_empty(),
+            "empty suite disables every capability"
+        );
+        assert!(
+            !fs::read_to_string(&instr)
+                .unwrap_or_default()
+                .contains("### r.mdc"),
+            "rule block cleared too"
+        );
+    }
+
+    #[test]
+    fn apply_suite_refreshes_stale_managed_copy() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/keep/SKILL.md"), "# v1");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        let only = suite("keep", &["skill:keep"]);
+        apply_suite(&scanned.items, &settings, ToolId::Claude, &only);
+        let copy = settings.tools.claude.skills_path.join("keep/SKILL.md");
+        assert_eq!(fs::read_to_string(&copy).unwrap(), "# v1");
+
+        // Edit the source, then re-apply the same suite: the copy refreshes.
+        write(&root.path().join("skills/keep/SKILL.md"), "# v2 fresh");
+        let rescanned = scan(&settings);
+        let result = apply_suite(&rescanned.items, &settings, ToolId::Claude, &only);
+        assert!(result.apply_result.errors.is_empty());
+        assert_eq!(
+            fs::read_to_string(&copy).unwrap(),
+            "# v2 fresh",
+            "stale managed copy refreshed from source"
+        );
+    }
+
+    #[test]
+    fn apply_suite_to_tools_applies_each_tool_independently() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/a/SKILL.md"), "# a");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        let results = apply_suite_to_tools(
+            &scanned.items,
+            &settings,
+            &suite("s", &["skill:a"]),
+            &[ToolId::Codex, ToolId::Claude],
+        );
+        assert_eq!(results.len(), 2);
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Codex),
+            vec!["skill:a"]
+        );
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Claude),
+            vec!["skill:a"]
+        );
     }
 
     #[test]

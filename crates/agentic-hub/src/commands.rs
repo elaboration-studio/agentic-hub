@@ -18,6 +18,7 @@ use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
 use agentic_core::scaffold::{self, ScaffoldMode, ScaffoldResult};
 use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
+use agentic_core::suite_binding_store::SuiteBindingStore;
 use agentic_core::suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 use agentic_core::workspace_patch;
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
@@ -446,6 +447,19 @@ pub async fn cmd_update_suite(
     input: UpdateSuiteInput,
 ) -> IpcResult<SuiteDefinition> {
     let suite = suite_store()?.update(&input.id, input.changes)?;
+    // Dynamic binding sync: a capability edit re-applies (full reset) to every
+    // tool currently bound to this suite, so their projections track the new
+    // set. Serialized against the watcher so the two never write the same dirs.
+    let bound = SuiteBindingStore::new().tools_for_suite(&suite.id)?;
+    if !bound.is_empty() {
+        let settings = Settings::load()?;
+        let scanned = api::scan(&settings);
+        watcher::with_reconcile_guard(|| {
+            api::apply_suite_to_tools(&scanned.items, &settings, &suite, &bound);
+        });
+        // Tool projections changed — nudge the manager to refresh.
+        let _ = app.emit("sources-changed", ());
+    }
     emit_suite_changed(&app, "updated", Some(suite.id.clone()));
     Ok(suite)
 }
@@ -453,6 +467,9 @@ pub async fn cmd_update_suite(
 #[tauri::command]
 pub async fn cmd_delete_suite(app: AppHandle, id: String) -> IpcResult<()> {
     suite_store()?.remove(&id)?;
+    // Drop any tool bindings to the gone suite; on-disk projections are left
+    // untouched (deleting a suite is not a destructive tool wipe).
+    let _ = SuiteBindingStore::new().drop_suite(&id);
     emit_suite_changed(&app, "deleted", Some(id));
     Ok(())
 }
@@ -472,12 +489,10 @@ pub async fn cmd_apply_suite(input: ApplySuiteInput) -> IpcResult<ApplySuiteResu
         .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
 
     let scanned = api::scan(&settings);
-    Ok(api::apply_suite(
-        &scanned.items,
-        &settings,
-        input.tool_id,
-        &suite,
-    ))
+    let result = api::apply_suite(&scanned.items, &settings, input.tool_id, &suite);
+    // Bind this tool to the suite so a later capability edit re-syncs it.
+    let _ = SuiteBindingStore::new().record(input.tool_id, &input.suite_id);
+    Ok(result)
 }
 
 // ---- Workspace scope ------------------------------------------------------
