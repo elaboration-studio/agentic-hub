@@ -5,7 +5,7 @@ Mode: Detailed
 Owner: Arno
 Last Updated: 2026-05-31
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md)
-Related Docs: [docs/features/source-watcher.md](../../features/source-watcher.md), [docs/tech/modules/multi-source-roots.md](./multi-source-roots.md), [docs/tech/modules/workspace-patch.md](./workspace-patch.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
+Related Docs: [docs/features/source-watcher.md](../../features/source-watcher.md), [docs/tech/modules/multi-source-roots.md](./multi-source-roots.md), [docs/tech/modules/workspace-inventory.md](./workspace-inventory.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
 ## Split of responsibility
 
@@ -14,7 +14,7 @@ The watcher is two layers, mirroring the project's core/shell boundary:
 - **`agentic-core::reconcile`** — pure decision logic + pipeline reuse. No Tauri,
   no OS watcher. Fully unit-testable against tempdirs.
 - **`agentic-hub::watcher`** — the OS subscription, debounce, Tauri event bridge,
-  and active-workspace re-patch. Holds a `WatcherState` in Tauri managed state.
+  and active-workspace inventory refresh. Holds a `WatcherState` in Tauri managed state.
 
 ## Core: `reconcile`
 
@@ -62,7 +62,9 @@ running count as newcomers. The Config fallback passes the full current id set a
 ```
 start(app):
   load settings; subscribe a notify::recommended_watcher over each source root
-  (recursive). Seed prev = current scan ids. Spawn a worker thread.
+  (recursive) AND the active workspace's existing tool dirs (.cursor, .claude,
+  .agents, .codex recursive; AGENTS.md / CLAUDE.md files). Seed prev = current
+  scan ids. Spawn a worker thread.
 stop():        drop the watcher (ends OS events) + signal the worker to exit.
 set_enabled(): start or stop.
 restart_if_running(): re-subscribe to current roots iff already running.
@@ -81,34 +83,39 @@ loop:
 ```
 
 `run_once`: load settings → `api::scan` → `reconcile::reconcile_all(prev)` →
-re-patch active workspace → update `prev` to the new ids → `emit("sources-changed")`.
+update `prev` to the new ids → `emit("sources-changed")` and
+`emit("workspace-changed")`.
 
 `resync_now` (the fallback command) is the same minus auto-enable: it passes the
 full current id set as `prev`, so nothing is treated as a newcomer.
 
-### Active-workspace re-patch
+### Active-workspace inventory refresh
 
-Reads `WorkspaceTargetStore::get_active()`. For each `WorkspaceApply { tool_id,
-suite_id }` in `lastApplied`, it replays `workspace_patch::apply_workspace_patch`
-from fresh source content. `cmd_apply_workspace_patch` records `lastApplied` via
-`WorkspaceTargetStore::record_apply` (upsert by tool).
+Workspace scope is read-only, so the watcher does not write into a project. It
+only watches the active workspace's tool dirs and emits `workspace-changed`; the
+UI responds by re-invoking `cmd_scan_workspace` (see
+[workspace-inventory.md](./workspace-inventory.md)). Picking, activating, or
+removing a workspace calls `restart_if_running` so the subscription tracks the
+new active dirs.
 
 ## Loop avoidance
 
-Target directories (`~/.claude`, `<ws>/.agentic-hub`, …) are never watched — only
-source roots are. Reconcile is idempotent: an unchanged source yields an empty
-plan and no writes. So even if a user points a source at a directory that
-contains a target, the system converges in one or two cycles rather than looping.
+Global target directories (`~/.claude`, …) are never watched — only source roots
+and the active workspace's own tool dirs are. Reconcile is idempotent: an
+unchanged source yields an empty plan and no writes, and workspace scanning never
+writes at all. So even if a user points a source at a directory that contains a
+target, the system converges in one or two cycles rather than looping.
 
 ## IPC + settings deltas
 
 - `Settings.watcherEnabled: bool` (`#[serde(default = true)]`).
-- `WorkspaceTarget.lastApplied: Vec<WorkspaceApply>` (`#[serde(default)]`).
 - `cmd_set_watcher_enabled(enabled)` — persist + start/stop.
 - `cmd_rescan_resync()` — full rescan + resync fallback.
 - `cmd_save_settings` / `cmd_add_source` / `cmd_remove_source` call
-  `restart_if_running` so watched roots track configuration.
-- Event `sources-changed` (no payload) drives the UI refresh.
+  `restart_if_running` so watched roots track configuration; the workspace
+  pick / activate / remove commands do the same for the active workspace dirs.
+- Event `sources-changed` (no payload) drives the global UI refresh.
+- Event `workspace-changed` (no payload) drives the workspace inventory refresh.
 
 ## Tests
 
@@ -121,4 +128,3 @@ Core (`reconcile.rs`):
   no-op when unchanged, newcomer auto-enabled beside an enabled sibling while a
   new-folder newcomer stays disabled, markdown rule body refreshed.
 - `reconcile_all` skips disabled tools.
-- `WorkspaceTargetStore::record_apply` upserts per tool.

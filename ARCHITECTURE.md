@@ -57,7 +57,7 @@ External surfaces:
 
 - **Shared root** — user-owned directory tree, default `~/.agentic`, source of truth for capability definitions
 - **Tool homes** — `~/.codex`, `~/.claude`, `~/.cursor`, `~/.openclaw` — owned by the respective AI tools, written into by the projection engine with safe semantics
-- **App-owned data** — `~/.agentic-hub/config.json` (settings), `~/.agentic-suites.json` (suites, parity path with VS Code extension), `~/.agentic-hub/state.json` (workspace target store), `<ws>/.agentic-hub/workspace-patch.json` (per-workspace manifest)
+- **App-owned data** — `~/.agentic-hub/config.json` (settings), `~/.agentic-suites.json` (suites, parity path with VS Code extension), `~/.agentic-hub/state.json` (workspace target store). Workspace scope is read-only and writes no per-workspace data.
 
 No network calls in v1.
 
@@ -65,7 +65,7 @@ No network calls in v1.
 
 - [ARCHITECTURE.permissions.md](ARCHITECTURE.permissions.md) — Tauri 2.x capability model, FS scoping, runtime scope additions, Windows symlink constraint. Split out because Tauri's capability JSON contract is a distinct trust-boundary surface that does not belong in the root system story.
 - [ARCHITECTURE.projection.md](ARCHITECTURE.projection.md) — projection engine deep dive: scan → plan → apply → rule-sync data flow, per-tool layout matrix, Cursor managed-copy lifecycle, Claude flat-layout collision rules. Split out because the projection engine is the bulk of the system and benefits from its own dedicated reading path.
-- [ARCHITECTURE.workspace.md](ARCHITECTURE.workspace.md) — workspace-patch hard-copy semantics, manifest cycle, suite-apply integration, out-of-workspace path guard. Split out because workspace scope uses a different filesystem contract (hard copy + manifest) than global scope (symlinks + managed copies) and has its own lifecycle.
+- [ARCHITECTURE.workspace.md](ARCHITECTURE.workspace.md) — read-only workspace inventory: per-tool scan of a project's own dirs, the target store, watch + `workspace-changed` refresh. Split out because workspace scope is the inverse of global projection (read-only audit, no writes) and has its own lifecycle.
 
 ## Related detailed docs
 
@@ -90,7 +90,7 @@ agentic-hub/
 
   Cargo.toml                  Rust workspace
   crates/
-    agentic-core/             pure domain crate: scan/plan/apply/sync/suites/workspace-patch
+    agentic-core/             pure domain crate: scan/plan/apply/sync/suites/workspace-inventory
     agentic-hub/              Tauri bin crate: commands, window mgmt, capability files
 
   package.json                pnpm workspace
@@ -138,7 +138,7 @@ agentic-hub/
 | `applier` | core | Execute plan: create / replace / remove symlinks and managed copies; refuse to overwrite real files/dirs; per-op failure isolation |
 | `rule_sync` | core | Rewrite managed marker block in `AGENTS.md` / `CLAUDE.md` / `SOUL.md`; strip frontmatter; preserve unmanaged content |
 | `suite_store` | core | CRUD over `~/.agentic-suites.json`; atomic write; UUID generation; stale-reference validation |
-| `workspace_patch` | core | Hard-copy suite apply into workspace; manifest write/read; cleanup cycle; out-of-workspace guard |
+| `workspace_inventory` | core | Read-only scan of a workspace's own per-tool dirs; produce `CapabilityItem[]` + present-only `ToolCapabilityState[]`; no FS writes |
 | `scaffold` | core | Materialize bundled demo tree at `sharedRoot`; merge / overwrite modes |
 | `agentic-hub` bin | shell | Tauri commands wired to core; window mgmt; capability JSON; dialog + store plugin wiring |
 | React UI | shell | View + staging state; never calls FS directly; communicates only through typed IPC wrappers |
@@ -191,7 +191,7 @@ Rejected: a bespoke CSS file (the prior approach — drifted to ~1200 lines with
 
 ### Zustand for state
 
-The data model is small and local. We do not need React Query (no server). Zustand keeps stores tiny and focused: `manager` owns the scan/inspect/stage/apply loop, `suites` owns suite CRUD + draft, `workspace` owns the workspace-patch flow. The thin `App.tsx` shell only wires layout, hash routing, and Tauri event listeners; views read the stores directly, so prop-drilling is minimal. Cross-store refresh (e.g. "a suite was created") flows through Tauri events. Action errors surface as Sonner toasts; the initial-load failure surfaces as a full-page alert.
+The data model is small and local. We do not need React Query (no server). Zustand keeps stores tiny and focused: `manager` owns the scan/inspect/stage/apply loop (and, in read-only mode, the workspace inventory render), `suites` owns suite CRUD + draft, `workspace` owns the workspace target list and delegates inventory loading to `manager`. The thin `App.tsx` shell only wires layout, hash routing, and Tauri event listeners; views read the stores directly, so prop-drilling is minimal. Cross-store refresh (e.g. "a suite was created") flows through Tauri events. Action errors surface as Sonner toasts; the initial-load failure surfaces as a full-page alert.
 
 Rejected: Redux (too much ceremony), React Query (no HTTP), Jotai/Recoil (no benefit over Zustand at this scale).
 
@@ -281,29 +281,25 @@ User selects suite + clicks Apply Suite
 
 Full-coverage desired map is the key: every scanned item gets a desired state, so the plan is a true reset. This reuses the existing plan/apply pipeline with zero new mutation code.
 
-### Apply workspace patch flow
+### Workspace inventory flow (read-only)
 
 ```
-User picks workspace dir + suite + tool + clicks Apply to Workspace
-  -> UI confirms with workspace dir + suite name
-  -> UI invokes cmd_apply_workspace_patch({ workspaceDir, toolId, suiteId })
-       -> workspace_patch::apply():
-            1. validate workspaceDir exists and is a directory
-            2. resolve realpath(workspaceDir) as boundary
-            3. build workspace-scoped adapter (different target paths than global)
-            4. read prior manifest if any
-            5. for each prior path:
-                 sentinel "::managed-section" -> rule_sync with empty enabled-list
-                 regular path -> fs::remove + prune empty parent dirs up to ws root
-            6. for each suite item:
-                 hard-copy skill dir / agent file / cursor rule file
-                 dereference any symlinks during copy
-            7. for Codex/Claude rules: rule_sync with managed section
-            8. build new manifest, write atomically (.tmp + rename)
-       -> returns WorkspacePatchResult
+User picks / activates a workspace in the left rail
+  -> UI invokes cmd_scan_workspace({ workspaceId })
+       -> resolve target dir from WorkspaceTargetStore
+       -> workspace_inventory::scan_workspace(ws, WORKSPACE_TOOL_IDS):
+            for each tool (Codex / Claude / Cursor):
+              build create_workspace_adapter(tool, ws)
+              walk skills_path  -> skill:<rel>
+              walk agents_path  -> agent:<rel>
+              walk cursor rules_path -> rule:<rel>
+              instructions_path (AGENTS.md / CLAUDE.md) if present -> rule:<file>
+            dedupe items by id across tools; emit one Enabled state per present (tool, item)
+       -> returns WorkspaceInventory { items, states, errors }
+  -> UI renders the same matrix in read-only mode (static present cells, inert aggregates)
 ```
 
-The manifest is the entire memory of what was written. Re-apply with a different suite or tool reads the manifest, cleans the prior payload (including sentinel-driven managed-block cleanup), then writes the new payload. No drift detection in v1.
+No writes occur. The watcher re-subscribes to the active workspace's tool dirs and emits `workspace-changed`, which re-runs the scan. See [ARCHITECTURE.workspace.md](ARCHITECTURE.workspace.md).
 
 ## Data model
 
@@ -391,19 +387,18 @@ pub struct SuiteDefinition {
 
 Persisted at `~/.agentic-suites.json` (preserved path from VS Code extension).
 
-### WorkspacePatchManifest
+### WorkspaceTarget
 
 ```rust
-pub struct WorkspacePatchManifest {
-    pub version: u32,                  // 1
-    pub applied_at: String,            // ISO 8601
-    pub tool: ToolId,
-    pub suite: SuiteRef,
-    pub paths: Vec<String>,            // workspace-relative, may include "<file>::managed-section" sentinel
+pub struct WorkspaceTarget {
+    pub id: String,
+    pub label: String,
+    pub dir: PathBuf,
+    pub last_used_at: String,          // ISO 8601
 }
 ```
 
-Persisted at `<ws>/.agentic-hub/workspace-patch.json`.
+Persisted in `~/.agentic-hub/state.json` (`workspaceTargets` + `workspaceActiveId`). Workspace scope keeps no per-project manifest — the inventory is recomputed on demand by scanning the project's own tool dirs.
 
 ## Security model
 
@@ -413,8 +408,7 @@ Trust boundary: the WebView is **untrusted**. The Rust core is **trusted**.
 - Tauri capability files scope FS access to a known allowlist; the dialog plugin adds runtime scope for user-picked workspace dirs only
 - `shell:execute` is never granted to the WebView
 - All target paths normalized to absolute paths via `path.canonicalize()` before validation
-- Workspace patch enforces `path.starts_with(real_workspace_dir)` for every target
-- Symlinks inside the shared root are followed for validation, but never followed across the workspace boundary during workspace patch copy (always dereferenced and copied as their resolved content)
+- Workspace scope is read-only: it scans a project's own tool dirs and writes nothing, so there is no write-side boundary to enforce there
 - No remote network calls; no telemetry; no auto-update endpoint pinging in v1
 
 See [ARCHITECTURE.permissions.md](ARCHITECTURE.permissions.md) for the full capability model.
@@ -443,9 +437,8 @@ See [ARCHITECTURE.permissions.md](ARCHITECTURE.permissions.md) for the full capa
 | `rule_sync` | Markers malformed (start without end) | `broken` state | No rewrite until user fixes file manually |
 | `suite_store` | Dotfile malformed JSON | List unavailable | Surface error; preserve in-memory state; do not auto-overwrite |
 | `suite_store` | Dotfile write permission denied | Save fails | Surface error; preserve in-memory state |
-| `workspace_patch` | Workspace dir does not exist | Apply blocked | Surface error before any FS write |
-| `workspace_patch` | Out-of-workspace target resolved | Per-path error | Skip that path; record in result; continue |
-| `workspace_patch` | Crash mid-apply | Atomic manifest write protects state | Next apply reads partially-written or last-known manifest; cleanup pass is idempotent |
+| `workspace_inventory` | Active workspace dir was deleted | `workspace_not_found` / empty scan | Surface error; rail lets the user remove the stale target |
+| `workspace_inventory` | A tool dir is unreadable | Per-dir `ScanError` | Skip that dir; record in `errors`; continue scanning the rest |
 | Tauri capability denial | App tries to read outside scope | Op fails at IPC layer | Bubble error to UI; user can adjust scope in settings or pick a different workspace |
 
 No failure mode in v1 is silent.
@@ -458,7 +451,7 @@ No failure mode in v1 is silent.
 - **Auto-detection of installed tools.** Settings are explicit. Auto-detection adds magic that breaks when a tool path changes.
 - **Workspace target for OpenClaw.** Out of scope per the VS Code feature spec; revisit once OpenClaw's project-level scan path stabilizes.
 - **Rich preview of skill / agent content.** This is a manager, not an editor. Users edit content in their existing editor.
-- **Drift detection.** No watcher means no drift detection. Workspace manifest is updated only by apply.
+- **Workspace write-back.** Workspace scope is a read-only audit. The hub never copies capabilities into a project; it only reports what the project's tools already have.
 - **Auto-update.** `tauri-plugin-updater` is supported but requires a signed manifest endpoint. Deferred until v1 public release.
 - **Telemetry.** None. Personal-tool app, single user.
 - **E-Studio remote sync.** Belongs in `e-studio-copilot`. Not part of this product.
@@ -468,4 +461,4 @@ No failure mode in v1 is silent.
 - **Cross-window event channel granularity.** When Suite Manager creates / edits / deletes a suite, the main window's suite dropdown must refresh. Two options: (1) Tauri global event broadcast (`emit_all("suite-store-changed")`); (2) the main window polls on focus. Default for v1: global event broadcast. Validate during M2.
 - **Type codegen toolchain.** `ts-rs` is the boring default. `specta` is newer and arguably more ergonomic. Decide at M0 scaffolding time; either is reversible.
 - **macOS code-signing.** Required for Gatekeeper acceptance without user override. Decide before M4 launch hardening.
-- **`tauri-plugin-store` vs custom JSON.** The store plugin gives us atomic writes for free for small state. We may use it for `state.json` (workspace target store) and keep `config.json` + `agentic-suites.json` + `workspace-patch.json` as custom JSON because their schemas are stable and we want migration control. Decide at M0.
+- **`tauri-plugin-store` vs custom JSON.** The store plugin gives us atomic writes for free for small state. We may use it for `state.json` (workspace target store) and keep `config.json` + `agentic-suites.json` as custom JSON because their schemas are stable and we want migration control. Decide at M0.

@@ -24,7 +24,7 @@ import type {
   SyncRulesResult,
   ToolId,
   ToolsSettings,
-  WorkspacePatchResult,
+  WorkspaceInventory,
   WorkspaceTarget,
   WorkspaceTargetsState,
 } from "./types";
@@ -194,9 +194,10 @@ export const removeWorkspaceTarget = (id: string): Promise<void> =>
 export const setActiveWorkspaceTarget = (id: string): Promise<void> =>
   invoke("cmd_set_active_workspace_target", { id });
 
-export const applyWorkspacePatch = (
-  workspaceId: string,
-  toolId: ToolId,
-  suiteId: string,
-): Promise<WorkspacePatchResult> =>
-  invoke("cmd_apply_workspace_patch", { input: { workspaceId, toolId, suiteId } });
+/// Read-only inventory of one workspace's installed agentic resources.
+export const scanWorkspace = (workspaceId: string): Promise<WorkspaceInventory> =>
+  invoke("cmd_scan_workspace", { workspaceId });
+
+/// Fired by the watcher after a workspace's tool dirs change.
+export const onWorkspaceChanged = (cb: () => void): Promise<UnlistenFn> =>
+  listen("workspace-changed", () => cb());

@@ -97,6 +97,7 @@ export function Matrix() {
   const ownership = useManagerStore((s) => s.ownership);
   const onToggle = useManagerStore((s) => s.toggle);
   const onToggleMany = useManagerStore((s) => s.toggleMany);
+  const readOnly = useManagerStore((s) => s.readOnly);
 
   const view = useManagerFiltersStore((s) => s.view);
   const setView = useManagerFiltersStore((s) => s.setView);
@@ -153,7 +154,11 @@ export function Matrix() {
   if (!data || items.length === 0) {
     return (
       <Alert>
-        <AlertDescription>No capabilities found in the configured sources.</AlertDescription>
+        <AlertDescription>
+          {readOnly
+            ? "No agentic resources installed in this workspace yet."
+            : "No capabilities found in the configured sources."}
+        </AlertDescription>
       </Alert>
     );
   }
@@ -167,6 +172,7 @@ export function Matrix() {
     onToggle,
     onToggleMany,
     settings: data.settings,
+    readOnly,
   };
   const effectiveCollapsed = query.trim() ? EMPTY_COLLAPSE : collapsed;
 
@@ -336,6 +342,8 @@ interface BodyContext {
   onToggle: (tool: ToolId, itemId: string) => void;
   onToggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
   settings: Settings;
+  // Workspace scope: cells and aggregates render as static present/absent.
+  readOnly: boolean;
 }
 
 function filterItems(
@@ -374,6 +382,18 @@ function AggregateCells(props: { items: CapabilityItem[]; ctx: BodyContext }) {
           return (
             <TableCell key={t.id} className="text-center">
               <span className="text-muted-foreground/50">—</span>
+            </TableCell>
+          );
+        }
+        // Read-only inventory: a static "present / total" count, never a batch
+        // toggle. Success-colored when this tool has every resource in the group.
+        if (ctx.readOnly) {
+          const all = togglable.length === items.length;
+          return (
+            <TableCell key={t.id} className="text-center">
+              <span className={cn("text-xs tabular-nums", all ? "text-success" : "text-muted-foreground")}>
+                {togglable.length}
+              </span>
             </TableCell>
           );
         }
@@ -478,6 +498,7 @@ function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge
         desired={ctx.desired}
         ownership={ctx.ownership}
         onToggle={ctx.onToggle}
+        readOnly={ctx.readOnly}
       />
     </TableRow>
   );

@@ -5,7 +5,7 @@ Mode: Detailed
 Owner: Arno
 Last Updated: 2026-05-20
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md), [docs/features/suite-presets.md](../../features/suite-presets.md)
-Related Docs: [docs/tech/modules/rule-projection-sync.md](./rule-projection-sync.md), [docs/tech/modules/workspace-patch.md](./workspace-patch.md)
+Related Docs: [docs/tech/modules/rule-projection-sync.md](./rule-projection-sync.md), [docs/tech/modules/workspace-inventory.md](./workspace-inventory.md)
 
 ## Overview
 

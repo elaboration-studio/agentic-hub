@@ -179,4 +179,7 @@ See [tauri-ipc-contract.md](./tauri-ipc-contract.md) for full schemas. The delta
 
 - Per-source enable/disable toggle (currently every configured source is scanned).
 - Drag-reorder UI for source priority.
-- Workspace-scoped sources, layered on top of the global-only configuration.
+- Folding workspace inventory into the same source forest. Today the global
+  source roots and the read-only workspace inventory ([workspace-inventory.md](./workspace-inventory.md))
+  are scanned by separate paths; a unified "local workspace as a source" model is
+  a future extension.

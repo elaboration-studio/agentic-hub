@@ -545,20 +545,6 @@ pub struct SuiteOwnership {
     pub from_base: bool,
 }
 
-/// The suite last applied to a workspace for one tool. Lets the watcher
-/// re-patch a workspace's hard copies from fresh source content on change.
-#[cfg_attr(
-    feature = "ts-export",
-    derive(ts_rs::TS),
-    ts(export, export_to = "../../../src/types/generated/")
-)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceApply {
-    pub tool_id: ToolId,
-    pub suite_id: String,
-}
-
 /// A remembered per-project workspace directory (workspace scope).
 #[cfg_attr(
     feature = "ts-export",
@@ -572,11 +558,6 @@ pub struct WorkspaceTarget {
     pub label: String,
     pub dir: PathBuf,
     pub last_used_at: String,
-    /// Per-tool last-applied suite, recorded on each workspace patch. The
-    /// watcher replays these to keep the workspace in sync. Defaults to empty
-    /// for entries written before this field existed.
-    #[serde(default)]
-    pub last_applied: Vec<WorkspaceApply>,
 }
 
 /// Persisted workspace-target state (`~/.agentic-hub/state.json`).
@@ -592,27 +573,4 @@ pub struct WorkspaceTargetsState {
     pub workspace_targets: Vec<WorkspaceTarget>,
     #[serde(default)]
     pub workspace_active_id: Option<String>,
-}
-
-/// Outcome of applying a suite into a workspace directory (hard copy).
-#[cfg_attr(
-    feature = "ts-export",
-    derive(ts_rs::TS),
-    ts(export, export_to = "../../../src/types/generated/")
-)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspacePatchResult {
-    pub tool: ToolId,
-    pub workspace_dir: PathBuf,
-    pub suite_id: String,
-    pub suite_name: String,
-    /// Workspace-relative paths written this cycle (incl. managed sentinels).
-    pub applied: Vec<String>,
-    /// Prior-manifest entries cleaned this cycle.
-    pub removed: Vec<String>,
-    /// Suite capability IDs not provided by any configured source.
-    pub skipped_stale_ids: Vec<String>,
-    pub notes: Vec<String>,
-    pub errors: Vec<String>,
 }

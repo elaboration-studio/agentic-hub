@@ -94,20 +94,7 @@ Denied / not granted:
 
 ### `capabilities/workspace.json` — runtime scope additions
 
-When the user picks a workspace directory via the dialog plugin, the Rust core stores that directory and exposes commands scoped to it. The capability file does **not** statically grant access to `~/Code/**`. Instead, the path validation lives in `agentic-core::workspace_patch`:
-
-```rust
-fn validate_workspace_target(target: &Path, workspace_root: &Path) -> Result<()> {
-    let real_target = target.canonicalize()?;
-    let real_ws = workspace_root.canonicalize()?;
-    if !real_target.starts_with(&real_ws) {
-        return Err(Error::OutOfWorkspace(target.to_owned()));
-    }
-    Ok(())
-}
-```
-
-Every write inside `workspace_patch::apply` calls this validator. The capability layer is a coarse gate; the core is the fine gate.
+When the user picks a workspace directory via the dialog plugin, the Rust core stores that directory and exposes read-only commands scoped to it. The capability file does **not** statically grant access to `~/Code/**`. Workspace scope is read-only — `cmd_scan_workspace` only *reads* a project's own tool dirs and writes nothing — so there is no write-side boundary to enforce there. The scan resolves the target dir from the workspace target store and walks only the known per-tool subpaths under it.
 
 ### Static FS scope for tool homes
 
@@ -166,7 +153,7 @@ None of these are reliable assumptions for a personal-tool app. For v1, the desi
 
 - **macOS and Linux are primary.** Symlinks work via `std::os::unix::fs::symlink`.
 - **Windows is documented as constrained.** v1 does not officially ship Windows binaries.
-- **Managed-copy fallback path.** The `applier` and `workspace_patch` code paths that use managed copies (Cursor agents in global scope, every projection in workspace scope) work on Windows in principle. A future Windows release can opt every tool into managed-copy projection by setting `ruleProjectionKind = file_sync` for tools that currently use `link_sync`, and overriding the `link_sync` agent path to use `create_managed_copy`. This is a config-only change to the adapter layer.
+- **Managed-copy fallback path.** The `applier` code paths that use managed copies (Cursor agents in global scope) work on Windows in principle. A future Windows release can opt every tool into managed-copy projection by setting `ruleProjectionKind = file_sync` for tools that currently use `link_sync`, and overriding the `link_sync` agent path to use `create_managed_copy`. This is a config-only change to the adapter layer.
 - **Stale detection still works.** Managed-copy sync metadata stores the source path + content hash; refresh-on-source-change works identically on Windows.
 
 If we ship Windows in a later release, the symlink path must be guarded:
@@ -210,7 +197,7 @@ The WebView cannot:
 ## Related detailed docs
 
 - [docs/tech/modules/tauri-ipc-contract.md](docs/tech/modules/tauri-ipc-contract.md) — full command surface and event schemas
-- [docs/tech/modules/workspace-patch.md](docs/tech/modules/workspace-patch.md) — workspace path validation in detail
+- [docs/tech/modules/workspace-inventory.md](docs/tech/modules/workspace-inventory.md) — read-only workspace scan contract
 
 ## Failure modes
 
@@ -218,7 +205,7 @@ The WebView cannot:
 |-----------|---------|--------|----------|
 | Capability denial | UI invokes a command not in its capability file | Tauri rejects the IPC call | Bubble error to UI as `permission_denied`; user reports as a bug |
 | Path canonicalization | Target path does not exist | Validator returns `path_not_found` | Surface in UI; user creates parent or fixes settings |
-| Workspace scope violation | Resolved target escapes workspace root | `workspace_patch::apply` records error for that path | Continue with remaining items; report in result summary |
+| Workspace scan error | A workspace tool dir is unreadable | `workspace_inventory::scan_workspace` records a `ScanError` for that dir | Continue scanning remaining dirs; report errors in `WorkspaceInventory.errors` |
 | Tool-home scope violation | Apply tries to write outside configured tool paths | `applier` refuses | Surface as bug (this should never happen if adapters are correct) |
 | Windows symlink fail (future) | `symlink_file` returns `ERROR_PRIVILEGE_NOT_HELD` | Fall back to managed copy if implemented; otherwise error | Document Developer Mode requirement in install docs |
 | Plugin store write fail | Disk full / permission | LRU state lost | Surface; in-memory state preserved until next app start |

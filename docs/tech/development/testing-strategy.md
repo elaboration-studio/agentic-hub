@@ -24,7 +24,7 @@ Define how Agentic Hub is tested across Rust core, Tauri shell, React UI, and en
 
 **Where TDD applies**
 
-- **Always** — `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync`, `hook_sync`, `suite_store`, `workspace_patch`, `workspace_target_store`, `scaffold`, `reconcile`, `settings`, `paths`, `managed_copy`, `open_targets`: all pure logic and tempfile-backed services with defined inputs → outputs.
+- **Always** — `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync`, `hook_sync`, `suite_store`, `workspace_inventory`, `workspace_target_store`, `scaffold`, `reconcile`, `settings`, `paths`, `managed_copy`, `open_targets`: all pure logic and tempfile-backed services with defined inputs → outputs.
 - **Exempt** — the `#[tauri::command]` wrappers in `agentic-hub` are marshalling-only (payload in, `agentic-core` call, error map out). Keep logic out of them so it stays unit-testable in the core. They are covered by integration tests (below), not unit TDD.
 
 **Enforced bar.** Every change keeps these green — they are wired into `[workspace.lints]`, so `cargo build`/`cargo test` fail on violations, not just CI:
@@ -67,7 +67,7 @@ Coverage targets:
 - `applier`: each operation kind under positive and negative conditions (real-file blocks, symlink replacement, managed-copy stale detection)
 - `rule_sync`: managed-block contract (create, refresh, remove, malformed markers, frontmatter stripping)
 - `suite_store`: CRUD, validation, atomic writes, malformed-dotfile handling
-- `workspace_patch`: cleanup pass, sentinel handling, out-of-workspace guard, prune-parent
+- `workspace_inventory`: per-tool discovery, cross-tool dedupe, instruction-file presence, empty workspace, `__archived__` skip
 - `scaffold`: merge mode, overwrite mode, file-target guard
 
 Tools:
@@ -123,7 +123,7 @@ These tests do not boot a Tauri window; they call the command handlers directly 
 Coverage targets:
 - `cmd_scan` + `cmd_inspect` + `cmd_plan` + `cmd_apply` round trip
 - `cmd_apply_suite` full reset
-- `cmd_apply_workspace_patch` clean-then-write cycle
+- `cmd_scan_workspace` read-only inventory of a workspace's tool dirs
 - `cmd_sync_rules` managed-block lifecycle
 - `cmd_scaffold_demo` materializes bundled tree
 
@@ -151,7 +151,7 @@ Tools:
 | M0 (foundation) | Settings load/save unit; Tauri shell launches with empty window in E2E |
 | M1 (core loop) | Full Rust unit coverage of `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync`. Integration tests for every `cmd_*` in this milestone. E2E smoke for the empty-state → scaffold → apply happy path |
 | M2 (suite presets) | `suite_store` unit; `cmd_apply_suite` integration; cross-window event broadcast verified |
-| M3 (workspace patch) | `workspace_patch` unit (including out-of-workspace guard); `cmd_apply_workspace_patch` integration with clean-then-write cycle |
+| M3 (workspace inventory) | `workspace_inventory` unit (per-tool discovery, cross-tool dedupe, `__archived__` skip); `cmd_scan_workspace` integration on a tempdir project |
 | M4 (launch hardening) | Run the full Rust test matrix on CI for macOS + Linux; manual smoke on a fresh macOS install |
 
 ## Filesystem fixtures
@@ -185,7 +185,7 @@ These keep individual tests short and let us describe scenarios declaratively.
 
 ## Coverage targets
 
-- Rust core: 80%+ line coverage on `planner`, `applier`, `rule_sync`, `workspace_patch`
+- Rust core: 80%+ line coverage on `planner`, `applier`, `rule_sync`, `workspace_inventory`
 - UI: 60%+ on components with non-trivial logic; smoke coverage on layout components
 - Integration: every IPC command has at least one happy-path and one error-path test
 

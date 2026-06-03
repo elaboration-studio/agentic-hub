@@ -19,7 +19,7 @@ User-facing feature designs aligned with each milestone.
 - [mvp-unified-agentic-capability-manager.md](features/mvp-unified-agentic-capability-manager.md) — the core MVP feature: scan / inspect / stage / apply
 - [hooks-projection.md](features/hooks-projection.md) — the `hook` capability kind projected into each tool's hooks config via `json_section`
 - [suite-presets.md](features/suite-presets.md) — named capability presets with one-click full-reset apply
-- [workspace-suite-sync.md](features/workspace-suite-sync.md) — per-project hard-copy suite apply with manifest cycle
+- [workspace-inventory.md](features/workspace-inventory.md) — read-only per-workspace inventory of installed agentic resources
 - [source-watcher.md](features/source-watcher.md) — auto-reconcile projections on source-root file changes; Watch toggle
 - [agentic-demo-scaffold.md](features/agentic-demo-scaffold.md) — first-run bootstrap of a starter shared root
 - [open-files.md](features/open-files.md) — per-row actions to open a capability's original file (preferred editor) or the file each tool actually references
@@ -35,7 +35,7 @@ Detailed technical design for each subsystem of the projection engine and adjace
 - [openclaw-tool-adapter.md](tech/modules/openclaw-tool-adapter.md) — OpenClaw filesystem conventions and SOUL.md managed block
 - [suite-presets.md](tech/modules/suite-presets.md) — suite store, full-reset apply pipeline
 - [suite-bindings.md](tech/modules/suite-bindings.md) — suite↔tool binding store; auto re-sync on capability edits
-- [workspace-patch.md](tech/modules/workspace-patch.md) — workspace target store, manifest format, apply algorithm
+- [workspace-inventory.md](tech/modules/workspace-inventory.md) — workspace target store, per-tool scan, read-only inventory contract
 - [watcher.md](tech/modules/watcher.md) — source watcher + reconcile engine, auto-enable heuristic, debounce, loop avoidance
 - [tauri-ipc-contract.md](tech/modules/tauri-ipc-contract.md) — complete IPC command surface and event schemas
 - [agentic-demo-scaffold.md](tech/modules/agentic-demo-scaffold.md) — bundled tree embedding, scaffold modes, atomic writes

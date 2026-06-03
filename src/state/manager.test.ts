@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/ipc", () => ({
   loadSettings: vi.fn(),
   scan: vi.fn(),
+  scanWorkspace: vi.fn(),
   inspect: vi.fn(),
   plan: vi.fn(),
   apply: vi.fn(),
@@ -23,6 +24,7 @@ import {
   loadSettings,
   plan,
   scan,
+  scanWorkspace,
   setWatcherEnabled,
   suiteOwnership,
   syncHooks,
@@ -44,6 +46,7 @@ import { useManagerStore } from "./manager";
 const mocked = {
   loadSettings: vi.mocked(loadSettings),
   scan: vi.mocked(scan),
+  scanWorkspace: vi.mocked(scanWorkspace),
   inspect: vi.mocked(inspect),
   plan: vi.mocked(plan),
   apply: vi.mocked(apply),
@@ -185,6 +188,61 @@ describe("manager store — refresh", () => {
     expect(s.status).toBe("error");
     expect(s.error).toContain("config unreadable");
     expect(s.data).toBeNull();
+  });
+});
+
+describe("manager store — loadWorkspace (read-only inventory)", () => {
+  it("populates a read-only inventory with fixed workspace tools and no pending keys", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scanWorkspace.mockResolvedValue({
+      items: [makeItem("skill:a")],
+      states: [
+        makeState("cursor", "skill:a", "enabled"),
+        makeState("claude", "skill:a", "enabled"),
+      ],
+      errors: [],
+    });
+
+    await useManagerStore.getState().loadWorkspace("ws-1");
+    const s = useManagerStore.getState();
+
+    expect(s.status).toBe("ready");
+    expect(s.readOnly).toBe(true);
+    expect(s.data?.items).toHaveLength(1);
+    // Workspace columns are the three supported tools regardless of global
+    // enabled settings (claude is disabled in makeSettings but still shown).
+    expect(s.tools.map((t) => t.id)).toEqual(["codex", "claude", "cursor"]);
+    expect(s.desired["cursor::skill:a"]).toBe(true);
+    expect(s.desired["claude::skill:a"]).toBe(true);
+    // Desired mirrors current, so there is nothing to apply.
+    expect(s.pendingKeys).toEqual([]);
+  });
+
+  it("read-only mode rejects toggles", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scanWorkspace.mockResolvedValue({
+      items: [makeItem("skill:a")],
+      states: [makeState("cursor", "skill:a", "enabled")],
+      errors: [],
+    });
+    await useManagerStore.getState().loadWorkspace("ws-1");
+
+    useManagerStore.getState().toggle("cursor", "skill:a");
+
+    expect(useManagerStore.getState().desired["cursor::skill:a"]).toBe(true);
+    expect(useManagerStore.getState().pendingKeys).toEqual([]);
+  });
+
+  it("refresh clears the read-only flag set by loadWorkspace", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scanWorkspace.mockResolvedValue({ items: [], states: [], errors: [] });
+    await useManagerStore.getState().loadWorkspace("ws-1");
+    expect(useManagerStore.getState().readOnly).toBe(true);
+
+    seedHappyPath();
+    await useManagerStore.getState().refresh();
+
+    expect(useManagerStore.getState().readOnly).toBe(false);
   });
 });
 

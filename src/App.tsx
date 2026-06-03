@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
-import { onApplyProgress, onHubNavigate, onMenuOpenConfig, onSourcesChanged } from "./ipc";
+import {
+  onApplyProgress,
+  onHubNavigate,
+  onMenuOpenConfig,
+  onSourcesChanged,
+  onWorkspaceChanged,
+} from "./ipc";
 import { useManagerStore } from "./state/manager";
+import { useWorkspaceStore } from "./state/workspace";
 import type { Route } from "./shared";
 import { Header } from "./components/layout/Header";
 import { ActionBar } from "./components/layout/ActionBar";
@@ -9,7 +16,7 @@ import { EmptyState } from "./components/manager/EmptyState";
 import { ConflictDialog } from "./components/manager/ConflictDialog";
 import { ConfigPage } from "./components/config/ConfigPage";
 import { SuitesPage } from "./components/suites/SuitesPage";
-import { WorkspacePanel } from "./components/workspace/WorkspacePanel";
+import { WorkspaceView } from "./components/workspace/WorkspaceView";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -36,9 +43,12 @@ export function App() {
 
   const [route, setRoute] = useState<Route>(routeFromHash);
 
+  // Global scope owns the manager refresh (scan → inspect). Runs on mount and
+  // whenever the user returns to global scope, restoring the editable matrix.
+  // Workspace scope loads its own read-only inventory via WorkspaceView.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (scope === "global") void refresh();
+  }, [scope, refresh]);
 
   useEffect(() => {
     const onHash = () => setRoute(routeFromHash());
@@ -64,14 +74,28 @@ export function App() {
     };
   }, []);
 
-  // Live-refresh on watcher / resync events. Skip while the user has unapplied
-  // edits so an incoming event never discards an in-progress selection.
+  // Live-refresh the global matrix on watcher / resync events. Only in global
+  // scope, and only when idle so an incoming event never discards an
+  // in-progress selection.
   useEffect(() => {
     const unlisten = onSourcesChanged(() => {
-      if (useManagerStore.getState().pendingKeys.length === 0) void refresh();
+      const s = useManagerStore.getState();
+      if (s.scope === "global" && s.pendingKeys.length === 0) void refresh();
     });
     return () => void unlisten.then((fn) => fn());
   }, [refresh]);
+
+  // Live-refresh the workspace inventory when its tool dirs change. Only acts in
+  // workspace scope with an active target selected.
+  useEffect(() => {
+    const unlisten = onWorkspaceChanged(() => {
+      const s = useManagerStore.getState();
+      if (s.scope !== "workspace") return;
+      const id = useWorkspaceStore.getState().activeId;
+      if (id) void s.loadWorkspace(id);
+    });
+    return () => void unlisten.then((fn) => fn());
+  }, []);
 
   return (
     <TooltipProvider>
@@ -113,7 +137,7 @@ export function App() {
                   <Matrix />
                 )
               ) : (
-                <WorkspacePanel />
+                <WorkspaceView />
               )}
             </>
           )}

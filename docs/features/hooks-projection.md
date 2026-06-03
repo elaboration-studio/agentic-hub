@@ -106,7 +106,10 @@ A single tool apply batches all hook operations into one read–merge–write pe
 
 ## Workspace integration
 
-Workspace projection uses the same algorithm against the per-workspace files above. The workspace manifest records a `<target-rel-path>::managed-hooks` sentinel so the next apply clears prior managed hook entries before writing the new set — mirroring the `::managed-section` rule sentinel. See [workspace-patch.md](../tech/modules/workspace-patch.md).
+None. Hook projection writes only in global scope. Workspace scope is a read-only
+inventory (see [workspace-inventory.md](../tech/modules/workspace-inventory.md))
+and never writes hook files; surfacing a project's installed hooks is a noted
+follow-up.
 
 ## Demo scaffold
 

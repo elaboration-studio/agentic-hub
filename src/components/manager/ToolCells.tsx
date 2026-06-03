@@ -22,8 +22,10 @@ export function ToolCells(props: {
   desired: DesiredMap;
   ownership: Map<string, OwnershipInfo>;
   onToggle: (tool: ToolId, itemId: string) => void;
+  // Workspace scope: render a static present/blank indicator, never a toggle.
+  readOnly?: boolean;
 }) {
-  const { item, tools, adapterMap, currentMap, desired, ownership, onToggle } = props;
+  const { item, tools, adapterMap, currentMap, desired, ownership, onToggle, readOnly } = props;
   return (
     <>
       {tools.map((t) => {
@@ -34,6 +36,15 @@ export function ToolCells(props: {
           return (
             <TableCell key={t.id} className="text-center">
               <span className="text-muted-foreground/50">—</span>
+            </TableCell>
+          );
+        }
+        // Read-only inventory: presence is the whole story. A plain green check
+        // marks an installed resource; absence already fell through to "—".
+        if (readOnly) {
+          return (
+            <TableCell key={t.id} className="text-center">
+              <Check className="mx-auto size-3.5 text-success" aria-label="present" />
             </TableCell>
           );
         }

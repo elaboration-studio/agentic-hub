@@ -37,6 +37,13 @@ export const WORKSPACE_TOOL_IDS: ReadonlySet<ToolId> = new Set<ToolId>([
   "cursor",
 ]);
 
+/// The fixed tool columns shown in workspace scope, in canonical order. Unlike
+/// the global matrix these are not gated by `settings.tools[*].enabled`: a
+/// workspace is audited for every supported tool regardless of global config.
+export const WORKSPACE_TOOLS: ToolDef[] = ALL_TOOLS.filter((t) =>
+  WORKSPACE_TOOL_IDS.has(t.id),
+);
+
 /// Tools the user has enabled in settings, in canonical order.
 export function enabledTools(settings: Settings): ToolDef[] {
   return ALL_TOOLS.filter((t) => settings.tools[t.id].enabled);

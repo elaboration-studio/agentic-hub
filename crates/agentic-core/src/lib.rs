@@ -24,7 +24,7 @@ pub mod scanner;
 pub mod settings;
 pub mod suite_binding_store;
 pub mod suite_store;
-pub mod workspace_patch;
+pub mod workspace_inventory;
 pub mod workspace_target_store;
 
 pub use adapter_registry::{
@@ -38,7 +38,7 @@ pub use model::{
     HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome,
     ScanError, ScanResult, SourceRef, SuiteBinding, SuiteCapabilityRef, SuiteDefinition,
     SuiteValidationResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
-    WorkspaceApply, WorkspacePatchResult, WorkspaceTarget, WorkspaceTargetsState,
+    WorkspaceTarget, WorkspaceTargetsState,
 };
 pub use open_targets::is_openable;
 pub use planner::{build_plan, inspect_tool};
@@ -48,4 +48,5 @@ pub use scanner::{scan, scan_all};
 pub use settings::{Settings, SourceConfig, ToolSettings, ToolsSettings};
 pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
+pub use workspace_inventory::{scan_workspace, WorkspaceInventory};
 pub use workspace_target_store::WorkspaceTargetStore;

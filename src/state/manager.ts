@@ -12,6 +12,7 @@ import {
   loadSettings,
   plan,
   scan,
+  scanWorkspace,
   setWatcherEnabled,
   suiteOwnership,
   syncHooks,
@@ -32,6 +33,7 @@ import {
   key,
   messageOf,
   WORKSPACE_TOOL_IDS,
+  WORKSPACE_TOOLS,
   type Scope,
   type ToolDef,
 } from "../shared";
@@ -66,6 +68,8 @@ interface ManagerState {
   scope: Scope;
   watching: boolean;
   conflicts: ConflictRow[] | null;
+  // Workspace scope renders the inventory read-only: no toggles, no apply.
+  readOnly: boolean;
 
   // Derived (recomputed on data/desired change).
   tools: ToolDef[];
@@ -77,6 +81,7 @@ interface ManagerState {
   ownership: Map<string, OwnershipInfo>;
 
   refresh: () => Promise<void>;
+  loadWorkspace: (id: string) => Promise<void>;
   setScope: (scope: Scope) => void;
   toggleWatching: (next: boolean) => Promise<void>;
   toggle: (tool: ToolId, itemId: string) => void;
@@ -165,6 +170,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   scope: "global",
   watching: true,
   conflicts: null,
+  readOnly: false,
   tools: [],
   workspaceTools: [],
   currentMap: new Map(),
@@ -190,6 +196,34 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         pendingKeys: [],
         ownership,
         watching: settings.watcherEnabled,
+        readOnly: false,
+        status: "ready",
+      });
+    } catch (e) {
+      set({ error: messageOf(e), status: "error" });
+    }
+  },
+
+  // Workspace scope: a read-only audit of one project. Walk the workspace's own
+  // tool dirs (`scanWorkspace`), then reuse the matrix render. Only present
+  // resources come back, so `desired` mirrors `current` and `pendingKeys` stays
+  // empty — there is nothing to apply.
+  loadWorkspace: async (id) => {
+    set({ status: "loading", error: "" });
+    try {
+      const settings = await loadSettings();
+      const inv = await scanWorkspace(id);
+      const result: InspectResult = { states: inv.states, adapterStatuses: [] };
+      const currentMap = buildCurrentMap(result);
+      set({
+        data: { settings, items: inv.items, scanErrors: inv.errors, result },
+        desired: seedDesired(result),
+        currentMap,
+        tools: WORKSPACE_TOOLS,
+        workspaceTools: WORKSPACE_TOOLS,
+        pendingKeys: [],
+        ownership: new Map(),
+        readOnly: true,
         status: "ready",
       });
     } catch (e) {
@@ -210,7 +244,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   },
 
   toggle: (tool, itemId) => {
-    const { currentMap, desired, ownership } = get();
+    const { currentMap, desired, ownership, readOnly } = get();
+    if (readOnly) return;
     const k = key(tool, itemId);
     // Suite-managed cells are locked: a binding owns them.
     if (!currentMap.has(k) || ownership.has(k)) return;
@@ -219,7 +254,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   },
 
   toggleMany: (tool, itemIds, value) => {
-    const { currentMap, desired, ownership } = get();
+    const { currentMap, desired, ownership, readOnly } = get();
+    if (readOnly) return;
     const next = { ...desired };
     for (const id of itemIds) {
       const k = key(tool, id);
@@ -238,8 +274,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   setProgress: (p) => set({ progress: p }),
 
   requestApply: () => {
-    const { data, pendingKeys, desired, currentMap, tools } = get();
-    if (!data) return;
+    const { data, pendingKeys, desired, currentMap, tools, readOnly } = get();
+    if (!data || readOnly) return;
     const rows = detectConflicts(pendingKeys, desired, currentMap, data.items, tools);
     if (rows.length === 0) {
       void runApply(set, get, false);

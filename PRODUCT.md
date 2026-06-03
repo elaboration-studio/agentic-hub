@@ -350,16 +350,17 @@ Exit condition: user can switch between named capability sets in one click.
 
 Estimated effort: 3 days human / ~45 min Arno-agentic-system
 
-### M3: Workspace Suite Sync
+### M3: Workspace Inventory (read-only)
 
 - Header scope toggle (Global / Workspace)
 - Workspace folder picker (Tauri dialog plugin) + persisted LRU target store
-- Per-tool workspace adapter overrides
-- `WorkspacePatchService` hard-copy apply + manifest cycle
-- Out-of-workspace path guard
-- Manifest cleanup on re-apply with different tool
+- Per-tool workspace adapter (read-only) + `workspace_inventory::scan_workspace`
+- Read-only Manager matrix render of a project's installed resources
+- Watch the active workspace's tool dirs; live refresh via `workspace-changed`
 
-Exit condition: user can apply a project-scoped suite without touching their global home.
+Exit condition: user can audit which agentic resources each tool already has in a project, without the hub ever writing into it.
+
+> Direction change (2026-06-04): the original M3 hard-copied a suite *into* a project. That write flow (`WorkspacePatchService`, manifest cycle, out-of-workspace guard) was removed; workspace scope is now a read-only audit.
 
 Estimated effort: 4 days human / ~1 hour Arno-agentic-system
 
@@ -405,7 +406,7 @@ Estimated effort: 3 days human / ~1 hour Arno-agentic-system
 - [ARCHITECTURE.workspace.md](/Users/arno/Developer/agentic-hub/ARCHITECTURE.workspace.md)
 - `docs/features/mvp-unified-agentic-capability-manager.md`
 - `docs/features/suite-presets.md`
-- `docs/features/workspace-suite-sync.md`
+- `docs/features/workspace-inventory.md`
 - `docs/features/agentic-demo-scaffold.md`
 - VS Code original: `e-studio-copilot/docs/features/MVP_Unified-Agentic-Capability-Manager.md`
 - VS Code architecture: `e-studio-copilot/ARCHITECTURE.md`

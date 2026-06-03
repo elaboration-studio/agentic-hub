@@ -177,7 +177,10 @@ Before planning, `filter_desired_enabled_for_tool(tool_id, desired, items, manif
 
 ## Workspace mode
 
-Workspace projection uses the same algorithm against `<ws>/.cursor/hooks.json`, `<ws>/.claude/settings.json`, `<ws>/.codex/hooks.json`. The workspace patch manifest records a `<target-rel-path>::managed-hooks` sentinel so a re-apply clears the managed entries on switch. See [workspace-patch.md](./workspace-patch.md).
+None. Hook projection is a **global-scope** write operation. Workspace scope is a
+read-only inventory ([workspace-inventory.md](./workspace-inventory.md)) and does
+not write hook files. (Inventorying installed workspace hooks is a noted
+follow-up.)
 
 ## Concurrency
 

@@ -190,9 +190,10 @@ fn sync_markdown_rules(input):
 
 ## Workspace-mode integration
 
-Workspace-scoped rule sync uses the same `sync_markdown_rules` function with a workspace-scoped `ResolvedAdapter` (different `instructions_path`). The sentinel `<file>::managed-section` in the workspace manifest is interpreted by `workspace_patch::apply` as "call `sync_markdown_rules` with an empty enabled list for that prior-tool adapter".
-
-See [workspace-patch.md](./workspace-patch.md) for the manifest cleanup integration.
+None. Rule projection is a **global-scope** write operation. Workspace scope is a
+read-only inventory ([workspace-inventory.md](./workspace-inventory.md)): it reads
+a project's `AGENTS.md` / `CLAUDE.md` as inventory rows but never rewrites the
+managed block in a workspace.
 
 ## Tests
 

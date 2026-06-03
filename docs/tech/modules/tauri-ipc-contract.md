@@ -5,7 +5,7 @@ Mode: Detailed
 Owner: Arno
 Last Updated: 2026-05-20
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.permissions.md](../../../ARCHITECTURE.permissions.md)
-Related Docs: [docs/tech/modules/rule-projection-sync.md](./rule-projection-sync.md), [docs/tech/modules/suite-presets.md](./suite-presets.md), [docs/tech/modules/workspace-patch.md](./workspace-patch.md)
+Related Docs: [docs/tech/modules/rule-projection-sync.md](./rule-projection-sync.md), [docs/tech/modules/suite-presets.md](./suite-presets.md), [docs/tech/modules/workspace-inventory.md](./workspace-inventory.md)
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Define the complete IPC surface between the React WebView and the Rust core. Eve
 
 ## Conventions
 
-- **Naming.** All command names use `cmd_` prefix, snake_case (e.g. `cmd_scan`, `cmd_apply_workspace_patch`)
+- **Naming.** All command names use `cmd_` prefix, snake_case (e.g. `cmd_scan`, `cmd_scan_workspace`)
 - **Payloads.** All command inputs are single typed objects, never positional args
 - **Outputs.** All command outputs are typed objects or `()` (returns `null` to JS)
 - **Errors.** All commands return `Result<T, IpcError>` in Rust, which maps to a thrown error in JS with a typed `code` and `message`
@@ -45,7 +45,7 @@ Common error codes:
 | `tool_unsupported_in_scope` | E.g. OpenClaw in workspace scope |
 | `suite_not_found` | A suite id does not exist in the store |
 | `suite_name_collision` | A suite name is already in use |
-| `manifest_malformed` | A workspace manifest could not be parsed |
+| `workspace_not_found` | A workspace target id does not exist in the store |
 | `rule_sync_malformed_markers` | Instruction file has malformed managed-block markers |
 | `conflict_real_file_at_target` | A real file blocks a write |
 | `hook_manifest_invalid` | A `hook.json` failed schema validation |
@@ -400,37 +400,29 @@ type WorkspaceTargetsState = {
 };
 ```
 
+`cmd_pick_workspace_dir`, `cmd_remove_workspace_target`, and `cmd_set_active_workspace_target` restart the filesystem watcher so it re-subscribes to the new active workspace's tool dirs.
+
 ### `cmd_remove_workspace_target(id: string) -> ()`
 
 ### `cmd_set_active_workspace_target(id: string) -> ()`
 
-### `cmd_apply_workspace_patch(input: ApplyWorkspacePatchInput) -> WorkspacePatchResult`
+### `cmd_scan_workspace(workspaceId: string) -> WorkspaceInventory`
+
+Read-only inventory of one workspace's installed agentic resources. Resolves the
+target dir from the store, then walks each workspace tool's own directories
+(`.cursor/skills`, `.claude/skills`, `.agents/skills`, `.cursor/rules`,
+`AGENTS.md`, `CLAUDE.md`). Performs no writes. Only present resources are
+returned, so every state is `enabled`.
 
 ```typescript
-type ApplyWorkspacePatchInput = {
-  workspaceId: string;          // id from WorkspaceTargetsState
-  toolId: 'codex' | 'claude' | 'cursor';  // OpenClaw refused
-  suiteId: string;
-};
-
-type WorkspacePatchResult = {
-  tool: ToolId;
-  workspaceDir: string;
-  suiteId: string;
-  suiteName: string;
-  applied: string[];            // workspace-relative paths written
-  removed: string[];            // workspace-relative paths cleaned from prior manifest
-  skippedStaleIds: string[];    // suite capability IDs not found in scan
-  notes: string[];
-  errors: WorkspacePatchError[];
-};
-
-type WorkspacePatchError = {
-  path?: string;
-  message: string;
-  code: string;
+type WorkspaceInventory = {
+  items: CapabilityItem[];          // one row per distinct resource, sorted by id
+  states: ToolCapabilityState[];    // one per (tool, present item), always 'enabled'
+  errors: ScanError[];
 };
 ```
+
+Errors: `workspace_not_found` (unknown id).
 
 ## Scaffold command
 
@@ -490,9 +482,12 @@ type ApplyProgressEvent = {
 };
 ```
 
-### `workspace-apply-progress`
+### `workspace-changed`
 
-Equivalent for `cmd_apply_workspace_patch`.
+Emitted (no payload) after the watcher detects a change under the active
+workspace's tool dirs (`.cursor`, `.claude`, `.agents`, `.codex`, `AGENTS.md`,
+`CLAUDE.md`). The UI reloads the active workspace inventory while in workspace
+scope. See [watcher.md](./watcher.md).
 
 ### `suite-store-changed`
 
@@ -538,7 +533,6 @@ type WorkspaceTargetsChangedEvent = {};
 - The Rust core uses a global `tokio::sync::Mutex<()>` named `apply_lock` to serialize:
   - `cmd_apply`
   - `cmd_apply_suite`
-  - `cmd_apply_workspace_patch`
   - `cmd_sync_rules`
 - Settings save and suite CRUD are also serialized via their own per-resource mutexes
 - Scan and inspect are read-only and run concurrently
