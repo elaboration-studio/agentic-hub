@@ -18,6 +18,8 @@ use crate::error::{CoreError, Result};
 use crate::hook_sync::{self, HookManifest};
 use crate::managed_copy::now_iso8601;
 use crate::model::{CapabilityItem, CapabilityKind, SuiteDefinition, ToolId, WorkspacePatchResult};
+#[cfg(test)]
+use crate::model::{SourceRef, SuiteCapabilityRef};
 use crate::rule_sync;
 
 const SECTION_SENTINEL: &str = "::managed-section";
@@ -180,13 +182,26 @@ pub fn apply_workspace_patch(
         errors: Vec::new(),
     };
 
-    // Resolve suite capability ids against the scan.
+    // Resolve suite capability refs against the scan (present sources only).
+    // A qualified ref whose source is not active here is preserved, never
+    // mis-resolved onto a same-named capability from a different source.
     let by_id: HashMap<&str, &CapabilityItem> = items.iter().map(|i| (i.id.as_str(), i)).collect();
     let mut queued: Vec<&CapabilityItem> = Vec::new();
     for cap in &suite.capabilities {
-        match by_id.get(cap.as_str()) {
-            Some(item) => queued.push(item),
-            None => result.skipped_stale_ids.push(cap.clone()),
+        match by_id.get(cap.cap.as_str()) {
+            Some(item)
+                if cap
+                    .source
+                    .as_ref()
+                    .map_or(true, |s| s.matches(&item.source)) =>
+            {
+                queued.push(item)
+            }
+            Some(_) => result.notes.push(format!(
+                "{} skipped: its source is not active on this machine.",
+                cap.cap
+            )),
+            None => result.skipped_stale_ids.push(cap.cap.clone()),
         }
     }
 
@@ -387,6 +402,10 @@ mod tests {
             relative_path: PathBuf::from(rel),
             source_id: "arno".into(),
             source_label: "Arno".into(),
+            source: SourceRef {
+                rel_home: "~/.agentic".into(),
+                folder: ".agentic".into(),
+            },
             valid: true,
             validation_errors: vec![],
         }
@@ -397,7 +416,7 @@ mod tests {
             id: "s1".into(),
             name: "coding".into(),
             description: None,
-            capabilities: caps.iter().map(|s| s.to_string()).collect(),
+            capabilities: caps.iter().map(|s| SuiteCapabilityRef::bare(*s)).collect(),
             created_at: "t".into(),
             updated_at: "t".into(),
         }
@@ -459,6 +478,78 @@ mod tests {
         assert!(real_ws.join(".cursor/rules/precise.mdc").is_file());
         assert_eq!(result.skipped_stale_ids, vec!["skill:gone"]);
         assert!(result.errors.is_empty(), "{:?}", result.errors);
+    }
+
+    #[test]
+    fn apply_is_source_aware_for_qualified_refs() {
+        let src = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let skill_dir = src.path().join("skills/dev/tdd");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# tdd").unwrap();
+        let items = vec![item(
+            CapabilityKind::Skill,
+            "skill:dev/tdd",
+            "dev/tdd",
+            skill_dir,
+        )];
+        let skill_path = ".cursor/skills/dev/tdd/SKILL.md";
+
+        // Qualified to a source that is NOT active here: preserved, not applied,
+        // and never mis-resolved onto the local same-named item.
+        let inactive = SuiteDefinition {
+            id: "s".into(),
+            name: "s".into(),
+            description: None,
+            capabilities: vec![SuiteCapabilityRef {
+                cap: "skill:dev/tdd".into(),
+                source: Some(SourceRef {
+                    rel_home: "~/other".into(),
+                    folder: "other".into(),
+                }),
+            }],
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        let result = apply_workspace_patch(
+            ws.path(),
+            ToolId::Cursor,
+            &inactive,
+            &items,
+            &HashMap::new(),
+        )
+        .unwrap();
+        let real_ws = ws.path().canonicalize().unwrap();
+        assert!(
+            !real_ws.join(skill_path).exists(),
+            "inactive-source ref not applied"
+        );
+        assert!(
+            result.skipped_stale_ids.is_empty(),
+            "skipped as absent, not stale"
+        );
+        assert!(result.notes.iter().any(|n| n.contains("skill:dev/tdd")));
+
+        // Qualified to the matching source: applied normally.
+        let active = SuiteDefinition {
+            id: "s".into(),
+            name: "s".into(),
+            description: None,
+            capabilities: vec![SuiteCapabilityRef {
+                cap: "skill:dev/tdd".into(),
+                source: Some(SourceRef {
+                    rel_home: "~/.agentic".into(),
+                    folder: ".agentic".into(),
+                }),
+            }],
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        apply_workspace_patch(ws.path(), ToolId::Cursor, &active, &items, &HashMap::new()).unwrap();
+        assert!(
+            real_ws.join(skill_path).is_file(),
+            "matching-source ref applied"
+        );
     }
 
     #[test]

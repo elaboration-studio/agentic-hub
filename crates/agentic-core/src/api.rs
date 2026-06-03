@@ -4,7 +4,7 @@
 //! they stay unit-testable against a tempdir. The shell layer only does payload
 //! marshalling and error mapping. See `docs/tech/modules/tauri-ipc-contract.md`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ use crate::model::{
 use crate::planner;
 use crate::rule_sync;
 use crate::scanner;
-use crate::settings::Settings;
+use crate::settings::{source_present, Settings};
 
 /// Availability of one tool adapter, surfaced so the UI can disable a tool tab.
 #[cfg_attr(
@@ -194,9 +194,12 @@ pub fn sync_hooks(
 }
 
 /// Apply a suite to one tool as a full reset: every scanned item gets a desired
-/// state (`true` iff in the suite), then the existing plan/apply + rule + hook
-/// sync pipeline runs. Capability IDs not provided by any source are counted as
-/// skipped-stale. Reuses [`plan`]/[`apply`]/[`sync_rules`]/[`sync_hooks`] — no
+/// state (`true` iff a suite ref resolves to it, source-aware), then the
+/// existing plan/apply + rule + hook sync pipeline runs. References whose source
+/// is absent on this machine are counted as `skipped_absent_source` and
+/// preserved (their projection cannot exist locally, so it is never deleted);
+/// references whose source is present but match no scanned item are
+/// `skipped_stale`. Reuses [`plan`]/[`apply`]/[`sync_rules`]/[`sync_hooks`] — no
 /// parallel pipeline.
 pub fn apply_suite(
     items: &[CapabilityItem],
@@ -204,10 +207,14 @@ pub fn apply_suite(
     tool: ToolId,
     suite: &SuiteDefinition,
 ) -> ApplySuiteResult {
-    let suite_set: HashSet<&str> = suite.capabilities.iter().map(String::as_str).collect();
     let desired: HashMap<String, bool> = items
         .iter()
-        .map(|it| (it.id.clone(), suite_set.contains(it.id.as_str())))
+        .map(|it| {
+            (
+                it.id.clone(),
+                suite.capabilities.iter().any(|r| r.matches_item(it)),
+            )
+        })
         .collect();
 
     let adapter = adapter_registry::resolve(settings, tool);
@@ -217,15 +224,25 @@ pub fn apply_suite(
     let _ = sync_rules(items, settings, tool, &desired);
     let _ = sync_hooks(items, settings, tool, &desired);
 
-    let skipped_stale = suite
-        .capabilities
-        .iter()
-        .filter(|cap| !items.iter().any(|i| &i.id == *cap))
-        .count() as u32;
+    let local = settings.resolve_sources();
+    let mut skipped_stale = 0u32;
+    let mut skipped_absent_source = 0u32;
+    for r in &suite.capabilities {
+        if items.iter().any(|it| r.matches_item(it)) {
+            continue;
+        }
+        match &r.source {
+            // Qualified ref whose source is not here: preserve, don't delete.
+            Some(src) if !source_present(&local, src) => skipped_absent_source += 1,
+            // Present-source (or unqualified) ref with no matching item: stale.
+            _ => skipped_stale += 1,
+        }
+    }
 
     ApplySuiteResult {
         apply_result,
         skipped_stale,
+        skipped_absent_source,
         suite: suite.clone(),
     }
 }
@@ -249,6 +266,7 @@ pub fn apply_suite_to_tools(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::SuiteCapabilityRef;
     use std::fs;
     use std::path::Path;
 
@@ -341,7 +359,7 @@ mod tests {
             id: name.into(),
             name: name.into(),
             description: None,
-            capabilities: caps.iter().map(|s| s.to_string()).collect(),
+            capabilities: caps.iter().map(|s| (*s).into()).collect(),
             created_at: "t".into(),
             updated_at: "t".into(),
         }
@@ -543,6 +561,134 @@ mod tests {
             enabled_ids(&settings, &scanned.items, ToolId::Claude),
             vec!["skill:a"]
         );
+    }
+
+    #[test]
+    fn apply_suite_skips_ref_whose_source_is_absent_and_preserves() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/a/SKILL.md"), "# a");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        // A synced ref qualified to a source that does not exist on this machine.
+        let absent = SuiteCapabilityRef {
+            cap: "skill:a".into(),
+            source: Some(crate::model::SourceRef {
+                rel_home: "~/definitely-not-here".into(),
+                folder: "definitely-not-here".into(),
+            }),
+        };
+        let suite = SuiteDefinition {
+            id: "s".into(),
+            name: "s".into(),
+            description: None,
+            capabilities: vec![absent],
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        let result = apply_suite(&scanned.items, &settings, ToolId::Codex, &suite);
+        assert_eq!(result.skipped_absent_source, 1, "source not present here");
+        assert_eq!(result.skipped_stale, 0);
+        // skill:a exists locally but under a different source, so the absent-source
+        // ref never mis-resolves onto it.
+        assert!(enabled_ids(&settings, &scanned.items, ToolId::Codex).is_empty());
+    }
+
+    #[test]
+    fn apply_suite_matches_qualified_present_source_and_legacy_bare_ref() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/a/SKILL.md"), "# a");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+        let present = scanned.items[0].source.clone();
+
+        // Qualified to the present source -> matches and enables.
+        let qualified = SuiteDefinition {
+            id: "q".into(),
+            name: "q".into(),
+            description: None,
+            capabilities: vec![SuiteCapabilityRef {
+                cap: "skill:a".into(),
+                source: Some(present),
+            }],
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        let r = apply_suite(&scanned.items, &settings, ToolId::Codex, &qualified);
+        assert_eq!(r.skipped_absent_source, 0);
+        assert_eq!(r.skipped_stale, 0);
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Codex),
+            vec!["skill:a"]
+        );
+
+        // A legacy bare ref (source: None) still matches by id alone.
+        let bare = suite("b", &["skill:a"]);
+        let r2 = apply_suite(&scanned.items, &settings, ToolId::Codex, &bare);
+        assert_eq!(r2.skipped_stale, 0);
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Codex),
+            vec!["skill:a"]
+        );
+    }
+
+    #[test]
+    fn apply_suite_does_not_misresolve_same_id_across_present_sources() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&a.path().join("skills/dup/SKILL.md"), "# a-dup");
+        write(&b.path().join("skills/dup/SKILL.md"), "# b-dup");
+        let mut settings = Settings::sandboxed(a.path(), tools.path());
+        settings.sources = vec![
+            crate::settings::SourceConfig {
+                id: String::new(),
+                label: "A".into(),
+                path: a.path().to_path_buf(),
+            },
+            crate::settings::SourceConfig {
+                id: String::new(),
+                label: "B".into(),
+                path: b.path().to_path_buf(),
+            },
+        ];
+        let scanned = scan(&settings);
+        // First-source-wins: only A contributes the scanned skill:dup.
+        let a_ref = scanned
+            .items
+            .iter()
+            .find(|i| i.id == "skill:dup")
+            .unwrap()
+            .source
+            .clone();
+        // B is present too, but it is NOT the winner for skill:dup.
+        let b_ref = crate::settings::SourceConfig {
+            id: String::new(),
+            label: "B".into(),
+            path: b.path().to_path_buf(),
+        }
+        .portable_ref();
+        assert!(!a_ref.matches(&b_ref), "two tempdirs are distinct sources");
+
+        let suite = SuiteDefinition {
+            id: "m".into(),
+            name: "m".into(),
+            description: None,
+            capabilities: vec![SuiteCapabilityRef {
+                cap: "skill:dup".into(),
+                source: Some(b_ref),
+            }],
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        let r = apply_suite(&scanned.items, &settings, ToolId::Codex, &suite);
+        // B is present but its skill:dup is shadowed, so nothing resolves: stale,
+        // not absent, and A's skill:dup is never mis-enabled.
+        assert!(enabled_ids(&settings, &scanned.items, ToolId::Codex).is_empty());
+        assert_eq!(r.skipped_absent_source, 0);
+        assert_eq!(r.skipped_stale, 1);
     }
 
     #[test]

@@ -66,6 +66,35 @@ impl CapabilityKind {
     }
 }
 
+/// A portable, cross-device identity for a capability source. Absolute paths
+/// differ across machines, so we trace a source by its home-relative path
+/// (primary) and its folder name (fallback). Two devices resolve "the same"
+/// logical source by matching `rel_home`, then `folder`. See
+/// `docs/tech/modules/multi-source-roots.md`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceRef {
+    /// Home-relative path (e.g. `~/.agentic`); the absolute path for sources
+    /// outside the home directory.
+    pub rel_home: String,
+    /// Last path component (e.g. `.agentic`).
+    pub folder: String,
+}
+
+impl SourceRef {
+    /// True when `self` and `other` denote the same logical source: equal
+    /// `rel_home` (primary) or, failing that, equal `folder` (fallback for the
+    /// same source mounted at a different home-relative path across devices).
+    pub fn matches(&self, other: &SourceRef) -> bool {
+        self.rel_home == other.rel_home || self.folder == other.folder
+    }
+}
+
 /// A single scanned capability. IDs are source-free so suites resolve against
 /// the whole source forest (first-source-wins). See `multi-source-roots.md`.
 #[cfg_attr(
@@ -88,6 +117,8 @@ pub struct CapabilityItem {
     /// Which source contributed this item.
     pub source_id: String,
     pub source_label: String,
+    /// Portable cross-device identity of the contributing source.
+    pub source: SourceRef,
     pub valid: bool,
     pub validation_errors: Vec<String>,
 }
@@ -356,10 +387,86 @@ pub struct SuiteDefinition {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
-    /// Source-free capability IDs matching `CapabilityItem.id`.
-    pub capabilities: Vec<String>,
+    /// Source-qualified capability references. The bare `cap` matches
+    /// `CapabilityItem.id`; the optional `source` makes the reference portable
+    /// across devices. Legacy bare-string entries deserialize as `source:
+    /// None`.
+    pub capabilities: Vec<SuiteCapabilityRef>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// A source-qualified suite entry. `cap` is a bare capability id
+/// (`skill:dev/tdd`); `source` ties it to the contributing source so a synced
+/// suite resolves per-source instead of mis-resolving onto a same-named
+/// capability from a different source. Deserializes from a legacy bare string
+/// (`"skill:dev/tdd"` -> `{ cap, source: None }`); always serializes as an
+/// object so suite files upgrade in place on the next save.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiteCapabilityRef {
+    pub cap: String,
+    pub source: Option<SourceRef>,
+}
+
+impl SuiteCapabilityRef {
+    /// A reference with no source (legacy / unqualified).
+    pub fn bare(cap: impl Into<String>) -> Self {
+        Self {
+            cap: cap.into(),
+            source: None,
+        }
+    }
+
+    /// True when this reference resolves to `item`: the bare cap id must match,
+    /// and a qualified ref's source must match the item's source (home-relative
+    /// path, then folder). An unqualified ref matches by id alone.
+    pub fn matches_item(&self, item: &CapabilityItem) -> bool {
+        self.cap == item.id
+            && self
+                .source
+                .as_ref()
+                .map_or(true, |s| s.matches(&item.source))
+    }
+}
+
+impl From<&str> for SuiteCapabilityRef {
+    fn from(cap: &str) -> Self {
+        Self::bare(cap)
+    }
+}
+
+impl From<String> for SuiteCapabilityRef {
+    fn from(cap: String) -> Self {
+        Self::bare(cap)
+    }
+}
+
+impl<'de> Deserialize<'de> for SuiteCapabilityRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Bare(String),
+            Full {
+                cap: String,
+                #[serde(default)]
+                source: Option<SourceRef>,
+            },
+        }
+        Ok(match Raw::deserialize(deserializer)? {
+            Raw::Bare(cap) => SuiteCapabilityRef { cap, source: None },
+            Raw::Full { cap, source } => SuiteCapabilityRef { cap, source },
+        })
+    }
 }
 
 /// Partition of a suite's capability IDs against a scan.
@@ -373,6 +480,9 @@ pub struct SuiteDefinition {
 pub struct SuiteValidationResult {
     pub valid_ids: Vec<String>,
     pub stale_ids: Vec<String>,
+    /// Bare cap ids whose qualifying source is not present on this machine.
+    /// They are preserved (never deleted), just not applicable here.
+    pub absent_ids: Vec<String>,
 }
 
 /// Result of applying a suite to one tool (full reset through the pipeline).
@@ -385,8 +495,12 @@ pub struct SuiteValidationResult {
 #[serde(rename_all = "camelCase")]
 pub struct ApplySuiteResult {
     pub apply_result: ApplyResult,
-    /// Capability IDs in the suite not provided by any configured source.
+    /// Suite caps whose source is present (or unqualified) but no scanned item
+    /// matches — genuinely stale references.
     pub skipped_stale: u32,
+    /// Suite caps whose qualifying source is absent on this machine. Preserved,
+    /// never deleted; just not applicable to a cross-device clone.
+    pub skipped_absent_source: u32,
     pub suite: SuiteDefinition,
 }
 

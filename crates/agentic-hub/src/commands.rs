@@ -446,7 +446,7 @@ pub async fn cmd_update_suite(
     app: AppHandle,
     input: UpdateSuiteInput,
 ) -> IpcResult<SuiteDefinition> {
-    let suite = suite_store()?.update(&input.id, input.changes)?;
+    let mut suite = suite_store()?.update(&input.id, input.changes)?;
     // Dynamic binding sync: a capability edit re-applies (full reset) to every
     // tool currently bound to this suite, so their projections track the new
     // set. Serialized against the watcher so the two never write the same dirs.
@@ -454,6 +454,11 @@ pub async fn cmd_update_suite(
     if !bound.is_empty() {
         let settings = Settings::load()?;
         let scanned = api::scan(&settings);
+        // Opportunistically qualify any unqualified refs against the scan so the
+        // suite is portable on the next sync.
+        if SuiteStore::backfill_sources(&mut suite, &scanned.items) {
+            let _ = SuiteStore::with_path(settings.resolved_suites_path()).put(&suite);
+        }
         watcher::with_reconcile_guard(|| {
             api::apply_suite_to_tools(&scanned.items, &settings, &suite, &bound);
         });
@@ -484,11 +489,16 @@ pub struct ApplySuiteInput {
 #[tauri::command]
 pub async fn cmd_apply_suite(input: ApplySuiteInput) -> IpcResult<ApplySuiteResult> {
     let settings = Settings::load()?;
-    let suite = SuiteStore::with_path(settings.resolved_suites_path())
+    let store = SuiteStore::with_path(settings.resolved_suites_path());
+    let mut suite = store
         .get(&input.suite_id)?
         .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
 
     let scanned = api::scan(&settings);
+    // Opportunistically qualify unqualified refs so the suite syncs portably.
+    if SuiteStore::backfill_sources(&mut suite, &scanned.items) {
+        let _ = store.put(&suite);
+    }
     let result = api::apply_suite(&scanned.items, &settings, input.tool_id, &suite);
     // Bind this tool to the suite so a later capability edit re-syncs it.
     let _ = SuiteBindingStore::new().record(input.tool_id, &input.suite_id);

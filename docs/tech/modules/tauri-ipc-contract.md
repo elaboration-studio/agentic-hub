@@ -146,8 +146,14 @@ type CapabilityItem = {
   relativePath: string;        // relative to <source>/<kind>/
   sourceId: string;            // which source contributed this item
   sourceLabel: string;
+  source: SourceRef;           // portable cross-device source identity
   valid: boolean;
   validationErrors: string[];
+};
+
+type SourceRef = {
+  relHome: string;             // home-relative path (~/.agentic) or absolute if outside ~
+  folder: string;              // last path component (.agentic)
 };
 
 type ScanError = {
@@ -261,14 +267,23 @@ type SyncRulesResult = {
 
 ```typescript
 type SuiteDefinition = {
-  id: string;                   // UUID
+  id: string;                          // UUID
   name: string;
   description?: string;
-  capabilities: string[];       // capability IDs
-  createdAt: string;            // ISO 8601
+  capabilities: SuiteCapabilityRef[];  // source-qualified refs
+  createdAt: string;                   // ISO 8601
   updatedAt: string;
 };
+
+type SuiteCapabilityRef = {
+  cap: string;                  // bare capability id (skill:dev/tdd)
+  source: SourceRef | null;     // portable source identity; null = legacy/unqualified
+};
 ```
+
+`SuiteCapabilityRef` deserializes tolerantly from a legacy bare string
+(`"skill:dev/tdd"`), so existing suite files load unchanged and upgrade to the
+object form on the next write. See [suite-presets.md](./suite-presets.md).
 
 ### `cmd_get_suite(id: string) -> SuiteDefinition | null`
 
@@ -278,7 +293,7 @@ type SuiteDefinition = {
 type SuiteCreateInput = {
   name: string;
   description?: string;
-  capabilities: string[];
+  capabilities: SuiteCapabilityRef[];  // bare strings also accepted (legacy)
 };
 ```
 
@@ -290,14 +305,16 @@ Errors: `suite_name_collision` if `name` is already in use.
 type SuiteUpdateInput = {
   name?: string;
   description?: string;
-  capabilities?: string[];
+  capabilities?: SuiteCapabilityRef[];
 };
 ```
 
 Side effect: after the update, every tool currently bound to this suite (see
 [suite-bindings.md](./suite-bindings.md)) is re-applied as a full reset so its
 projection tracks the new capability set, serialized against the watcher via
-the reconcile guard. Emits `sources-changed` when any tool was re-applied.
+the reconcile guard. Emits `sources-changed` when any tool was re-applied. Also
+opportunistically qualifies any unqualified refs against the live scan and
+persists the upgrade (source backfill).
 
 ### `cmd_delete_suite(id: string) -> ()`
 
@@ -314,14 +331,18 @@ type ApplySuiteInput = {
 
 type ApplySuiteResult = {
   applyResult: ApplyResult;
-  skippedStale: number;
+  skippedStale: number;          // present-source/unqualified refs with no match
+  skippedAbsentSource: number;   // qualified refs whose source isn't on this machine (preserved)
   suite: { id: string; name: string };
 };
 ```
 
 Side effect: records a suite<->tool binding (`record(toolId, suiteId)`,
-upsert per tool) so a later `cmd_update_suite` re-syncs this tool. Both the
-palette suite-apply flow and the Suites page flow through here.
+upsert per tool) so a later `cmd_update_suite` re-syncs this tool, and
+backfills unqualified refs against the live scan. Both the palette suite-apply
+flow and the Suites page flow through here. Refs qualified to a source absent
+on this machine are skipped and preserved — never deleted, never mis-resolved
+onto a same-named local capability.
 
 ## Workspace commands
 

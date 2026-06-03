@@ -67,6 +67,15 @@ flowchart TD
 - **Delete**: drop the suite's bindings only. Deleting a suite is not a
   destructive tool wipe — on-disk projections are left as they are.
 
+## Cross-device note
+
+Bindings map `toolId -> suiteId` (a portable UUID), so the bindings file syncs
+across devices unchanged. The suite itself carries source-qualified refs (see
+[suite-presets.md](./suite-presets.md)); on re-apply, refs whose source is
+absent on the current machine are skipped and preserved — a synced binding
+never deletes or mis-resolves a capability that belongs to a source the device
+does not have.
+
 ## Scope boundary
 
 This binding covers **global-scope** tools only. Workspace patches keep their

@@ -88,6 +88,7 @@ function makeItem(id: string): CapabilityItem {
     relativePath: id,
     sourceId: "default",
     sourceLabel: "Default",
+    source: { relHome: "~/.agentic", folder: ".agentic" },
     valid: true,
     validationErrors: [],
   };

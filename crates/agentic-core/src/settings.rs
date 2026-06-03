@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CoreError, Result};
-use crate::model::ToolId;
-use crate::paths::{expand_tilde, home_dir};
+use crate::model::{SourceRef, ToolId};
+use crate::paths::{expand_tilde, home_dir, tildify};
 
 /// A capability source: an ordered, priority-bearing shared root. See
 /// `docs/tech/modules/multi-source-roots.md`.
@@ -25,6 +25,31 @@ pub struct SourceConfig {
     pub id: String,
     pub label: String,
     pub path: PathBuf,
+}
+
+impl SourceConfig {
+    /// Portable, cross-device identity for this source. `rel_home` is the
+    /// home-relative path (or the absolute path when outside `~`); `folder` is
+    /// the last path component. Compute this from a resolved (tilde-expanded)
+    /// source so the path is absolute.
+    pub fn portable_ref(&self) -> SourceRef {
+        let folder = self
+            .path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        SourceRef {
+            rel_home: tildify(&self.path),
+            folder,
+        }
+    }
+}
+
+/// True when `r` denotes a logical source present in `local`: matched by
+/// home-relative path first, then by folder name. Used to decide whether a
+/// synced suite reference applies on this machine.
+pub fn source_present(local: &[SourceConfig], r: &SourceRef) -> bool {
+    local.iter().any(|s| s.portable_ref().matches(r))
 }
 
 /// The editor used to open a capability's original file. `kind` is one of

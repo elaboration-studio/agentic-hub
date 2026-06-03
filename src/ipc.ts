@@ -16,6 +16,7 @@ import type {
   ScanResult,
   Settings,
   SourceConfig,
+  SuiteCapabilityRef,
   SuiteDefinition,
   SuiteStoreChangedEvent,
   SyncHooksResult,
@@ -129,13 +130,15 @@ export const onApplyProgress = (
 export interface SuiteCreatePayload {
   name: string;
   description?: string | null;
-  capabilities: string[];
+  // Source-qualified refs. The Rust core also tolerates bare-string entries
+  // (legacy), upgrading them in place on the next write.
+  capabilities: SuiteCapabilityRef[];
 }
 
 export interface SuiteUpdatePayload {
   name?: string;
   description?: string | null;
-  capabilities?: string[];
+  capabilities?: SuiteCapabilityRef[];
 }
 
 export const listSuites = (): Promise<SuiteDefinition[]> => invoke("cmd_list_suites");

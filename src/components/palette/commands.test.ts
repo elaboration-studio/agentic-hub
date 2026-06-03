@@ -48,7 +48,10 @@ function makeSuite(overrides: Partial<SuiteDefinition> = {}): SuiteDefinition {
     id: "s1",
     name: "Backend",
     description: null,
-    capabilities: ["skill:a", "skill:b"],
+    capabilities: [
+      { cap: "skill:a", source: null },
+      { cap: "skill:b", source: null },
+    ],
     createdAt: "t",
     updatedAt: "t",
     ...overrides,
@@ -64,6 +67,7 @@ function makeItem(id: string, name: string): CapabilityItem {
     relativePath: name,
     sourceId: "default",
     sourceLabel: "Default",
+    source: { relHome: "~/.agentic", folder: ".agentic" },
     valid: true,
     validationErrors: [],
   };

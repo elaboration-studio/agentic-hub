@@ -54,7 +54,7 @@ function makeSuite(id: string, name: string): SuiteDefinition {
     id,
     name,
     description: null,
-    capabilities: ["skill:a"],
+    capabilities: [{ cap: "skill:a", source: null }],
     createdAt: "t",
     updatedAt: "t",
   };
@@ -69,6 +69,7 @@ function makeItem(id: string): CapabilityItem {
     relativePath: id.replace("skill:", ""),
     sourceId: "default",
     sourceLabel: "Default",
+    source: { relHome: "~/.agentic", folder: ".agentic" },
     valid: true,
     validationErrors: [],
   };

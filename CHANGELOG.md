@@ -30,6 +30,22 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 - **Configurable palette shortcut.** Config gains a Command Palette panel to
   edit the global shortcut; saving re-registers it live. The new
   `Settings.paletteShortcut` field defaults to `Cmd+Alt+A` for existing configs.
+- **Source-aware suites (cross-device portability).** Every scanned
+  `CapabilityItem` now carries a portable `source` identity (`SourceRef`:
+  home-relative path + folder name), and suite entries are source-qualified
+  (`SuiteCapabilityRef { cap, source }`). A suite synced across devices resolves
+  per-source: a reference whose source is absent on the current machine is
+  skipped and preserved (counted as `ApplySuiteResult.skippedAbsentSource`),
+  never deleted and never mis-resolved onto a same-named capability from a
+  different source. `SuiteValidationResult` gains `absentIds`.
+
+### Changed
+
+- **Suite capabilities are objects, not bare strings.**
+  `SuiteDefinition.capabilities` is now `SuiteCapabilityRef[]`. Legacy
+  bare-string suite files load unchanged and upgrade in place on the next save
+  (non-breaking); apply/update opportunistically backfill a source for
+  unqualified refs that resolve to exactly one scanned item.
 
 ## [0.2.1] — 2026-06-03
 

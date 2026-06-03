@@ -15,6 +15,9 @@ file verbatim as the GitHub Release body. For the full version history see
 - Palette suite apply: search a suite, drill in, and apply it to one tool as a
   full reset — and a persisted suite↔tool binding auto re-syncs every bound tool
   whenever a suite's capabilities change.
+- Source-aware suites: suites now remember which source each capability came
+  from, so a suite synced across devices resolves per-source and skips — never
+  deletes or mis-resolves — capabilities whose source isn't on the machine.
 
 ### Changes
 
@@ -30,9 +33,16 @@ file verbatim as the GitHub Release body. For the full version history see
 - New `~/.agentic-hub/suite-bindings.json` records suite↔tool bindings;
   `cmd_apply_suite` records, `cmd_update_suite` re-applies bound tools (guarded
   by the reconcile lock, emits `sources-changed`), `cmd_delete_suite` drops them.
+- Every scanned `CapabilityItem` carries a portable `source` (`SourceRef`:
+  home-relative path + folder); suite entries are now source-qualified
+  (`SuiteCapabilityRef { cap, source }`). Apply resolves refs source-aware and
+  reports `ApplySuiteResult.skippedAbsentSource` for refs whose source is absent.
 
 ### Migration
 
 - The new `paletteShortcut` field defaults to `Cmd+Alt+A` for existing configs.
 - `~/.agentic-hub/suite-bindings.json` is created on first suite apply; a missing
   file is treated as empty, so existing installs need no migration.
+- Suite files (`~/.agentic-suites.json`) with legacy bare-string capabilities
+  load unchanged and upgrade to the qualified object form on the next save —
+  non-breaking, no manual migration.

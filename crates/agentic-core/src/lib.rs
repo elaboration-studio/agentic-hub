@@ -36,9 +36,9 @@ pub use hook_sync::{HookEventSpec, HookManifest};
 pub use model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncError,
     HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome,
-    ScanError, ScanResult, SuiteBinding, SuiteDefinition, SuiteValidationResult, SyncHooksResult,
-    SyncRulesResult, ToolCapabilityState, ToolId, WorkspaceApply, WorkspacePatchResult,
-    WorkspaceTarget, WorkspaceTargetsState,
+    ScanError, ScanResult, SourceRef, SuiteBinding, SuiteCapabilityRef, SuiteDefinition,
+    SuiteValidationResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
+    WorkspaceApply, WorkspacePatchResult, WorkspaceTarget, WorkspaceTargetsState,
 };
 pub use open_targets::is_openable;
 pub use planner::{build_plan, inspect_tool};

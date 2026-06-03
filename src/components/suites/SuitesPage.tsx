@@ -286,7 +286,7 @@ export function SuitesPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 pt-0.5">
-                <Button onClick={() => void save()} disabled={busy || !draft.name.trim()}>
+                <Button onClick={() => void save(items)} disabled={busy || !draft.name.trim()}>
                   Save
                 </Button>
                 {!isCreating && (

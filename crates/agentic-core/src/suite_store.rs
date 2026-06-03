@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{CoreError, Result};
 use crate::managed_copy::now_iso8601;
-use crate::model::{CapabilityItem, SuiteDefinition, SuiteValidationResult};
+use crate::model::{CapabilityItem, SuiteCapabilityRef, SuiteDefinition, SuiteValidationResult};
 use crate::paths::home_dir;
+use crate::settings::{source_present, SourceConfig};
 
 /// On-disk envelope. `version` allows future migration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,8 +45,10 @@ pub struct SuiteCreateInput {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    /// Source-qualified refs. Legacy bare-string entries deserialize fine via
+    /// [`SuiteCapabilityRef`]'s tolerant impl.
     #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<SuiteCapabilityRef>,
 }
 
 /// Partial update; `None` fields are left unchanged.
@@ -57,7 +60,7 @@ pub struct SuiteUpdateInput {
     #[serde(default)]
     pub description: Option<Option<String>>,
     #[serde(default)]
-    pub capabilities: Option<Vec<String>>,
+    pub capabilities: Option<Vec<SuiteCapabilityRef>>,
 }
 
 /// Dotfile-backed suite store.
@@ -183,22 +186,66 @@ impl SuiteStore {
         self.write_file(&file)
     }
 
-    /// Partition a suite's capability IDs into those present in the scan and
-    /// those missing from every configured source.
-    pub fn validate(suite: &SuiteDefinition, items: &[CapabilityItem]) -> SuiteValidationResult {
+    /// Replace an existing suite in place — used to persist a source backfill /
+    /// legacy upgrade. No timestamp bump and no name-uniqueness check: the suite
+    /// already exists and its content is not a user edit. Errors on unknown id.
+    pub fn put(&self, suite: &SuiteDefinition) -> Result<()> {
+        let mut file = self.read_file()?;
+        let pos = file
+            .suites
+            .iter()
+            .position(|s| s.id == suite.id)
+            .ok_or_else(|| CoreError::SuiteNotFound(suite.id.clone()))?;
+        file.suites[pos] = suite.clone();
+        self.write_file(&file)
+    }
+
+    /// Partition a suite's capability refs against a scan and the local source
+    /// list: `valid` resolve to a scanned item; `absent` are qualified to a
+    /// source not present here (preserved, never deleted); `stale` are
+    /// present-source (or unqualified) refs that match no scanned item.
+    pub fn validate(
+        suite: &SuiteDefinition,
+        items: &[CapabilityItem],
+        sources: &[SourceConfig],
+    ) -> SuiteValidationResult {
         let mut valid_ids = Vec::new();
         let mut stale_ids = Vec::new();
-        for cap in &suite.capabilities {
-            if items.iter().any(|i| &i.id == cap) {
-                valid_ids.push(cap.clone());
+        let mut absent_ids = Vec::new();
+        for r in &suite.capabilities {
+            if items.iter().any(|i| r.matches_item(i)) {
+                valid_ids.push(r.cap.clone());
+            } else if matches!(&r.source, Some(s) if !source_present(sources, s)) {
+                absent_ids.push(r.cap.clone());
             } else {
-                stale_ids.push(cap.clone());
+                stale_ids.push(r.cap.clone());
             }
         }
         SuiteValidationResult {
             valid_ids,
             stale_ids,
+            absent_ids,
         }
+    }
+
+    /// Qualify unqualified refs whose bare id resolves to exactly one scanned
+    /// item, attaching that item's source. Already-qualified, ambiguous, or
+    /// unresolved refs are left untouched. Returns `true` if anything changed so
+    /// the caller can persist the upgrade. The scanner is first-source-wins, so
+    /// in practice every resolvable bare id has a single match.
+    pub fn backfill_sources(suite: &mut SuiteDefinition, items: &[CapabilityItem]) -> bool {
+        let mut changed = false;
+        for r in &mut suite.capabilities {
+            if r.source.is_some() {
+                continue;
+            }
+            let mut hits = items.iter().filter(|i| i.id == r.cap);
+            if let (Some(first), None) = (hits.next(), hits.next()) {
+                r.source = Some(first.source.clone());
+                changed = true;
+            }
+        }
+        changed
     }
 }
 
@@ -215,6 +262,10 @@ mod tests {
     }
 
     fn item(id: &str) -> CapabilityItem {
+        item_from(id, "~/.agentic", ".agentic")
+    }
+
+    fn item_from(id: &str, rel_home: &str, folder: &str) -> CapabilityItem {
         CapabilityItem {
             id: id.to_string(),
             kind: CapabilityKind::Skill,
@@ -223,6 +274,10 @@ mod tests {
             relative_path: PathBuf::from(id),
             source_id: "arno".into(),
             source_label: "Arno".into(),
+            source: crate::model::SourceRef {
+                rel_home: rel_home.into(),
+                folder: folder.into(),
+            },
             valid: true,
             validation_errors: vec![],
         }
@@ -232,7 +287,15 @@ mod tests {
         SuiteCreateInput {
             name: name.to_string(),
             description: None,
-            capabilities: caps.iter().map(|s| s.to_string()).collect(),
+            capabilities: caps.iter().map(|s| (*s).into()).collect(),
+        }
+    }
+
+    fn source(label: &str, path: &str) -> SourceConfig {
+        SourceConfig {
+            id: String::new(),
+            label: label.into(),
+            path: PathBuf::from(path),
         }
     }
 
@@ -250,7 +313,12 @@ mod tests {
         assert!(!made.id.is_empty());
 
         let fetched = store.get(&made.id).unwrap().unwrap();
-        assert_eq!(fetched.capabilities, vec!["skill:dev/tdd"]);
+        let caps: Vec<&str> = fetched
+            .capabilities
+            .iter()
+            .map(|r| r.cap.as_str())
+            .collect();
+        assert_eq!(caps, vec!["skill:dev/tdd"]);
 
         let updated = store
             .update(
@@ -312,8 +380,90 @@ mod tests {
             created_at: "t".into(),
             updated_at: "t".into(),
         };
-        let result = SuiteStore::validate(&suite, &[item("skill:live")]);
+        let sources = vec![source("Arno", "~/.agentic")];
+        let result = SuiteStore::validate(&suite, &[item("skill:live")], &sources);
         assert_eq!(result.valid_ids, vec!["skill:live"]);
         assert_eq!(result.stale_ids, vec!["skill:gone"]);
+        assert!(result.absent_ids.is_empty());
+    }
+
+    #[test]
+    fn validate_marks_absent_source_separately_from_stale() {
+        // A ref qualified to a source that is not configured locally.
+        let absent = SuiteCapabilityRef {
+            cap: "skill:remote".into(),
+            source: Some(crate::model::SourceRef {
+                rel_home: "~/other-machine".into(),
+                folder: "other-machine".into(),
+            }),
+        };
+        let suite = SuiteDefinition {
+            id: "x".into(),
+            name: "s".into(),
+            description: None,
+            capabilities: vec![absent, "skill:gone".into()],
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        let sources = vec![source("Arno", "~/.agentic")];
+        let result = SuiteStore::validate(&suite, &[item("skill:live")], &sources);
+        assert_eq!(result.absent_ids, vec!["skill:remote"], "source not here");
+        assert_eq!(result.stale_ids, vec!["skill:gone"], "present-source, gone");
+        assert!(result.valid_ids.is_empty());
+    }
+
+    #[test]
+    fn legacy_bare_string_file_loads_and_upgrades_to_objects() {
+        let (_d, store) = store();
+        // A suite file written before source-qualification: bare-string caps.
+        fs::write(
+            &store.path,
+            r#"{ "version": 1, "suites": [
+                { "id": "s1", "name": "coding", "description": null,
+                  "capabilities": ["skill:dev/tdd", "rule:style"],
+                  "createdAt": "t", "updatedAt": "t" }
+            ] }"#,
+        )
+        .unwrap();
+
+        // Tolerant deserialize reads the bare strings as unqualified refs.
+        let loaded = store.get("s1").unwrap().unwrap();
+        assert_eq!(loaded.capabilities.len(), 2);
+        assert!(loaded.capabilities.iter().all(|r| r.source.is_none()));
+        assert_eq!(loaded.capabilities[0].cap, "skill:dev/tdd");
+
+        // Any write upgrades the on-disk shape to objects.
+        store.put(&loaded).unwrap();
+        let raw = fs::read_to_string(&store.path).unwrap();
+        assert!(raw.contains("\"cap\""), "upgraded to object form: {raw}");
+        assert!(raw.contains("\"source\""));
+    }
+
+    #[test]
+    fn backfill_qualifies_unqualified_refs_from_scan() {
+        let mut suite = SuiteDefinition {
+            id: "s".into(),
+            name: "s".into(),
+            description: None,
+            capabilities: vec!["skill:a".into(), "skill:missing".into()],
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        let items = vec![item_from("skill:a", "~/.agentic", ".agentic")];
+        let changed = SuiteStore::backfill_sources(&mut suite, &items);
+        assert!(changed);
+        // skill:a now carries the scanned source; skill:missing stays bare.
+        let a = suite
+            .capabilities
+            .iter()
+            .find(|r| r.cap == "skill:a")
+            .unwrap();
+        assert_eq!(a.source.as_ref().unwrap().folder, ".agentic");
+        let missing = suite
+            .capabilities
+            .iter()
+            .find(|r| r.cap == "skill:missing")
+            .unwrap();
+        assert!(missing.source.is_none());
     }
 }

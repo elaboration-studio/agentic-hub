@@ -154,6 +154,7 @@ fn dir_item(
         relative_path: rel,
         source_id: source.id.clone(),
         source_label: source.label.clone(),
+        source: source.portable_ref(),
         valid: true,
         validation_errors: Vec::new(),
     }
@@ -180,6 +181,7 @@ fn file_item(
         relative_path: rel,
         source_id: source.id.clone(),
         source_label: source.label.clone(),
+        source: source.portable_ref(),
         valid: true,
         validation_errors: Vec::new(),
     }

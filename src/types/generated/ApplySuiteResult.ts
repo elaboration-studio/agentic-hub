@@ -7,6 +7,12 @@ import type { SuiteDefinition } from "./SuiteDefinition";
  */
 export type ApplySuiteResult = { applyResult: ApplyResult, 
 /**
- * Capability IDs in the suite not provided by any configured source.
+ * Suite caps whose source is present (or unqualified) but no scanned item
+ * matches — genuinely stale references.
  */
-skippedStale: number, suite: SuiteDefinition, };
+skippedStale: number, 
+/**
+ * Suite caps whose qualifying source is absent on this machine. Preserved,
+ * never deleted; just not applicable to a cross-device clone.
+ */
+skippedAbsentSource: number, suite: SuiteDefinition, };
