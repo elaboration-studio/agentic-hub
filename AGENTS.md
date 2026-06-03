@@ -24,6 +24,8 @@ Tauri 2.x desktop app that manages shared agentic capabilities — skills, agent
 - [ARCHITECTURE.permissions.md](ARCHITECTURE.permissions.md) — Tauri capability model + Windows symlink constraint
 - [ARCHITECTURE.projection.md](ARCHITECTURE.projection.md) — projection engine (the bulk of the system)
 - [ARCHITECTURE.workspace.md](ARCHITECTURE.workspace.md) — workspace patch hard-copy lifecycle
+- [CHANGELOG.md](CHANGELOG.md) — cumulative version history (Keep a Changelog format)
+- [RELEASE.md](RELEASE.md) — the **current release's** notes only; the release workflow publishes it verbatim as the GitHub Release body
 - [docs/README.md](docs/README.md) — full doc index
 
 ## Tech stack
@@ -97,6 +99,7 @@ See [docs/tech/development/getting-started.md](docs/tech/development/getting-sta
 - Markdown managed-block markers stay verbatim: `<!-- agentic-hub:start -->` / `:end` (heading `## Agentic Hub Managed Rules`). Migration parity with the rebranded VS Code extension. Managed-copy metadata lives in a per-root `.agentic-hub-managed.json` manifest; hook entries carry the `_agenticHub` marker keyed by the bare manifest id. Do not reintroduce the legacy `e-studio-*` names.
 - Suite storage path stays `~/.agentic-suites.json`. Same reason.
 - Workspace manifest folder is `<ws>/.agentic-hub/`.
+- `RELEASE.md` holds **only the current release's** notes. The release workflow publishes it verbatim as the GitHub Release body (`body_path: RELEASE.md` in `.github/workflows/release.yml`), so any older versions left in the file show up on every release. When cutting a release, **replace** `RELEASE.md` with the new version's notes — never prepend. The cumulative history lives in `CHANGELOG.md` (append there, newest first).
 - `tauri-plugin-shell` is never added to `Cargo.toml`. If a feature seems to need it, raise security review first.
 - Every IPC command must appear in `src-tauri/capabilities/default.json`.
 - Every path parameter is canonicalized via the central validator before any FS op.
