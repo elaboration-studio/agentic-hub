@@ -4,21 +4,43 @@ vi.mock("@/ipc", () => ({
   loadSettings: vi.fn(),
   scan: vi.fn(),
   listSuites: vi.fn(),
+  listWorkspaceTargets: vi.fn(),
+  scanWorkspace: vi.fn(),
   applySuite: vi.fn().mockResolvedValue(undefined),
   emitHubNavigate: vi.fn().mockResolvedValue(undefined),
+  emitHubLocate: vi.fn().mockResolvedValue(undefined),
   showMain: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { applySuite, listSuites, loadSettings, scan } from "@/ipc";
-import type { CapabilityItem, Settings, SuiteDefinition, ToolSettings } from "@/types";
+import {
+  applySuite,
+  listSuites,
+  listWorkspaceTargets,
+  loadSettings,
+  scan,
+  scanWorkspace,
+} from "@/ipc";
+import type {
+  CapabilityItem,
+  Settings,
+  SuiteDefinition,
+  ToolSettings,
+  WorkspaceTarget,
+} from "@/types";
 import { usePaletteStore } from "./palette";
 
 const mocked = {
   loadSettings: vi.mocked(loadSettings),
   scan: vi.mocked(scan),
   listSuites: vi.mocked(listSuites),
+  listWorkspaceTargets: vi.mocked(listWorkspaceTargets),
+  scanWorkspace: vi.mocked(scanWorkspace),
   applySuite: vi.mocked(applySuite),
 };
+
+function makeTarget(id: string, label: string): WorkspaceTarget {
+  return { id, label, dir: `/repos/${label}`, lastUsedAt: "t" };
+}
 
 function toolSettings(enabled: boolean): ToolSettings {
   return {
@@ -80,6 +102,7 @@ async function loadReady(suites: SuiteDefinition[] = [makeSuite("s1", "Backend")
   mocked.loadSettings.mockResolvedValue(makeSettings());
   mocked.scan.mockResolvedValue({ items: [makeItem("skill:tdd")], errors: [] });
   mocked.listSuites.mockResolvedValue(suites);
+  mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
   await usePaletteStore.getState().load();
 }
 
@@ -105,6 +128,52 @@ describe("palette store — loading", () => {
     await usePaletteStore.getState().load();
     expect(usePaletteStore.getState().status).toBe("error");
     expect(usePaletteStore.getState().error).toBe("disk gone");
+  });
+});
+
+describe("palette store — workspace inventories", () => {
+  it("load scans every remembered workspace and populates results on a query", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [], errors: [] });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({
+      workspaceTargets: [makeTarget("w1", "alpha"), makeTarget("w2", "beta")],
+      workspaceActiveId: "w1",
+    });
+    mocked.scanWorkspace.mockImplementation((id: string) =>
+      Promise.resolve({
+        items: [makeItem(`skill:qa-${id}`)],
+        states: [],
+        errors: [],
+      }),
+    );
+
+    await usePaletteStore.getState().load();
+    expect(usePaletteStore.getState().workspaces).toHaveLength(2);
+
+    usePaletteStore.getState().setQuery("qa");
+    const rows = usePaletteStore.getState().results.filter((r) => r.group === "Workspace");
+    expect(rows.map((r) => r.subtitle)).toEqual(["alpha · qa-w1", "beta · qa-w2"]);
+  });
+
+  it("skips a workspace whose scan fails without breaking summon", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [], errors: [] });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({
+      workspaceTargets: [makeTarget("w1", "alpha"), makeTarget("w2", "beta")],
+      workspaceActiveId: "w1",
+    });
+    mocked.scanWorkspace.mockImplementation((id: string) =>
+      id === "w2"
+        ? Promise.reject(new Error("unreadable"))
+        : Promise.resolve({ items: [makeItem("skill:qa")], states: [], errors: [] }),
+    );
+
+    await usePaletteStore.getState().load();
+    const s = usePaletteStore.getState();
+    expect(s.status).toBe("ready");
+    expect(s.workspaces.map((w) => w.target.id)).toEqual(["w1"]);
   });
 });
 

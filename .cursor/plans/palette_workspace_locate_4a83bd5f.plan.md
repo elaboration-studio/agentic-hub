@@ -4,31 +4,31 @@ overview: "Let the command palette search resources across all remembered worksp
 todos:
   - id: ipc-event
     content: Add emitHubLocate/onHubLocate (hub-locate event) to src/ipc.ts
-    status: pending
+    status: completed
   - id: share-prefix
     content: Move WORKSPACE_ID_PREFIX into shared.tsx and export it; update manager.ts to import it
-    status: pending
+    status: completed
   - id: palette-load
     content: Load workspace targets + inventories (Promise.allSettled) in palette store; add locate callback; thread into ProviderContext
-    status: pending
+    status: completed
   - id: ws-provider
     content: Add workspaceSearchProvider to commands.ts and register it after resourceSearchProvider
-    status: pending
+    status: completed
   - id: filters-locate
     content: Add locateId + setLocate/clearLocate to managerFilters store
-    status: pending
+    status: completed
   - id: matrix-locate
     content: "Matrix: expand ancestors, scrollIntoView, transient highlight ring, auto-clear locateId"
-    status: pending
+    status: completed
   - id: app-handler
     content: "App.tsx onHubLocate: setScope workspace, activate workspace, navigate manager, setLocate(namespaced id)"
-    status: pending
+    status: completed
   - id: tests
     content: Extend commands.test.ts, palette.test.ts, and a managerFilters locate test
-    status: pending
+    status: completed
   - id: docs
     content: Update command-palette.md, workspace-inventory.md, tauri-ipc-contract.md
-    status: pending
+    status: completed
 isProject: false
 ---
 

@@ -69,6 +69,13 @@ export const ABNORMAL: Record<LinkState, string | null> = {
 
 export const key = (tool: ToolId, itemId: string) => `${tool}::${itemId}`;
 
+// Workspace inventory item ids are namespaced with this prefix so a local
+// resource never collides with a global one that shares the same relative path.
+// The `::` matches `key()`'s delimiter, so a composite `key()` still parses the
+// tool from its head. Used by the manager (to build rows) and the palette locate
+// handler (to address a row by id).
+export const WORKSPACE_ID_PREFIX = "ws::";
+
 // Editor app name for the opener `openWith` arg. Mirrors agentic-core
 // `EditorPref::app_name` so "Open original" honors the Config setting.
 export function editorApp(settings: Settings): string | undefined {

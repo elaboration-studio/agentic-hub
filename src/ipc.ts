@@ -58,6 +58,22 @@ export const emitHubNavigate = (route: NavRoute): Promise<void> =>
 export const onHubNavigate = (cb: (route: NavRoute) => void): Promise<UnlistenFn> =>
   listen<NavRoute>("hub-navigate", (e) => cb(e.payload));
 
+/// A request to locate one workspace inventory item in the Hub. The main window
+/// switches to Manager + Workspace scope, activates the owning workspace, and
+/// highlights the matching matrix row.
+export interface LocateRequest {
+  workspaceId: string;
+  itemId: string;
+}
+
+/// Ask the main window to locate a workspace item (emitted from the palette).
+export const emitHubLocate = (payload: LocateRequest): Promise<void> =>
+  emit("hub-locate", payload);
+
+/// Main window: react to a palette locate request.
+export const onHubLocate = (cb: (payload: LocateRequest) => void): Promise<UnlistenFn> =>
+  listen<LocateRequest>("hub-locate", (e) => cb(e.payload));
+
 /// Main window: the "Settings…" menu item (Cmd+,) was activated.
 export const onMenuOpenConfig = (cb: () => void): Promise<UnlistenFn> =>
   listen("menu-open-config", () => cb());

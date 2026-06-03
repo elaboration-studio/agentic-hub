@@ -31,6 +31,10 @@ type to find a capability, and press Enter to open its original file in my edito
 - Flat resource search: match by name, relative path, or source; Enter opens the
   original file (skill/hook marker file, or the agent/rule file itself) in the
   configured editor — reusing the same opener path as the manager row menu.
+- Workspace search: match inventory items across every remembered workspace (see
+  [workspace-inventory.md](./workspace-inventory.md)); Enter *locates* the item —
+  it focuses the Hub on Manager + Workspace scope, activates the owning workspace,
+  and scrolls/highlights that row in the matrix (it does not open a file).
 - An extensible command-provider registry. Root providers ship resource
   search, suite apply, and navigation (Open Manager / Suites / Config).
 - A two-level suite-apply flow: search a suite by name, drill into it, then
@@ -58,6 +62,7 @@ flowchart LR
   toggle --> ui["CommandPalette (palette window)"]
   ui --> store["usePaletteStore -> computeResults(providers)"]
   store --> resource["resource -> cmd_open_path(original, editor)"]
+  store --> workspace["workspace row -> emit hub-locate + cmd_show_main"]
   store --> nav["nav -> emit hub-navigate + cmd_show_main"]
   store --> suite["suite row -> enterSuite (suite-tools view)"]
   suite --> applyRow["tool row -> cmd_apply_suite(tool, suite) + record binding"]
@@ -85,13 +90,20 @@ flowchart LR
   launch falls back to the default so summon never breaks.
 - **UI.** One bundle, two windows: `main.tsx` renders `<CommandPalette/>` when the
   window label is `palette`, else `<App/>`. `usePaletteStore` loads settings +
-  scans + lists suites on summon, holds the query/selection and a `view`
-  (`root` or `suite-tools`), and derives results from the registry in
-  `components/palette/commands.ts`. Navigation commands emit `hub-navigate`;
-  the main window listens and switches route. A suite row sets
+  scans + lists suites + scans every remembered workspace inventory on summon
+  (`Promise.allSettled`, so one unreadable project never breaks summon), holds the
+  query/selection and a `view` (`root` or `suite-tools`), and derives results from
+  the registry in `components/palette/commands.ts`. Navigation commands emit
+  `hub-navigate`; the main window listens and switches route. A suite row sets
   `dismissOnRun: false` and calls `enterSuite`, switching to the suite-tools
   view (a `‹ <suite>` breadcrumb, Backspace-on-empty steps back); each tool row
   there runs `applySuite(tool, suiteId)` and dismisses.
+- **Workspace locate.** A workspace search row emits `hub-locate`
+  (`{ workspaceId, itemId }`) then `cmd_show_main`. The main window's `App`
+  listener switches the manager scope to `workspace`, routes to Manager, activates
+  the owning workspace, and sets a transient `locateId` (the namespaced row id) in
+  the matrix-filters store. The `Matrix` expands the row's ancestor folders,
+  scrolls it into view, highlights it for ~2s, then clears the flag.
 
 ## Security
 
@@ -106,6 +118,9 @@ flowchart LR
 - [ ] The configured shortcut (default `Cmd+Alt+A`) toggles the palette from any app.
 - [ ] Typing filters resources by name/path/source; Enter opens the original file
       in the configured editor; the palette then hides.
+- [ ] Typing also surfaces matching items from every remembered workspace; Enter on
+      one focuses the Hub on Manager + Workspace scope, activates its workspace, and
+      highlights that row in the matrix.
 - [ ] Up/Down move the selection (wrapping); Esc and blur dismiss the palette.
 - [ ] Navigation commands surface and focus the main window on the chosen route.
 - [ ] `Cmd+,` opens Config; the app menu exposes Quit (hard exit) and Command Palette.

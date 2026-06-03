@@ -15,6 +15,15 @@ describe("managerFilters store", () => {
     expect(s.kind).toBe("all");
     expect(s.enabledOnly).toBe(false);
     expect(s.collapsed.size).toBe(0);
+    expect(s.locateId).toBe("");
+  });
+
+  it("setLocate flags a row and clearLocate resets it", () => {
+    useManagerFiltersStore.getState().setLocate("ws::skill:qa");
+    expect(useManagerFiltersStore.getState().locateId).toBe("ws::skill:qa");
+
+    useManagerFiltersStore.getState().clearLocate();
+    expect(useManagerFiltersStore.getState().locateId).toBe("");
   });
 
   it("setters update each filter field", () => {

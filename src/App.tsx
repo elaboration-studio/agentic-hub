@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import {
   onApplyProgress,
+  onHubLocate,
   onHubNavigate,
   onMenuOpenConfig,
   onSourcesChanged,
   onWorkspaceChanged,
 } from "./ipc";
 import { useManagerStore } from "./state/manager";
+import { useManagerFiltersStore } from "./state/managerFilters";
 import { useWorkspaceStore } from "./state/workspace";
-import type { Route } from "./shared";
+import { WORKSPACE_ID_PREFIX, type Route } from "./shared";
 import { Header } from "./components/layout/Header";
 import { ActionBar } from "./components/layout/ActionBar";
 import { Matrix } from "./components/manager/Matrix";
@@ -72,6 +74,22 @@ export function App() {
       void config.then((fn) => fn());
       void nav.then((fn) => fn());
     };
+  }, []);
+
+  // Palette workspace locate: switch to Manager + Workspace scope, activate the
+  // owning workspace (loads its inventory), and flag the row so the Matrix
+  // surfaces it. The item id is namespaced to match the workspace matrix rows.
+  useEffect(() => {
+    const unlisten = onHubLocate(({ workspaceId, itemId }) => {
+      void (async () => {
+        const manager = useManagerStore.getState();
+        manager.setScope("workspace");
+        navigate("manager");
+        await useWorkspaceStore.getState().activate(workspaceId);
+        useManagerFiltersStore.getState().setLocate(WORKSPACE_ID_PREFIX + itemId);
+      })();
+    });
+    return () => void unlisten.then((fn) => fn());
   }, []);
 
   // Live-refresh on watcher / resync events. In global scope, rescan the
