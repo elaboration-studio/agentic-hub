@@ -54,6 +54,8 @@ Common error codes:
 | `path_not_openable` | A path passed to `cmd_open_path` / `cmd_reveal_path` resolved outside every known root |
 | `open_failed` | The opener plugin could not open the path |
 | `reveal_failed` | The opener plugin could not reveal the path |
+| `invalid_shortcut` | The palette accelerator string in settings is malformed |
+| `shortcut_register_failed` | The global palette shortcut could not be registered with the OS |
 | `internal` | Catch-all unexpected error; surface for bug reports |
 
 ## Settings commands
@@ -64,11 +66,19 @@ Reads `~/.agentic-hub/config.json` and returns the parsed settings. If the file 
 
 ### `cmd_save_settings(settings: Settings) -> ()`
 
-Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed. Re-subscribes the source watcher to the current roots when it is running.
+Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed; `paletteShortcut` passes `is_valid_shortcut` (`invalid_shortcut` otherwise). Re-subscribes the source watcher to the current roots when it is running, then re-registers the global palette accelerator (`shortcut_register_failed` if the OS rejects it).
 
 ### `cmd_set_watcher_enabled(input: { enabled: boolean }) -> ()`
 
 Persists `settings.watcherEnabled` and starts or stops the source watcher immediately. See [watcher.md](./watcher.md).
+
+### `cmd_toggle_palette() -> ()`
+
+Show (and focus) or hide the floating command-palette window. Bound to the global accelerator (handled in Rust) and the View > Command Palette menu item; also callable from the UI.
+
+### `cmd_show_main() -> ()`
+
+Show + focus the main window and hide the palette. Used by palette navigation commands that route back into the main window (paired with the `hub-navigate` event).
 
 ### `cmd_rescan_resync() -> ()`
 
@@ -81,6 +91,7 @@ type Settings = {
   suitesPath: string | null;      // custom suite-store path, or null for the default
   watcherEnabled: boolean;
   editor: EditorPref;             // preferred editor for "open original"
+  paletteShortcut: string;        // global accelerator, e.g. "Cmd+Alt+A"
   tools: ToolsSettings;
 };
 
@@ -434,6 +445,14 @@ type SuiteStoreChangedEvent = {
 ### `sources-changed`
 
 Emitted (no payload) after the source watcher — or the `cmd_rescan_resync` fallback — reconciles projections following a source-root file change. The UI listens and re-scans + re-inspects, skipping the refresh while the user has unapplied edits. See [watcher.md](./watcher.md).
+
+### `menu-open-config`
+
+Emitted (no payload) when the native "Settings…" menu item (Cmd+,) is activated. The main window listens and routes to the Config route.
+
+### `hub-navigate`
+
+Emitted by the palette window (payload: a route string `'manager' | 'suites' | 'config'`) when a navigation command runs. The main window listens and switches route; the palette then hides via `cmd_show_main`.
 
 ### `settings-changed`
 

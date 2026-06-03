@@ -24,11 +24,12 @@ use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::error::IpcError;
+use crate::palette;
 use crate::watcher::{self, WatcherState};
 
 type IpcResult<T> = Result<T, IpcError>;
@@ -52,9 +53,37 @@ pub async fn cmd_save_settings(
     watcher: State<'_, WatcherState>,
     settings: Settings,
 ) -> IpcResult<()> {
+    if !agentic_core::settings::is_valid_shortcut(&settings.palette_shortcut) {
+        return Err(IpcError::new(
+            "invalid_shortcut",
+            format!("Invalid palette shortcut: {}", settings.palette_shortcut),
+        ));
+    }
     settings.save()?;
     // Source roots may have changed; re-subscribe if the watcher is running.
-    watcher.restart_if_running(app);
+    watcher.restart_if_running(app.clone());
+    // The summon accelerator may have changed; re-register it now.
+    palette::register_palette_shortcut(&app, &settings.palette_shortcut)
+        .map_err(|e| IpcError::new("shortcut_register_failed", e))?;
+    Ok(())
+}
+
+/// Toggle the command-palette window (used by the View menu and any UI button).
+#[tauri::command]
+pub async fn cmd_toggle_palette(app: AppHandle) -> IpcResult<()> {
+    palette::toggle_palette(&app);
+    Ok(())
+}
+
+/// Show and focus the main window, then hide the palette. Used by palette
+/// navigation commands that route back into the main window.
+#[tauri::command]
+pub async fn cmd_show_main(app: AppHandle) -> IpcResult<()> {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+    palette::hide_palette(&app);
     Ok(())
 }
 

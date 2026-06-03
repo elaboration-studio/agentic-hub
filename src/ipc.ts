@@ -3,7 +3,7 @@
 // names. See docs/tech/modules/tauri-ipc-contract.md.
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ApplyProgressEvent,
   ApplyResult,
@@ -36,6 +36,29 @@ export const saveSettings = (settings: Settings): Promise<void> =>
 
 export const setWatcherEnabled = (enabled: boolean): Promise<void> =>
   invoke("cmd_set_watcher_enabled", { enabled });
+
+// ---- Command palette + cross-window navigation ----------------------------
+
+export type NavRoute = "manager" | "suites" | "config";
+
+/// Show / hide the floating command-palette window (also bound to the View menu
+/// and the global shortcut).
+export const togglePalette = (): Promise<void> => invoke("cmd_toggle_palette");
+
+/// Show + focus the main window and hide the palette. Used by palette nav.
+export const showMain = (): Promise<void> => invoke("cmd_show_main");
+
+/// Ask the main window to navigate to a route (emitted from the palette).
+export const emitHubNavigate = (route: NavRoute): Promise<void> =>
+  emit("hub-navigate", route);
+
+/// Main window: react to a palette navigation request.
+export const onHubNavigate = (cb: (route: NavRoute) => void): Promise<UnlistenFn> =>
+  listen<NavRoute>("hub-navigate", (e) => cb(e.payload));
+
+/// Main window: the "Settings…" menu item (Cmd+,) was activated.
+export const onMenuOpenConfig = (cb: () => void): Promise<UnlistenFn> =>
+  listen("menu-open-config", () => cb());
 
 export const rescanResync = (): Promise<void> => invoke("cmd_rescan_resync");
 

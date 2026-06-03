@@ -29,4 +29,10 @@ watcherEnabled: boolean,
  * Preferred editor for opening a capability's original file. Defaults to
  * the OS default app.
  */
-editor: EditorPref, tools: ToolsSettings, };
+editor: EditorPref, 
+/**
+ * Global accelerator that summons the command palette window. Stored as a
+ * human-readable accelerator string (e.g. `"Cmd+Alt+A"`). Defaults to
+ * `Cmd+Alt+A`.
+ */
+paletteShortcut: string, tools: ToolsSettings, };

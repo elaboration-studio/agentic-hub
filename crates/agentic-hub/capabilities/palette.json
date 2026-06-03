@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "palette",
+  "description": "Command palette window. Core defaults plus its own window show/hide/focus and cross-window event emit/listen for navigation. Custom app commands (cmd_*) are cross-window and need no plugin permission.",
+  "windows": ["palette"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:event:allow-emit",
+    "core:event:allow-listen"
+  ]
+}

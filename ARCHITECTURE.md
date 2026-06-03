@@ -110,6 +110,7 @@ agentic-hub/
       config/                 ConfigPage
       suites/                 SuitesPage
       workspace/              WorkspacePanel
+      palette/                CommandPalette + command-provider registry
     types/                    TS types mirrored from agentic-core via codegen
 
   src-tauri/                  Tauri config + capability files
@@ -228,7 +229,11 @@ This flow works because the scan, adapter resolution, and state inspection are a
 
 ### Window lifecycle (close vs quit)
 
-Agentic Hub is a standalone background app. Closing the window (red traffic-light button or Cmd+W) does **not** quit — the shell intercepts `WindowEvent::CloseRequested`, hides the **application** (macOS `NSApp hide:` via `AppHandle::hide()`), and calls `prevent_close()`. The process stays alive, the source watcher keeps reconciling, and window state is preserved. Because the app is hidden (not just the window ordered out), **Cmd+Tab** and clicking the Dock icon both re-activate the app and restore the window the macOS-native way; `RunEvent::Reopen` additionally re-shows and focuses on Dock click. The only intended hard exit is **Cmd+Q**, which goes through the default Quit menu item and bypasses the close handler to terminate the process.
+Agentic Hub is a standalone background app. Closing the window (red traffic-light button or Cmd+W) does **not** quit — the shell intercepts `WindowEvent::CloseRequested`, hides the **application** (macOS `NSApp hide:` via `AppHandle::hide()`), and calls `prevent_close()`. The process stays alive, the source watcher keeps reconciling, and window state is preserved. Because the app is hidden (not just the window ordered out), **Cmd+Tab** and clicking the Dock icon both re-activate the app and restore the window the macOS-native way; `RunEvent::Reopen` additionally re-shows and focuses on Dock click. The only intended hard exit is **Cmd+Q**, which goes through the **native menu's** `PredefinedMenuItem::quit` and bypasses the close handler to terminate the process.
+
+### Command palette window, global shortcut, and native menu
+
+A second window (label `palette`) is a borderless, transparent, always-on-top floating panel — an Alfred-style command palette. It is created hidden at launch and toggled by a user-configurable global accelerator (`Settings.paletteShortcut`, default `Cmd+Alt+A`) registered via `tauri-plugin-global-shortcut`. The palette hides on `WindowEvent::Focused(false)` (Alfred-style dismiss). Transparency requires the `tauri` `macos-private-api` feature and `macOSPrivateApi: true` in config. One React bundle serves both windows: `main.tsx` branches on the window label to render `<CommandPalette/>` vs `<App/>`. The palette searches resources flat and opens the original file via the existing `cmd_open_path` allowlist; a command-provider registry (`components/palette/commands.ts`) keeps it extensible. The shell also installs a native menu (`menu.rs`): App (About, Settings `Cmd+,`, Hide, Quit), Edit, View (Command Palette), Window. Settings emits `menu-open-config`; palette navigation emits `hub-navigate`; both are handled by the main window. See [docs/features/command-palette.md](docs/features/command-palette.md).
 
 ### Apply changes flow
 

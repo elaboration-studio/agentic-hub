@@ -2,6 +2,7 @@
 // and workspace views. Presentational components live under components/.
 
 import type {
+  CapabilityItem,
   CapabilityKind,
   LinkState,
   Settings,
@@ -60,6 +61,30 @@ export const ABNORMAL: Record<LinkState, string | null> = {
 };
 
 export const key = (tool: ToolId, itemId: string) => `${tool}::${itemId}`;
+
+// Editor app name for the opener `openWith` arg. Mirrors agentic-core
+// `EditorPref::app_name` so "Open original" honors the Config setting.
+export function editorApp(settings: Settings): string | undefined {
+  const e = settings.editor;
+  switch (e.kind) {
+    case "vscode":
+      return "Visual Studio Code";
+    case "cursor":
+      return "Cursor";
+    case "custom":
+      return e.customApp?.trim() || undefined;
+    default:
+      return undefined;
+  }
+}
+
+// The original file to open for a capability: the marker file inside a
+// skill/hook folder, or the capability file itself for agents/rules.
+export function originalFile(item: CapabilityItem): string {
+  if (item.kind === "skill") return `${item.sourcePath}/SKILL.md`;
+  if (item.kind === "hook") return `${item.sourcePath}/hook.json`;
+  return item.sourcePath;
+}
 
 export function messageOf(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) {

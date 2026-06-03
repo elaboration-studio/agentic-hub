@@ -30,10 +30,12 @@ import type {
 } from "@/types";
 import { openPath, revealPath } from "@/ipc";
 import {
+  editorApp,
   key,
   KIND_LABEL,
   KIND_ORDER,
   messageOf,
+  originalFile,
   type KindFilter,
   type ToolDef,
   type View,
@@ -398,30 +400,6 @@ function AggregateCells(props: { items: CapabilityItem[]; ctx: BodyContext }) {
       })}
     </>
   );
-}
-
-// Editor app name for the opener `openWith` arg. Mirrors agentic-core
-// `EditorPref::app_name` so "Open original" honors the Config setting.
-function editorApp(settings: Settings): string | undefined {
-  const e = settings.editor;
-  switch (e.kind) {
-    case "vscode":
-      return "Visual Studio Code";
-    case "cursor":
-      return "Cursor";
-    case "custom":
-      return e.customApp?.trim() || undefined;
-    default:
-      return undefined;
-  }
-}
-
-// The original file to open: the marker file inside a skill/hook folder, or
-// the capability file itself for agents/rules.
-function originalFile(item: CapabilityItem): string {
-  if (item.kind === "skill") return `${item.sourcePath}/SKILL.md`;
-  if (item.kind === "hook") return `${item.sourcePath}/hook.json`;
-  return item.sourcePath;
 }
 
 // Hidden-until-hover row menu: open the original in the preferred editor,

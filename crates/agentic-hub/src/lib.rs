@@ -6,11 +6,14 @@
 
 mod commands;
 mod error;
+mod menu;
+mod palette;
 mod watcher;
 
-use agentic_core::settings::Settings;
+use agentic_core::settings::{default_palette_shortcut, Settings};
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, RunEvent, WindowEvent};
+use tauri_plugin_global_shortcut::ShortcutState;
 use watcher::WatcherState;
 
 /// Build and run the Tauri application.
@@ -19,7 +22,20 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        // Global summon accelerator for the command palette. The handler fires
+        // for any registered shortcut; we only ever register the palette one.
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        palette::toggle_palette(app);
+                    }
+                })
+                .build(),
+        )
         .manage(WatcherState::default())
+        .menu(menu::build_menu)
+        .on_menu_event(menu::handle_menu_event)
         // The main window starts hidden (tauri.conf.json `visible: false`) to
         // avoid a white paint flash before the WebView renders. Show it only
         // once the page has finished loading.
@@ -29,10 +45,19 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            let settings = Settings::load().unwrap_or_default();
             // Start the source watcher on launch when enabled in settings.
-            let enabled = Settings::load().map(|s| s.watcher_enabled).unwrap_or(true);
-            if enabled {
+            if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());
+            }
+            // Pre-create the (hidden) palette window so the first summon is
+            // instant, then register the configured global accelerator. A bad
+            // saved accelerator falls back to the default so summon never breaks.
+            let _ = palette::create_palette_window(app.handle());
+            if palette::register_palette_shortcut(app.handle(), &settings.palette_shortcut).is_err()
+            {
+                let _ =
+                    palette::register_palette_shortcut(app.handle(), &default_palette_shortcut());
             }
             Ok(())
         })
@@ -41,6 +66,13 @@ pub fn run() {
         // Cmd+Q goes through the default Quit menu item, which bypasses this
         // handler and terminates the process — the only intended hard exit.
         .on_window_event(|window, event| {
+            // Alfred-style dismiss: the palette hides as soon as it loses focus.
+            if window.label() == palette::PALETTE_LABEL {
+                if let WindowEvent::Focused(false) = event {
+                    let _ = window.hide();
+                }
+                return;
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     // Hide the whole application (NSApp hide:), not just the
@@ -60,6 +92,8 @@ pub fn run() {
             commands::cmd_load_settings,
             commands::cmd_save_settings,
             commands::cmd_set_watcher_enabled,
+            commands::cmd_toggle_palette,
+            commands::cmd_show_main,
             commands::cmd_rescan_resync,
             commands::cmd_scan,
             commands::cmd_inspect,

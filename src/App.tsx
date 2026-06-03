@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { onApplyProgress, onSourcesChanged } from "./ipc";
+import { onApplyProgress, onHubNavigate, onMenuOpenConfig, onSourcesChanged } from "./ipc";
 import { useManagerStore } from "./state/manager";
 import type { Route } from "./shared";
 import { Header } from "./components/layout/Header";
@@ -52,6 +52,17 @@ export function App() {
     );
     return () => void unlisten.then((fn) => fn());
   }, [setProgress]);
+
+  // Cross-window navigation: the Settings menu item (Cmd+,) and palette nav
+  // commands route the main window to a route.
+  useEffect(() => {
+    const config = onMenuOpenConfig(() => navigate("config"));
+    const nav = onHubNavigate((route) => navigate(route));
+    return () => {
+      void config.then((fn) => fn());
+      void nav.then((fn) => fn());
+    };
+  }, []);
 
   // Live-refresh on watcher / resync events. Skip while the user has unapplied
   // edits so an incoming event never discards an in-progress selection.

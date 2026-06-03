@@ -129,11 +129,52 @@ pub struct Settings {
     /// the OS default app.
     #[serde(default)]
     pub editor: EditorPref,
+    /// Global accelerator that summons the command palette window. Stored as a
+    /// human-readable accelerator string (e.g. `"Cmd+Alt+A"`). Defaults to
+    /// `Cmd+Alt+A`.
+    #[serde(default = "default_palette_shortcut")]
+    pub palette_shortcut: String,
     pub tools: ToolsSettings,
 }
 
 fn default_true() -> bool {
     true
+}
+
+/// Default global accelerator for the command palette.
+pub fn default_palette_shortcut() -> String {
+    "Cmd+Alt+A".to_string()
+}
+
+/// Lightweight sanity check for a palette accelerator string: it must be a
+/// `+`-joined list of tokens carrying at least one non-modifier key. The
+/// authoritative parse happens in the Tauri shell via the global-shortcut
+/// plugin; this only rejects obviously-bad input before we persist or register.
+pub fn is_valid_shortcut(accelerator: &str) -> bool {
+    const MODIFIERS: [&str; 11] = [
+        "cmd",
+        "command",
+        "ctrl",
+        "control",
+        "alt",
+        "option",
+        "shift",
+        "super",
+        "meta",
+        "cmdorctrl",
+        "commandorcontrol",
+    ];
+    let parts: Vec<&str> = accelerator
+        .split('+')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return false;
+    }
+    parts
+        .iter()
+        .any(|p| !MODIFIERS.contains(&p.to_ascii_lowercase().as_str()))
 }
 
 impl ToolSettings {
@@ -199,6 +240,7 @@ impl Default for Settings {
             suites_path: None,
             watcher_enabled: true,
             editor: EditorPref::default(),
+            palette_shortcut: default_palette_shortcut(),
             tools: ToolsSettings::default(),
         }
     }
@@ -337,6 +379,7 @@ impl Settings {
             suites_path: None,
             watcher_enabled: true,
             editor: EditorPref::default(),
+            palette_shortcut: default_palette_shortcut(),
             tools: ToolsSettings {
                 codex: tool("codex"),
                 claude: tool("claude"),
@@ -380,6 +423,23 @@ mod tests {
             .as_ref()
             .unwrap()
             .ends_with(".openclaw/workspace/SOUL.md"));
+    }
+
+    #[test]
+    fn palette_shortcut_defaults_to_cmd_alt_a() {
+        let s = Settings::default();
+        assert_eq!(s.palette_shortcut, "Cmd+Alt+A");
+    }
+
+    #[test]
+    fn validates_palette_shortcut_shape() {
+        assert!(is_valid_shortcut("Cmd+Alt+A"));
+        assert!(is_valid_shortcut("CmdOrCtrl+Shift+K"));
+        assert!(is_valid_shortcut("Space"));
+        // Only modifiers, no key — rejected.
+        assert!(!is_valid_shortcut("Cmd+Alt"));
+        assert!(!is_valid_shortcut(""));
+        assert!(!is_valid_shortcut("   "));
     }
 
     #[test]
