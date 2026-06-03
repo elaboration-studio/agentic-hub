@@ -4,7 +4,7 @@
 
 import { useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Search } from "lucide-react";
+import { ChevronLeft, Search } from "lucide-react";
 import { usePaletteStore } from "@/state/palette";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 export function CommandPalette() {
   const status = usePaletteStore((s) => s.status);
   const query = usePaletteStore((s) => s.query);
+  const view = usePaletteStore((s) => s.view);
   const results = usePaletteStore((s) => s.results);
   const selectedIndex = usePaletteStore((s) => s.selectedIndex);
   const load = usePaletteStore((s) => s.load);
@@ -19,9 +20,11 @@ export function CommandPalette() {
   const move = usePaletteStore((s) => s.move);
   const setSelected = usePaletteStore((s) => s.setSelected);
   const runSelected = usePaletteStore((s) => s.runSelected);
+  const back = usePaletteStore((s) => s.back);
   const reset = usePaletteStore((s) => s.reset);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const inSuiteTools = view.kind === "suite-tools";
 
   // Load on mount, and re-load + reset on every re-summon (window regains
   // focus) so resource edits are picked up and each summon starts clean.
@@ -38,7 +41,16 @@ export function CommandPalette() {
   }, [load, reset]);
 
   const hide = () => void getCurrentWindow().hide();
-  const runAndHide = () => void runSelected().then(hide, hide);
+
+  // Run the selected item; dismiss only when it is terminal. Drill-in rows
+  // (a suite) set `dismissOnRun: false` so the palette stays open on the
+  // suite-tools view.
+  const runAndHide = () => {
+    const item = results[selectedIndex];
+    void runSelected().then(() => {
+      if (!item || item.dismissOnRun !== false) hide();
+    }, hide);
+  };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
@@ -54,6 +66,14 @@ export function CommandPalette() {
         e.preventDefault();
         runAndHide();
         break;
+      case "Backspace":
+        // Empty query in the suite-tools view steps back to the root instead
+        // of deleting nothing.
+        if (inSuiteTools && query === "") {
+          e.preventDefault();
+          back();
+        }
+        break;
       case "Escape":
         e.preventDefault();
         hide();
@@ -67,12 +87,25 @@ export function CommandPalette() {
     <div className="flex h-full w-full items-start justify-center p-3" onKeyDown={onKeyDown}>
       <div className="flex max-h-full w-full flex-col overflow-hidden rounded-xl border border-border bg-popover/95 text-popover-foreground shadow-2xl backdrop-blur-xl">
         <div className="flex items-center gap-3 px-4 py-3.5">
-          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          {inSuiteTools ? (
+            <button
+              type="button"
+              onClick={() => back()}
+              className="flex shrink-0 items-center gap-1 rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-accent"
+            >
+              <ChevronLeft className="size-3.5" aria-hidden />
+              {view.suiteName}
+            </button>
+          ) : (
+            <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          )}
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search resources or type a command…"
+            placeholder={
+              inSuiteTools ? `Apply “${view.suiteName}” to a tool…` : "Search resources or type a command…"
+            }
             className="w-full bg-transparent text-[15px] leading-none outline-none placeholder:text-muted-foreground"
             spellCheck={false}
             autoFocus

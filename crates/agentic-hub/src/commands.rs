@@ -11,13 +11,14 @@ use agentic_core::hook_sync;
 use agentic_core::managed_copy::now_iso8601;
 use agentic_core::model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, PlannedOperation, ScanResult,
-    SuiteDefinition, SyncHooksResult, SyncRulesResult, ToolId, WorkspacePatchResult,
-    WorkspaceTarget, WorkspaceTargetsState,
+    SuiteBinding, SuiteDefinition, SuiteOwnership, SyncHooksResult, SyncRulesResult, ToolId,
+    WorkspacePatchResult, WorkspaceTarget, WorkspaceTargetsState,
 };
 use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
 use agentic_core::scaffold::{self, ScaffoldMode, ScaffoldResult};
 use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
+use agentic_core::suite_binding_store::SuiteBindingStore;
 use agentic_core::suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 use agentic_core::workspace_patch;
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
@@ -440,12 +441,62 @@ pub struct UpdateSuiteInput {
     pub changes: SuiteUpdateInput,
 }
 
+/// Re-apply each binding as a base-merged full reset, serialized against the
+/// watcher so the two never write the same dirs. Each binding's selected suite
+/// is resolved fresh and unioned with the current base.
+fn resync_bindings(
+    store: &SuiteStore,
+    settings: &Settings,
+    scanned: &ScanResult,
+    bindings: &[SuiteBinding],
+) {
+    let base = store.base().ok().flatten();
+    watcher::with_reconcile_guard(|| {
+        for b in bindings {
+            if let Ok(Some(selected)) = store.get(&b.suite_id) {
+                let effective = api::merge_base_caps(&selected, base.as_ref());
+                api::apply_suite(&scanned.items, settings, b.tool_id, &effective);
+            }
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn cmd_update_suite(
     app: AppHandle,
     input: UpdateSuiteInput,
 ) -> IpcResult<SuiteDefinition> {
-    let suite = suite_store()?.update(&input.id, input.changes)?;
+    let store = suite_store()?;
+    let mut suite = store.update(&input.id, input.changes)?;
+    // Dynamic binding sync: a capability edit re-applies (full reset) to the
+    // bound tools so their projections track the new set. When the edited suite
+    // is the base, it merges into every applied suite, so re-sync ALL bindings;
+    // otherwise only the tools bound to this suite.
+    let binding_store = SuiteBindingStore::new();
+    let to_resync: Vec<SuiteBinding> = if suite.is_base {
+        binding_store.read()?
+    } else {
+        binding_store
+            .tools_for_suite(&suite.id)?
+            .into_iter()
+            .map(|tool_id| SuiteBinding {
+                tool_id,
+                suite_id: suite.id.clone(),
+            })
+            .collect()
+    };
+    if !to_resync.is_empty() {
+        let settings = Settings::load()?;
+        let scanned = api::scan(&settings);
+        // Opportunistically qualify any unqualified refs against the scan so the
+        // suite is portable on the next sync.
+        if SuiteStore::backfill_sources(&mut suite, &scanned.items) {
+            let _ = store.put(&suite);
+        }
+        resync_bindings(&store, &settings, &scanned, &to_resync);
+        // Tool projections changed — nudge the manager to refresh.
+        let _ = app.emit("sources-changed", ());
+    }
     emit_suite_changed(&app, "updated", Some(suite.id.clone()));
     Ok(suite)
 }
@@ -453,6 +504,9 @@ pub async fn cmd_update_suite(
 #[tauri::command]
 pub async fn cmd_delete_suite(app: AppHandle, id: String) -> IpcResult<()> {
     suite_store()?.remove(&id)?;
+    // Drop any tool bindings to the gone suite; on-disk projections are left
+    // untouched (deleting a suite is not a destructive tool wipe).
+    let _ = SuiteBindingStore::new().drop_suite(&id);
     emit_suite_changed(&app, "deleted", Some(id));
     Ok(())
 }
@@ -465,18 +519,66 @@ pub struct ApplySuiteInput {
 }
 
 #[tauri::command]
-pub async fn cmd_apply_suite(input: ApplySuiteInput) -> IpcResult<ApplySuiteResult> {
+pub async fn cmd_apply_suite(
+    app: AppHandle,
+    input: ApplySuiteInput,
+) -> IpcResult<ApplySuiteResult> {
     let settings = Settings::load()?;
-    let suite = SuiteStore::with_path(settings.resolved_suites_path())
+    let store = SuiteStore::with_path(settings.resolved_suites_path());
+    let mut suite = store
         .get(&input.suite_id)?
         .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
 
     let scanned = api::scan(&settings);
-    Ok(api::apply_suite(
+    // Opportunistically qualify unqualified refs so the suite syncs portably.
+    if SuiteStore::backfill_sources(&mut suite, &scanned.items) {
+        let _ = store.put(&suite);
+    }
+    // Union the base suite's capabilities so its rules/skills are always present.
+    let base = store.base()?;
+    let effective = api::merge_base_caps(&suite, base.as_ref());
+    let result = api::apply_suite(&scanned.items, &settings, input.tool_id, &effective);
+    // Bind this tool to the selected suite (not the base) so a later capability
+    // edit re-syncs it.
+    let _ = SuiteBindingStore::new().record(input.tool_id, &input.suite_id);
+    // Tool projections + suite ownership changed — nudge the manager (this window
+    // or the main window when applied from the palette) to re-scan and re-lock.
+    let _ = app.emit("sources-changed", ());
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn cmd_set_base_suite(app: AppHandle, id: Option<String>) -> IpcResult<()> {
+    let store = suite_store()?;
+    store.set_base(id.as_deref())?;
+    // The base merges into every applied suite, so re-apply all bound tools so
+    // their projections reflect the new (or cleared) base.
+    let bindings = SuiteBindingStore::new().read()?;
+    if !bindings.is_empty() {
+        let settings = Settings::load()?;
+        let scanned = api::scan(&settings);
+        resync_bindings(&store, &settings, &scanned, &bindings);
+    }
+    // Always refresh the manager: the base set changed, so cell-lock ownership
+    // must be recomputed even when no tool was re-applied (no bindings yet).
+    let _ = app.emit("sources-changed", ());
+    emit_suite_changed(&app, "base-changed", id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_suite_ownership() -> IpcResult<Vec<SuiteOwnership>> {
+    let settings = Settings::load()?;
+    let store = SuiteStore::with_path(settings.resolved_suites_path());
+    let scanned = api::scan(&settings);
+    let suites = store.list()?;
+    let base = store.base()?;
+    let bindings = SuiteBindingStore::new().read()?;
+    Ok(api::suite_ownership(
         &scanned.items,
-        &settings,
-        input.tool_id,
-        &suite,
+        &bindings,
+        &suites,
+        base.as_ref(),
     ))
 }
 

@@ -22,6 +22,7 @@ pub mod rule_sync;
 pub mod scaffold;
 pub mod scanner;
 pub mod settings;
+pub mod suite_binding_store;
 pub mod suite_store;
 pub mod workspace_patch;
 pub mod workspace_target_store;
@@ -35,9 +36,9 @@ pub use hook_sync::{HookEventSpec, HookManifest};
 pub use model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncError,
     HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome,
-    ScanError, ScanResult, SuiteDefinition, SuiteValidationResult, SyncHooksResult,
-    SyncRulesResult, ToolCapabilityState, ToolId, WorkspaceApply, WorkspacePatchResult,
-    WorkspaceTarget, WorkspaceTargetsState,
+    ScanError, ScanResult, SourceRef, SuiteBinding, SuiteCapabilityRef, SuiteDefinition,
+    SuiteValidationResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
+    WorkspaceApply, WorkspacePatchResult, WorkspaceTarget, WorkspaceTargetsState,
 };
 pub use open_targets::is_openable;
 pub use planner::{build_plan, inspect_tool};
@@ -45,5 +46,6 @@ pub use reconcile::{reconcile_all, reconcile_tool, ReconcileToolOutcome};
 pub use scaffold::{scaffold_demo, ScaffoldMode, ScaffoldResult};
 pub use scanner::{scan, scan_all};
 pub use settings::{Settings, SourceConfig, ToolSettings, ToolsSettings};
+pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 pub use workspace_target_store::WorkspaceTargetStore;

@@ -99,16 +99,42 @@ The module adds a storage layer and wires it into the existing pipeline. No new 
 
 ```rust
 pub struct SuiteDefinition {
-    pub id: String,                   // UUID v4
-    pub name: String,                 // unique, human-readable
+    pub id: String,                          // UUID v4
+    pub name: String,                        // unique, human-readable
     pub description: Option<String>,
-    pub capabilities: Vec<String>,    // capability IDs from scanner
-    pub created_at: String,           // ISO 8601
+    pub capabilities: Vec<SuiteCapabilityRef>, // source-qualified refs
+    pub is_base: bool,                       // single base suite (#[serde(default)] = false)
+    pub created_at: String,                  // ISO 8601
     pub updated_at: String,
+}
+
+pub struct SuiteCapabilityRef {
+    pub cap: String,                  // bare capability id, e.g. skill:dev/tdd
+    pub source: Option<SourceRef>,    // portable source identity (None = legacy/unqualified)
 }
 ```
 
-Capability IDs use the same format as `CapabilityItem.id` produced by `scanner`. Stable as long as the capability's relative path does not change. IDs are **source-free** (e.g. `skill:dev/tdd`): with [multi-source roots](./multi-source-roots.md), a suite ID resolves against the whole source forest and is backed by whichever source currently owns it (first source wins). Adding or reordering sources never changes a suite's IDs, so suites need no migration. A capability ID not provided by any configured source is reported as stale (see stale reconciliation below).
+The bare `cap` uses the same format as `CapabilityItem.id` produced by `scanner` — source-free (e.g. `skill:dev/tdd`). The optional `source` ([`SourceRef`](./multi-source-roots.md#portable-source-identity-cross-device)) makes a reference portable across devices.
+
+### Source-qualified entries (cross-device portability)
+
+Suite files sync across machines. Without a source identity, a synced `skill:foo` could silently re-resolve to a *different* source's `skill:foo`, and there was no way to mark "this came from a source that isn't on this device". `SuiteCapabilityRef` fixes both:
+
+- **Match**: a qualified ref resolves only to a scanned item whose `source` matches (by home-relative path, then folder); an unqualified ref matches by bare id alone.
+- **Absent source**: a qualified ref whose source is not present on this machine is *skipped and preserved* — its projection cannot exist locally, so it is never deleted, and it never mis-resolves onto a same-named local capability. Counted as `skipped_absent_source`.
+- **Migration**: `SuiteCapabilityRef` deserializes tolerantly from a legacy bare string (`"skill:dev/tdd"` → `{ cap, source: None }`) and always serializes as an object, so suite files upgrade in place on the next write. Existing suites need no manual migration.
+- **Backfill**: on apply/update the store opportunistically qualifies unqualified refs whose bare id resolves to exactly one scanned item (`SuiteStore::backfill_sources`), then persists the upgrade.
+
+Adding or reordering sources never changes a suite's bare IDs. A present-source (or unqualified) ref that matches no scanned item is reported as stale (see stale reconciliation below).
+
+### Base suite (global merge)
+
+Exactly one suite may be marked **base** (`is_base: true`). Its capabilities are unioned into *every* global apply, so its rules/skills are always present whatever suite a tool runs. The flag is portable (lives in `~/.agentic-suites.json`) and defaults to `false` for legacy files.
+
+- **Single-base invariant**: setting one suite base clears the flag on every other. `SuiteStore::set_base(Some(id))` (or `update` with `is_base: Some(true)`) funnels through this rule; `set_base(None)` clears all.
+- **Merge semantics**: `api::merge_base_caps(selected, base)` clones the selected suite and appends the base's capabilities, deduped by `(cap, source)`. It keeps the **selected** suite's identity, so `ApplySuiteResult.suite` and the recorded binding still point at the explicitly chosen suite — the base is invisible to binding bookkeeping. A `None` base, or a base whose id equals the selected suite, is a no-op.
+- **Where it merges**: every global apply path — the Suites page apply, the palette suite apply, and bound-tool re-syncs — applies the merged "effective" suite. `apply_suite` itself takes the already-merged suite; it does not know about the base.
+- **Re-sync on base change**: setting/unsetting/editing the base re-applies **every** bound tool (each tool's own selected suite re-merged with the new base). Editing a normal suite re-applies only the tools bound to it (still base-merged).
 
 ### Dotfile contract
 
@@ -163,8 +189,9 @@ Conventions:
 
 ```rust
 pub struct SuiteValidationResult {
-    pub valid_ids: Vec<String>,    // capability IDs present in scan
-    pub stale_ids: Vec<String>,    // capability IDs not found in scan
+    pub valid_ids: Vec<String>,    // refs resolving to a scanned item
+    pub stale_ids: Vec<String>,    // present-source/unqualified refs with no match
+    pub absent_ids: Vec<String>,   // qualified refs whose source is not present here
 }
 
 impl SuiteStore {
@@ -173,8 +200,19 @@ impl SuiteStore {
     pub fn create(&self, input: SuiteCreateInput) -> Result<SuiteDefinition>;
     pub fn update(&self, id: &str, input: SuiteUpdateInput) -> Result<SuiteDefinition>;
     pub fn remove(&self, id: &str) -> Result<()>;
-    pub fn validate(suite: &SuiteDefinition, items: &[CapabilityItem]) -> SuiteValidationResult;
+    pub fn put(&self, suite: &SuiteDefinition) -> Result<()>; // in-place replace (backfill/upgrade)
+    pub fn base(&self) -> Result<Option<SuiteDefinition>>;     // the single base suite, if any
+    pub fn set_base(&self, id: Option<&str>) -> Result<()>;    // single-base invariant; None clears
+    pub fn validate(suite: &SuiteDefinition, items: &[CapabilityItem], sources: &[SourceConfig]) -> SuiteValidationResult;
+    pub fn backfill_sources(suite: &mut SuiteDefinition, items: &[CapabilityItem]) -> bool;
 }
+
+// Pure helpers (api.rs):
+//   merge_base_caps(selected: &SuiteDefinition, base: Option<&SuiteDefinition>) -> SuiteDefinition
+//   suite_ownership(items, bindings, suites, base) -> Vec<SuiteOwnership>
+// merge_base_caps unions+dedups keeping selected identity; suite_ownership maps
+// each managed (tool, item) to its owning suite (from_base marks base-merged items)
+// so the Manager can lock the cell and name the owner on hover.
 ```
 
 ## IPC commands
@@ -186,7 +224,9 @@ See [tauri-ipc-contract.md](./tauri-ipc-contract.md) for full schemas. Summary:
 - `cmd_create_suite(input) -> SuiteDefinition`
 - `cmd_update_suite(id, input) -> SuiteDefinition`
 - `cmd_delete_suite(id) -> ()`
-- `cmd_apply_suite({ tool_id, suite_id }) -> ApplySuiteResult`
+- `cmd_apply_suite({ tool_id, suite_id }) -> ApplySuiteResult` (merges the base suite into the effective set)
+- `cmd_set_base_suite(id: Option<String>) -> ()` (single-base invariant; re-applies every bound tool)
+- `cmd_suite_ownership() -> Vec<SuiteOwnership>` (which suite owns each managed `(tool, item)`)
 - Tauri event (global): `suite-store-changed`
 
 ## Apply flow (detailed)
@@ -205,12 +245,12 @@ async fn apply_suite(tool_id: ToolId, suite_id: String) -> Result<ApplySuiteResu
         .ok_or(Err::ToolUnknown)?;
     if !adapter.enabled { return Err(Err::ToolDisabled); }
 
-    let suite_set: HashSet<&str> = suite.capabilities.iter().map(|s| s.as_str()).collect();
-
-    // Full reset: every scanned item gets a desired state
+    // Full reset: every scanned item gets a desired state, computed source-aware
+    // (a qualified ref must match the item's source; an unqualified ref matches
+    // by bare id). See SuiteCapabilityRef::matches_item.
     let mut desired: HashMap<String, bool> = HashMap::new();
     for item in &scan.items {
-        desired.insert(item.id.clone(), suite_set.contains(item.id.as_str()));
+        desired.insert(item.id.clone(), suite.capabilities.iter().any(|r| r.matches_item(item)));
     }
 
     let items_by_id: HashMap<String, &CapabilityItem> = scan.items.iter().map(|i| (i.id.clone(), i)).collect();
@@ -237,11 +277,19 @@ async fn apply_suite(tool_id: ToolId, suite_id: String) -> Result<ApplySuiteResu
         })?;
     }
 
-    let stale = suite.capabilities.iter()
-        .filter(|cap_id| !scan.items.iter().any(|i| &i.id == *cap_id))
-        .count() as u32;
+    // Refs that match no scanned item split into absent-source (qualified to a
+    // source not present here; preserved) vs stale (present-source/unqualified).
+    let local = settings.resolve_sources();
+    let (mut stale, mut absent) = (0u32, 0u32);
+    for r in &suite.capabilities {
+        if scan.items.iter().any(|i| r.matches_item(i)) { continue; }
+        match &r.source {
+            Some(s) if !source_present(&local, s) => absent += 1,
+            _ => stale += 1,
+        }
+    }
 
-    Ok(ApplySuiteResult { apply_result: result, skipped_stale: stale, suite: suite.into() })
+    Ok(ApplySuiteResult { apply_result: result, skipped_stale: stale, skipped_absent_source: absent, suite: suite.into() })
 }
 ```
 
@@ -267,7 +315,8 @@ The main window listens for this event and refreshes its suite dropdown. The Sui
 | Dotfile missing | No suites available | `suite_store.list()` returns empty + creates on first save | Auto-create empty file on write |
 | Dotfile malformed JSON | List unavailable | `serde_json::from_str` error | Surface error in UI; preserve in-memory state |
 | Dotfile write permission denied | Save fails | `fs::rename` error | Surface error; preserve in-memory state |
-| Suite references stale capabilities | Some items skipped on apply | Validation during apply | Report count in `ApplySuiteResult` |
+| Suite references stale capabilities | Some items skipped on apply | Validation during apply | Report `skipped_stale` count in `ApplySuiteResult` |
+| Synced suite references an absent source | Those refs skipped, projections preserved | Source-presence check during apply | Report `skipped_absent_source`; never deletes the absent source's projections |
 | Concurrent writes | Last writer wins | Atomic rename | Acceptable in v1 (single user) |
 | Apply with empty capabilities | All tool capabilities disabled | Valid operation | Confirmation dialog warns explicitly |
 | Tool disabled during apply | Apply blocked | Adapter check | Show error; no partial apply |

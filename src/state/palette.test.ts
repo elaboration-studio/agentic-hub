@@ -1,47 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock the Tauri IPC boundary so the registry + store logic runs in plain Node.
-// `openPath` is invoked by the resource provider; the nav provider uses
-// `emitHubNavigate` + `showMain`.
 vi.mock("@/ipc", () => ({
   loadSettings: vi.fn(),
   scan: vi.fn(),
-  openPath: vi.fn(),
-  emitHubNavigate: vi.fn(() => Promise.resolve()),
-  showMain: vi.fn(() => Promise.resolve()),
+  listSuites: vi.fn(),
+  applySuite: vi.fn().mockResolvedValue(undefined),
+  emitHubNavigate: vi.fn().mockResolvedValue(undefined),
+  showMain: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { emitHubNavigate, loadSettings, openPath, scan } from "@/ipc";
-import type { CapabilityItem, Settings } from "@/types";
-import { getInitialState, usePaletteStore } from "./palette";
+import { applySuite, listSuites, loadSettings, scan } from "@/ipc";
+import type { CapabilityItem, Settings, SuiteDefinition, ToolSettings } from "@/types";
+import { usePaletteStore } from "./palette";
 
 const mocked = {
   loadSettings: vi.mocked(loadSettings),
   scan: vi.mocked(scan),
-  openPath: vi.mocked(openPath),
-  emitHubNavigate: vi.mocked(emitHubNavigate),
+  listSuites: vi.mocked(listSuites),
+  applySuite: vi.mocked(applySuite),
 };
 
-function makeSettings(): Settings {
+function toolSettings(enabled: boolean): ToolSettings {
   return {
-    sources: [{ id: "default", label: "Default", path: "/shared" }],
-    sharedRoot: "/shared",
-    suitesPath: null,
-    watcherEnabled: true,
-    editor: { kind: "default", customApp: null },
-    paletteShortcut: "Cmd+Alt+A",
-    tools: {
-      codex: tool(),
-      claude: tool(),
-      cursor: tool(),
-      openclaw: tool(),
-    },
-  };
-}
-
-function tool() {
-  return {
-    enabled: true,
+    enabled,
     skillsPath: "/skills",
     agentsPath: "/agents",
     rulesPath: "/rules",
@@ -51,90 +32,151 @@ function tool() {
   };
 }
 
-function item(partial: Partial<CapabilityItem> & Pick<CapabilityItem, "id" | "name">): CapabilityItem {
+function makeSettings(): Settings {
   return {
-    kind: "skill",
-    sourcePath: `/shared/skills/${partial.name}`,
-    relativePath: partial.name,
-    sourceId: "default",
-    sourceLabel: "Default",
-    valid: true,
-    validationErrors: [],
-    ...partial,
+    sources: [],
+    sharedRoot: "/shared",
+    suitesPath: null,
+    watcherEnabled: true,
+    editor: { kind: "default", customApp: null },
+    paletteShortcut: "Cmd+Alt+A",
+    tools: {
+      codex: toolSettings(true),
+      claude: toolSettings(true),
+      cursor: toolSettings(true),
+      openclaw: toolSettings(false),
+    },
   };
 }
 
-const ITEMS: CapabilityItem[] = [
-  item({ id: "skill:manager-helper", name: "manager-helper" }),
-  item({ id: "skill:repo-research", name: "repo-research" }),
-  item({ id: "agent:reviewer", name: "reviewer", kind: "agent", sourcePath: "/shared/agents/reviewer.md" }),
-];
+function makeSuite(id: string, name: string): SuiteDefinition {
+  return {
+    id,
+    name,
+    description: null,
+    capabilities: [{ cap: "skill:a", source: null }],
+    isBase: false,
+    createdAt: "t",
+    updatedAt: "t",
+  };
+}
 
-async function loadStore() {
+function makeItem(id: string): CapabilityItem {
+  return {
+    id,
+    kind: "skill",
+    name: id.replace("skill:", ""),
+    sourcePath: `/shared/skills/${id}`,
+    relativePath: id.replace("skill:", ""),
+    sourceId: "default",
+    sourceLabel: "Default",
+    source: { relHome: "~/.agentic", folder: ".agentic" },
+    valid: true,
+    validationErrors: [],
+  };
+}
+
+async function loadReady(suites: SuiteDefinition[] = [makeSuite("s1", "Backend")]) {
   mocked.loadSettings.mockResolvedValue(makeSettings());
-  mocked.scan.mockResolvedValue({ items: ITEMS, errors: [] });
+  mocked.scan.mockResolvedValue({ items: [makeItem("skill:tdd")], errors: [] });
+  mocked.listSuites.mockResolvedValue(suites);
   await usePaletteStore.getState().load();
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Merge (not replace) so the action functions survive the reset.
-  usePaletteStore.setState(getInitialState());
+  usePaletteStore.setState(usePaletteStore.getInitialState(), true);
 });
 
-describe("palette store", () => {
-  it("loads settings and items, showing nav commands on an empty query", async () => {
-    await loadStore();
+describe("palette store — loading", () => {
+  it("load fetches settings, scan, and suites and becomes ready at the root view", async () => {
+    await loadReady();
     const s = usePaletteStore.getState();
+
     expect(s.status).toBe("ready");
-    expect(s.items).toHaveLength(3);
-    // Empty query: only the three navigation commands are visible.
-    expect(s.results.map((r) => r.group)).toEqual(["Navigate", "Navigate", "Navigate"]);
-    expect(s.selectedIndex).toBe(0);
+    expect(s.view).toEqual({ kind: "root" });
+    expect(s.suites).toHaveLength(1);
+    // Suites surface on an empty query.
+    expect(s.results.some((r) => r.group === "Suite")).toBe(true);
   });
 
-  it("filters resources by name, path, or source on query", async () => {
-    await loadStore();
-    usePaletteStore.getState().setQuery("repo");
-    const s = usePaletteStore.getState();
-    expect(s.results).toHaveLength(1);
-    expect(s.results[0].title).toBe("repo-research");
-    expect(s.results[0].group).toBe("Skill");
+  it("load surfaces an error when IPC throws", async () => {
+    mocked.loadSettings.mockRejectedValue(new Error("disk gone"));
+    await usePaletteStore.getState().load();
+    expect(usePaletteStore.getState().status).toBe("error");
+    expect(usePaletteStore.getState().error).toBe("disk gone");
   });
+});
 
-  it("orders matching resources before navigation commands", async () => {
-    await loadStore();
-    usePaletteStore.getState().setQuery("manager");
-    const groups = usePaletteStore.getState().results.map((r) => r.group);
-    // Resource "manager-helper" precedes the "Open Manager" nav command.
-    expect(groups[0]).toBe("Skill");
-    expect(groups).toContain("Navigate");
-  });
+describe("palette store — two-level suite flow", () => {
+  it("running a suite row enters the suite-tools view without executing", async () => {
+    await loadReady();
+    const suiteRow = usePaletteStore.getState().results.find((r) => r.group === "Suite");
+    expect(suiteRow).toBeDefined();
 
-  it("wraps selection around both ends", async () => {
-    await loadStore();
-    const { move, setSelected } = usePaletteStore.getState();
-    // 3 nav results on empty query.
-    setSelected(0);
-    move(-1);
-    expect(usePaletteStore.getState().selectedIndex).toBe(2);
-    move(1);
-    expect(usePaletteStore.getState().selectedIndex).toBe(0);
-  });
-
-  it("opens the original file with the configured editor for a resource", async () => {
-    await loadStore();
-    usePaletteStore.getState().setQuery("repo-research");
+    // Selecting and running the suite row drills in.
+    const idx = usePaletteStore.getState().results.indexOf(suiteRow!);
+    usePaletteStore.getState().setSelected(idx);
     await usePaletteStore.getState().runSelected();
-    expect(mocked.openPath).toHaveBeenCalledWith("/shared/skills/repo-research/SKILL.md", undefined);
+
+    const s = usePaletteStore.getState();
+    expect(s.view).toEqual({ kind: "suite-tools", suiteId: "s1", suiteName: "Backend" });
+    expect(s.query).toBe("");
+    // Tool apply rows now populate the list (openclaw disabled).
+    expect(s.results.map((r) => r.title)).toEqual([
+      "Apply to Codex",
+      "Apply to Claude",
+      "Apply to Cursor",
+    ]);
+    expect(mocked.applySuite).not.toHaveBeenCalled();
   });
 
-  it("routes navigation commands back to the main window", async () => {
-    await loadStore();
-    usePaletteStore.getState().setQuery("Open Suites");
+  it("running a tool row applies the suite to that one tool", async () => {
+    await loadReady();
+    usePaletteStore.getState().enterSuite("s1", "Backend");
+    const cursorIdx = usePaletteStore
+      .getState()
+      .results.findIndex((r) => r.title === "Apply to Cursor");
+
+    usePaletteStore.getState().setSelected(cursorIdx);
+    await usePaletteStore.getState().runSelected();
+
+    expect(mocked.applySuite).toHaveBeenCalledWith("cursor", "s1");
+  });
+
+  it("back returns to the root view and restores root results", async () => {
+    await loadReady();
+    usePaletteStore.getState().enterSuite("s1", "Backend");
+    expect(usePaletteStore.getState().view.kind).toBe("suite-tools");
+
+    usePaletteStore.getState().back();
     const s = usePaletteStore.getState();
-    expect(s.results[0].group).toBe("Navigate");
-    await s.runSelected();
-    expect(mocked.emitHubNavigate).toHaveBeenCalledWith("suites");
+    expect(s.view).toEqual({ kind: "root" });
+    expect(s.results.some((r) => r.group === "Suite")).toBe(true);
+  });
+
+  it("reset returns to the root view and clears the query", async () => {
+    await loadReady();
+    usePaletteStore.getState().enterSuite("s1", "Backend");
+    usePaletteStore.getState().setQuery("claude");
+
+    usePaletteStore.getState().reset();
+    const s = usePaletteStore.getState();
+    expect(s.view).toEqual({ kind: "root" });
+    expect(s.query).toBe("");
+  });
+});
+
+describe("palette store — selection", () => {
+  it("move wraps around both ends", async () => {
+    await loadReady();
+    const len = usePaletteStore.getState().results.length;
+    expect(len).toBeGreaterThan(0);
+
+    usePaletteStore.getState().setSelected(0);
+    usePaletteStore.getState().move(-1);
+    expect(usePaletteStore.getState().selectedIndex).toBe(len - 1);
+    usePaletteStore.getState().move(1);
+    expect(usePaletteStore.getState().selectedIndex).toBe(0);
   });
 });

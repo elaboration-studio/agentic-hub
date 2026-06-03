@@ -196,6 +196,10 @@ mod tests {
             relative_path: PathBuf::from(rel),
             source_id: "arno".into(),
             source_label: "Arno".into(),
+            source: crate::model::SourceRef {
+                rel_home: "~/.agentic".into(),
+                folder: ".agentic".into(),
+            },
             valid: true,
             validation_errors: vec![],
         }

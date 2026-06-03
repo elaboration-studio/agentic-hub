@@ -109,6 +109,21 @@ Capability IDs stay source-free — `skill:dev/tdd`, `rule:general/precise.mdc`,
 
 The scan-time dedupe error gives the user enough signal to fix shadowing manually, without rewriting every suite.
 
+## Portable source identity (cross-device)
+
+Suite files (`~/.agentic-suites.json`) and bindings sync across machines, but absolute paths and slug IDs are device-specific. To keep a synced suite resolving to the *right* source — and to avoid mis-resolving a synced `skill:foo` onto a different source's same-named `skill:foo` — every scanned item carries a portable `SourceRef`:
+
+```rust
+pub struct SourceRef {
+    pub rel_home: String, // home-relative path (~/.agentic), or absolute if outside ~
+    pub folder: String,   // last path component (.agentic)
+}
+```
+
+`SourceConfig::portable_ref()` computes it from the resolved (tilde-expanded) path. Two devices match "the same" logical source by `rel_home` first, then `folder` (`SourceRef::matches`). `settings::source_present` answers whether a synced ref's source exists locally.
+
+Capability IDs stay bare (`kind:rel`) everywhere — scanner keys, managed-copy manifest `itemId`, and the Matrix UI are untouched. The `SourceRef` rides alongside as a separate identity, used only by suite resolution. See [suite-presets.md](./suite-presets.md) for how suites qualify their entries and skip (never delete) capabilities whose source is absent on the current machine.
+
 ## Tree shape
 
 ```text

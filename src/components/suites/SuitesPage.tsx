@@ -78,6 +78,7 @@ export function SuitesPage() {
   const save = useSuitesStore((s) => s.save);
   const removeSuite = useSuitesStore((s) => s.remove);
   const applySelected = useSuitesStore((s) => s.applySelected);
+  const setBase = useSuitesStore((s) => s.setBase);
   const pruneSelection = useSuitesStore((s) => s.pruneSelection);
 
   const [capSearch, setCapSearch] = useState("");
@@ -182,7 +183,14 @@ export function SuitesPage() {
                   )}
                   onClick={() => selectSuite(s.id)}
                 >
-                  <span className="truncate font-semibold">{s.name}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-semibold">{s.name}</span>
+                    {s.isBase && (
+                      <Badge variant="outline" className="border-primary/40 text-primary">
+                        Base
+                      </Badge>
+                    )}
+                  </span>
                   <span className="whitespace-nowrap text-[11px] text-muted-foreground">
                     {s.capabilities.length} items
                   </span>
@@ -225,6 +233,21 @@ export function SuitesPage() {
               <Button onClick={onApply} disabled={busy || availableTools.length === 0}>
                 Apply Suite
               </Button>
+              {(() => {
+                const selected = suites.find((s) => s.id === selectedId);
+                const isBase = selected?.isBase ?? false;
+                return (
+                  <Button
+                    variant={isBase ? "secondary" : "outline"}
+                    className="ml-auto"
+                    onClick={() => void setBase(isBase ? null : selectedId)}
+                    disabled={busy}
+                    title="A base suite's capabilities merge into every applied suite"
+                  >
+                    {isBase ? "Unset base" : "Set as base"}
+                  </Button>
+                );
+              })()}
             </div>
           )}
           {!draft ? (
@@ -286,7 +309,7 @@ export function SuitesPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 pt-0.5">
-                <Button onClick={() => void save()} disabled={busy || !draft.name.trim()}>
+                <Button onClick={() => void save(items)} disabled={busy || !draft.name.trim()}>
                   Save
                 </Button>
                 {!isCreating && (

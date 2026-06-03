@@ -6,6 +6,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.4.0] — 2026-06-03
+
+### Added
+
+- **Palette suite apply (two-level).** Search a suite, drill into a suite-tools
+  view (`‹ <suite>` breadcrumb, Backspace-to-back), and apply it to one tool as
+  a full reset (clean + replace).
+- **Suite↔tool bindings.** A new `~/.agentic-hub/suite-bindings.json` records
+  which suite is applied to each tool. `cmd_apply_suite` records the binding,
+  `cmd_update_suite` re-applies the new capability set to every bound tool
+  (serialized via the reconcile guard, emits `sources-changed`), and
+  `cmd_delete_suite` drops the bindings without touching tool projections.
+- **Source-aware suites (cross-device portability).** Every scanned
+  `CapabilityItem` now carries a portable `source` identity (`SourceRef`:
+  home-relative path + folder name), and suite entries are source-qualified
+  (`SuiteCapabilityRef { cap, source }`). A suite synced across devices resolves
+  per-source: a reference whose source is absent on the current machine is
+  skipped and preserved (counted as `ApplySuiteResult.skippedAbsentSource`),
+  never deleted and never mis-resolved onto a same-named capability from a
+  different source. `SuiteValidationResult` gains `absentIds`.
+- **Base suite (global merge) + Manager suite-lock.** A suite can be marked
+  base (portable `SuiteDefinition.isBase`; at most one, enforced by the store).
+  Its capabilities union into every global apply via `merge_base_caps`, so its
+  rules/skills are always present; the recorded binding stays the selected
+  suite. `cmd_set_base_suite(id | null)` flips the flag and re-applies every
+  bound tool, and editing the base re-syncs every binding. `cmd_suite_ownership`
+  reports which suite owns each `(tool, item)` (`SuiteOwnership`, `fromBase`),
+  and the Manager matrix locks those cells, naming the owning suite on hover.
+
+### Changed
+
+- **Suite capabilities are objects, not bare strings.**
+  `SuiteDefinition.capabilities` is now `SuiteCapabilityRef[]`. Legacy
+  bare-string suite files load unchanged and upgrade in place on the next save
+  (non-breaking); apply/update opportunistically backfill a source for
+  unqualified refs that resolve to exactly one scanned item.
+- **Manager UX polish.** The filter bar and table header stay pinned while a long
+  capability list scrolls. Suite-locked cells now read as a distinct indigo
+  dashed lock with a not-allowed cursor (and still name the owning suite on
+  hover), and an enabled cell's green highlight is clearer in both the flat and
+  tree views.
+
+### Fixed
+
+- **The Manager refreshes after a suite apply or base-suite change.** Applying a
+  suite and setting or clearing the base now emit `sources-changed`, so the
+  matrix reloads and keeps cell state and suite locks in sync without a manual
+  rescan.
+
 ## [0.3.0] — 2026-06-03
 
 ### Added

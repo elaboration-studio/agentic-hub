@@ -6,14 +6,28 @@ vi.mock("@/ipc", () => ({
   updateSuite: vi.fn(),
   deleteSuite: vi.fn(),
   applySuite: vi.fn(),
+  setBaseSuite: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
-import { applySuite, createSuite, deleteSuite, listSuites, updateSuite } from "@/ipc";
+import {
+  applySuite,
+  createSuite,
+  deleteSuite,
+  listSuites,
+  setBaseSuite,
+  updateSuite,
+} from "@/ipc";
 import { toast } from "sonner";
-import type { ApplyError, ApplySuiteResult, SuiteDefinition } from "@/types";
+import type {
+  ApplyError,
+  ApplySuiteResult,
+  CapabilityItem,
+  SourceRef,
+  SuiteDefinition,
+} from "@/types";
 import { useSuitesStore } from "./suites";
 
 const mocked = {
@@ -22,17 +36,36 @@ const mocked = {
   updateSuite: vi.mocked(updateSuite),
   deleteSuite: vi.mocked(deleteSuite),
   applySuite: vi.mocked(applySuite),
+  setBaseSuite: vi.mocked(setBaseSuite),
 };
+
+const SRC: SourceRef = { relHome: "~/.agentic", folder: ".agentic" };
 
 function makeSuite(overrides: Partial<SuiteDefinition> = {}): SuiteDefinition {
   return {
     id: "s1",
     name: "Backend",
     description: null,
-    capabilities: ["skill:a"],
+    capabilities: [{ cap: "skill:a", source: SRC }],
+    isBase: false,
     createdAt: "2026-01-01",
     updatedAt: "2026-01-01",
     ...overrides,
+  };
+}
+
+function makeItem(id: string, source: SourceRef = SRC): CapabilityItem {
+  return {
+    id,
+    kind: "skill",
+    name: id,
+    sourcePath: `/src/${id}`,
+    relativePath: id.replace("skill:", ""),
+    sourceId: "default",
+    sourceLabel: "Default",
+    source,
+    valid: true,
+    validationErrors: [],
   };
 }
 
@@ -112,7 +145,7 @@ describe("suites store — draft editing", () => {
 
   it("cancelEdit while editing reverts the draft to the selected suite", () => {
     useSuitesStore.setState({
-      suites: [makeSuite({ name: "Backend", capabilities: ["skill:a"] })],
+      suites: [makeSuite({ name: "Backend", capabilities: [{ cap: "skill:a", source: SRC }] })],
       selectedId: "s1",
       draft: { name: "edited", description: "", capabilities: [] },
     });
@@ -137,7 +170,7 @@ describe("suites store — persistence", () => {
       draft: { name: "  Fresh  ", description: "  ", capabilities: [] },
     });
 
-    await useSuitesStore.getState().save();
+    await useSuitesStore.getState().save([]);
     const s = useSuitesStore.getState();
 
     expect(mocked.createSuite).toHaveBeenCalledWith({
@@ -149,7 +182,7 @@ describe("suites store — persistence", () => {
     expect(s.isCreating).toBe(false);
   });
 
-  it("save in edit mode updates the selected suite", async () => {
+  it("save attaches each capability's source from the live scan", async () => {
     mocked.updateSuite.mockResolvedValue(makeSuite());
     mocked.listSuites.mockResolvedValue([makeSuite()]);
     useSuitesStore.setState({
@@ -157,12 +190,29 @@ describe("suites store — persistence", () => {
       draft: { name: "Backend", description: "core", capabilities: ["skill:a"] },
     });
 
-    await useSuitesStore.getState().save();
+    await useSuitesStore.getState().save([makeItem("skill:a")]);
 
     expect(mocked.updateSuite).toHaveBeenCalledWith("s1", {
       name: "Backend",
       description: "core",
-      capabilities: ["skill:a"],
+      capabilities: [{ cap: "skill:a", source: SRC }],
+    });
+  });
+
+  it("save leaves a capability unqualified when its id is not in the scan", async () => {
+    mocked.updateSuite.mockResolvedValue(makeSuite());
+    mocked.listSuites.mockResolvedValue([makeSuite()]);
+    useSuitesStore.setState({
+      selectedId: "s1",
+      draft: { name: "Backend", description: "core", capabilities: ["skill:a"] },
+    });
+
+    await useSuitesStore.getState().save([]);
+
+    expect(mocked.updateSuite).toHaveBeenCalledWith("s1", {
+      name: "Backend",
+      description: "core",
+      capabilities: [{ cap: "skill:a", source: null }],
     });
   });
 
@@ -172,7 +222,7 @@ describe("suites store — persistence", () => {
       draft: { name: "   ", description: "", capabilities: [] },
     });
 
-    await useSuitesStore.getState().save();
+    await useSuitesStore.getState().save([]);
 
     expect(mocked.createSuite).not.toHaveBeenCalled();
   });
@@ -196,6 +246,7 @@ describe("suites store — apply & prune", () => {
     const result: ApplySuiteResult = {
       applyResult: { created: 2, removed: 1, replaced: 0, refreshed: 0, skipped: 0, errors: [] },
       skippedStale: 0,
+      skippedAbsentSource: 0,
       suite: makeSuite(),
     };
     mocked.applySuite.mockResolvedValue(result);
@@ -219,6 +270,7 @@ describe("suites store — apply & prune", () => {
         errors: [{ message: "boom" } as ApplyError],
       },
       skippedStale: 0,
+      skippedAbsentSource: 0,
       suite: makeSuite(),
     };
     mocked.applySuite.mockResolvedValue(result);
@@ -229,11 +281,47 @@ describe("suites store — apply & prune", () => {
     expect(toast.warning).toHaveBeenCalled();
   });
 
+  it("applySelected surfaces capabilities preserved from absent sources", async () => {
+    const result: ApplySuiteResult = {
+      applyResult: { created: 1, removed: 0, replaced: 0, refreshed: 0, skipped: 0, errors: [] },
+      skippedStale: 0,
+      skippedAbsentSource: 2,
+      suite: makeSuite(),
+    };
+    mocked.applySuite.mockResolvedValue(result);
+    useSuitesStore.setState({ selectedId: "s1" });
+
+    await useSuitesStore.getState().applySelected("cursor");
+
+    const msg = vi.mocked(toast.success).mock.calls[0]?.[0] as string;
+    expect(msg).toContain("2 from sources not on this machine, preserved");
+  });
+
   it("pruneSelection drops the selection when the selected suite has vanished", () => {
     useSuitesStore.setState({ suites: [makeSuite({ id: "other" })], selectedId: "s1" });
 
     useSuitesStore.getState().pruneSelection();
 
     expect(useSuitesStore.getState().selectedId).toBeUndefined();
+  });
+
+  it("setBase marks a suite as base via IPC and reloads", async () => {
+    mocked.setBaseSuite.mockResolvedValue(undefined);
+    mocked.listSuites.mockResolvedValue([makeSuite({ isBase: true })]);
+
+    await useSuitesStore.getState().setBase("s1");
+
+    expect(mocked.setBaseSuite).toHaveBeenCalledWith("s1");
+    expect(mocked.listSuites).toHaveBeenCalled();
+    expect(useSuitesStore.getState().suites[0].isBase).toBe(true);
+  });
+
+  it("setBase(null) clears the base suite via IPC", async () => {
+    mocked.setBaseSuite.mockResolvedValue(undefined);
+    mocked.listSuites.mockResolvedValue([makeSuite({ isBase: false })]);
+
+    await useSuitesStore.getState().setBase(null);
+
+    expect(mocked.setBaseSuite).toHaveBeenCalledWith(null);
   });
 });

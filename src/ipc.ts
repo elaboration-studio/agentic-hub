@@ -16,7 +16,9 @@ import type {
   ScanResult,
   Settings,
   SourceConfig,
+  SuiteCapabilityRef,
   SuiteDefinition,
+  SuiteOwnership,
   SuiteStoreChangedEvent,
   SyncHooksResult,
   SyncRulesResult,
@@ -129,13 +131,17 @@ export const onApplyProgress = (
 export interface SuiteCreatePayload {
   name: string;
   description?: string | null;
-  capabilities: string[];
+  // Source-qualified refs. The Rust core also tolerates bare-string entries
+  // (legacy), upgrading them in place on the next write.
+  capabilities: SuiteCapabilityRef[];
 }
 
 export interface SuiteUpdatePayload {
   name?: string;
   description?: string | null;
-  capabilities?: string[];
+  capabilities?: SuiteCapabilityRef[];
+  // Mark/unmark this suite as the single base suite (cleared on every other).
+  isBase?: boolean;
 }
 
 export const listSuites = (): Promise<SuiteDefinition[]> => invoke("cmd_list_suites");
@@ -159,6 +165,15 @@ export const applySuite = (
   suiteId: string,
 ): Promise<ApplySuiteResult> =>
   invoke("cmd_apply_suite", { input: { toolId, suiteId } });
+
+// Mark the single base suite (its capabilities union into every applied suite),
+// or clear it with `null`. Re-applies every bound tool.
+export const setBaseSuite = (id: string | null): Promise<void> =>
+  invoke("cmd_set_base_suite", { id });
+
+// Which suite owns each (tool, item) projection — drives the Manager cell lock.
+export const suiteOwnership = (): Promise<SuiteOwnership[]> =>
+  invoke("cmd_suite_ownership");
 
 export const onSuiteStoreChanged = (
   cb: (e: SuiteStoreChangedEvent) => void,

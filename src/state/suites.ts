@@ -9,14 +9,17 @@ import {
   createSuite,
   deleteSuite,
   listSuites,
+  setBaseSuite,
   updateSuite,
 } from "../ipc";
-import type { SuiteDefinition, ToolId } from "../types";
+import type { CapabilityItem, SuiteCapabilityRef, SuiteDefinition, ToolId } from "../types";
 import { messageOf } from "../shared";
 
 export interface Draft {
   name: string;
   description: string;
+  // Bare capability ids, for the checkbox tree. Source is re-attached on save
+  // from the live scan, so saved suites are portable across devices.
   capabilities: string[];
 }
 
@@ -33,9 +36,10 @@ interface SuitesState {
   cancelEdit: () => void;
   setDraft: (patch: Partial<Draft>) => void;
   setCapabilities: (ids: string[], on: boolean) => void;
-  save: () => Promise<void>;
+  save: (items: CapabilityItem[]) => Promise<void>;
   remove: () => Promise<void>;
   applySelected: (tool: ToolId) => Promise<void>;
+  setBase: (id: string | null) => Promise<void>;
   pruneSelection: () => void;
 }
 
@@ -70,7 +74,7 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
       draft: {
         name: suite.name,
         description: suite.description ?? "",
-        capabilities: [...suite.capabilities],
+        capabilities: suite.capabilities.map((r) => r.cap),
       },
     });
   },
@@ -103,15 +107,22 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
     set({ draft: { ...draft, capabilities: [...next] } });
   },
 
-  save: async () => {
+  save: async (items) => {
     const { draft, isCreating, selectedId, reload, selectSuite } = get();
     if (!draft || !draft.name.trim()) return;
     set({ busy: true });
     try {
+      // Attach each selected id's source from the live scan so the saved suite
+      // is portable. Ids absent from the scan stay unqualified (source: null).
+      const sourceOf = new Map(items.map((it) => [it.id, it.source]));
+      const capabilities: SuiteCapabilityRef[] = draft.capabilities.map((cap) => ({
+        cap,
+        source: sourceOf.get(cap) ?? null,
+      }));
       const payload = {
         name: draft.name.trim(),
         description: draft.description.trim() || null,
-        capabilities: draft.capabilities,
+        capabilities,
       };
       if (isCreating) {
         const created = await createSuite(payload);
@@ -153,10 +164,25 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
       const ar = result.applyResult;
       const parts = [`${ar.created} added`, `${ar.removed} removed`];
       if (result.skippedStale > 0) parts.push(`${result.skippedStale} stale skipped`);
+      if (result.skippedAbsentSource > 0)
+        parts.push(`${result.skippedAbsentSource} from sources not on this machine, preserved`);
       if (ar.errors.length > 0) parts.push(`${ar.errors.length} error(s)`);
       const msg = `Applied to ${tool} · ${parts.join(", ")}`;
       if (ar.errors.length > 0) toast.warning(msg);
       else toast.success(msg);
+    } catch (e) {
+      toast.error(messageOf(e));
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  setBase: async (id) => {
+    set({ busy: true });
+    try {
+      await setBaseSuite(id);
+      await get().reload();
+      toast.success(id ? "Marked as base suite" : "Base suite cleared");
     } catch (e) {
       toast.error(messageOf(e));
     } finally {

@@ -11,6 +11,7 @@ vi.mock("@/ipc", () => ({
   syncRules: vi.fn(),
   syncHooks: vi.fn(),
   setWatcherEnabled: vi.fn(),
+  suiteOwnership: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -23,6 +24,7 @@ import {
   plan,
   scan,
   setWatcherEnabled,
+  suiteOwnership,
   syncHooks,
   syncRules,
 } from "@/ipc";
@@ -48,6 +50,7 @@ const mocked = {
   syncRules: vi.mocked(syncRules),
   syncHooks: vi.mocked(syncHooks),
   setWatcherEnabled: vi.mocked(setWatcherEnabled),
+  suiteOwnership: vi.mocked(suiteOwnership),
 };
 
 function toolSettings(enabled: boolean): ToolSettings {
@@ -88,6 +91,7 @@ function makeItem(id: string): CapabilityItem {
     relativePath: id,
     sourceId: "default",
     sourceLabel: "Default",
+    source: { relHome: "~/.agentic", folder: ".agentic" },
     valid: true,
     validationErrors: [],
   };
@@ -120,6 +124,7 @@ function seedHappyPath(result?: Partial<InspectResult>) {
   mocked.loadSettings.mockResolvedValue(makeSettings());
   mocked.scan.mockResolvedValue({ items: [item], errors: [] });
   mocked.inspect.mockResolvedValue(inspectResult);
+  mocked.suiteOwnership.mockResolvedValue([]);
 }
 
 beforeEach(() => {
@@ -139,6 +144,35 @@ describe("manager store — refresh", () => {
     expect(s.desired["codex::skill:a"]).toBe(true);
     expect(s.desired["cursor::skill:a"]).toBe(false);
     expect(s.tools.map((t) => t.id)).toEqual(["codex", "cursor"]);
+    expect(s.pendingKeys).toEqual([]);
+  });
+
+  it("re-syncs desired and ownership when refreshed after an external apply", async () => {
+    // Initial state: cursor disabled, no suite owns the cell.
+    seedHappyPath();
+    await useManagerStore.getState().refresh();
+    expect(useManagerStore.getState().desired["cursor::skill:a"]).toBe(false);
+    expect(useManagerStore.getState().ownership.size).toBe(0);
+
+    // A suite is applied externally (Suites page / palette) → the backend emits
+    // `sources-changed`, App calls refresh(). Disk now shows cursor enabled and
+    // owned by a suite. The Manager must reflect both.
+    mocked.inspect.mockResolvedValue({
+      states: [makeState("codex", "skill:a", "enabled"), makeState("cursor", "skill:a", "enabled")],
+      adapterStatuses: [
+        { tool: "codex", available: true, unavailableReason: null },
+        { tool: "cursor", available: true, unavailableReason: null },
+      ],
+    });
+    mocked.suiteOwnership.mockResolvedValue([
+      { tool: "cursor", itemId: "skill:a", suiteId: "s1", suiteName: "Backend", fromBase: false },
+    ]);
+
+    await useManagerStore.getState().refresh();
+    const s = useManagerStore.getState();
+
+    expect(s.desired["cursor::skill:a"]).toBe(true);
+    expect(s.ownership.get("cursor::skill:a")).toEqual({ suiteName: "Backend", fromBase: false });
     expect(s.pendingKeys).toEqual([]);
   });
 
@@ -175,6 +209,27 @@ describe("manager store — staging", () => {
 
     expect(s.desired["claude::skill:a"]).toBeUndefined();
     expect(s.pendingKeys).toEqual([]);
+  });
+
+  it("loads suite ownership on refresh and locks owned cells against toggle", async () => {
+    seedHappyPath();
+    mocked.suiteOwnership.mockResolvedValue([
+      { tool: "codex", itemId: "skill:a", suiteId: "s1", suiteName: "Backend", fromBase: false },
+    ]);
+    await useManagerStore.getState().refresh();
+
+    expect(useManagerStore.getState().ownership.get("codex::skill:a")).toEqual({
+      suiteName: "Backend",
+      fromBase: false,
+    });
+
+    // A suite owns this cell, so manual toggle is a no-op (locked).
+    useManagerStore.getState().toggle("codex", "skill:a");
+    expect(useManagerStore.getState().pendingKeys).toEqual([]);
+
+    // Batch toggles skip owned cells too.
+    useManagerStore.getState().toggleMany("codex", ["skill:a"], false);
+    expect(useManagerStore.getState().pendingKeys).toEqual([]);
   });
 
   it("toggleMany stages several keys and resetDesired restores the seeded state", async () => {

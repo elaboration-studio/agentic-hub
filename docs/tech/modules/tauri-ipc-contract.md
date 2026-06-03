@@ -146,8 +146,14 @@ type CapabilityItem = {
   relativePath: string;        // relative to <source>/<kind>/
   sourceId: string;            // which source contributed this item
   sourceLabel: string;
+  source: SourceRef;           // portable cross-device source identity
   valid: boolean;
   validationErrors: string[];
+};
+
+type SourceRef = {
+  relHome: string;             // home-relative path (~/.agentic) or absolute if outside ~
+  folder: string;              // last path component (.agentic)
 };
 
 type ScanError = {
@@ -261,14 +267,24 @@ type SyncRulesResult = {
 
 ```typescript
 type SuiteDefinition = {
-  id: string;                   // UUID
+  id: string;                          // UUID
   name: string;
   description?: string;
-  capabilities: string[];       // capability IDs
-  createdAt: string;            // ISO 8601
+  capabilities: SuiteCapabilityRef[];  // source-qualified refs
+  isBase: boolean;                     // single base suite; merged into every apply (legacy = false)
+  createdAt: string;                   // ISO 8601
   updatedAt: string;
 };
+
+type SuiteCapabilityRef = {
+  cap: string;                  // bare capability id (skill:dev/tdd)
+  source: SourceRef | null;     // portable source identity; null = legacy/unqualified
+};
 ```
+
+`SuiteCapabilityRef` deserializes tolerantly from a legacy bare string
+(`"skill:dev/tdd"`), so existing suite files load unchanged and upgrade to the
+object form on the next write. See [suite-presets.md](./suite-presets.md).
 
 ### `cmd_get_suite(id: string) -> SuiteDefinition | null`
 
@@ -278,7 +294,7 @@ type SuiteDefinition = {
 type SuiteCreateInput = {
   name: string;
   description?: string;
-  capabilities: string[];
+  capabilities: SuiteCapabilityRef[];  // bare strings also accepted (legacy)
 };
 ```
 
@@ -290,11 +306,22 @@ Errors: `suite_name_collision` if `name` is already in use.
 type SuiteUpdateInput = {
   name?: string;
   description?: string;
-  capabilities?: string[];
+  capabilities?: SuiteCapabilityRef[];
+  isBase?: boolean;   // mark/unmark base; true clears the flag on every other suite
 };
 ```
 
+Side effect: after the update, the affected bound tools are re-applied as a
+full reset (base-merged) so projections track the new set, serialized against
+the watcher via the reconcile guard. A **normal** suite re-syncs only its bound
+tools; the **base** suite re-syncs **every** binding. Emits `sources-changed`
+when any tool was re-applied. Also opportunistically qualifies unqualified refs
+against the live scan and persists the upgrade (source backfill).
+
 ### `cmd_delete_suite(id: string) -> ()`
+
+Side effect: drops every suite<->tool binding referencing this suite. The
+tools' on-disk projections are left untouched (delete is not a tool wipe).
 
 ### `cmd_apply_suite(input: ApplySuiteInput) -> ApplySuiteResult`
 
@@ -306,10 +333,46 @@ type ApplySuiteInput = {
 
 type ApplySuiteResult = {
   applyResult: ApplyResult;
-  skippedStale: number;
+  skippedStale: number;          // present-source/unqualified refs with no match
+  skippedAbsentSource: number;   // qualified refs whose source isn't on this machine (preserved)
   suite: { id: string; name: string };
 };
 ```
+
+Side effect: records a suite<->tool binding (`record(toolId, suiteId)`,
+upsert per tool) so a later `cmd_update_suite` re-syncs this tool, and
+backfills unqualified refs against the live scan. Both the palette suite-apply
+flow and the Suites page flow through here. The base suite's capabilities are
+unioned into the effective set before apply (`merge_base_caps`); the recorded
+binding is always the **selected** suite, not the base. Refs qualified to a
+source absent on this machine are skipped and preserved — never deleted, never
+mis-resolved onto a same-named local capability.
+
+### `cmd_set_base_suite(id: string | null) -> ()`
+
+Marks `id` as the single base suite (clearing the flag on every other), or
+clears the base entirely with `null`. Errors `suite_not_found` on an unknown
+id. Side effect: re-applies **every** bound tool (each base-merged) so all
+projections pick up or drop the new base, then emits `sources-changed` and
+`suite-store-changed` (kind `base-changed`).
+
+### `cmd_suite_ownership() -> SuiteOwnership[]`
+
+Resolves which suite manages each `(tool, item)` projection, for the Manager to
+lock those cells and name the owner on hover. Computed from a fresh scan, the
+live bindings, the suites, and the base suite.
+
+```typescript
+type SuiteOwnership = {
+  tool: ToolId;
+  itemId: string;
+  suiteId: string;
+  suiteName: string;
+  fromBase: boolean;   // true when owned via the base merge, not the bound suite
+};
+```
+
+Bound-suite ownership wins when an item is in both the bound suite and the base.
 
 ## Workspace commands
 
@@ -437,7 +500,7 @@ Emitted globally when `suite_store` is mutated by any window. Lets all windows r
 
 ```typescript
 type SuiteStoreChangedEvent = {
-  kind: 'created' | 'updated' | 'deleted';
+  kind: 'created' | 'updated' | 'deleted' | 'base-changed';
   suiteId: string;
 };
 ```
