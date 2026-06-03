@@ -49,7 +49,9 @@ gh release view v0.1.0 --web
 ```
 
 To bump for the next release, raise the version in all four files in lockstep,
-add a `RELEASE.md` section, then tag `v<new-version>`.
+append the new entry to `CHANGELOG.md`, **replace** `RELEASE.md` with the new
+version's notes (it is published verbatim as the GitHub Release body, so it must
+hold only the current release), then tag `v<new-version>`.
 
 ## Health check
 
