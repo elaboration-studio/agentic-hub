@@ -77,6 +77,11 @@ import { ToolCells } from "./ToolCells";
 
 const EMPTY_COLLAPSE: ReadonlySet<string> = new Set();
 
+// Table header pinned just below the 56px (h-14) sticky toolbar so it stays
+// visible while the body scrolls. Opaque bg-card hides rows passing beneath;
+// z-20 sits under the toolbar (z-30) so they never overlap.
+const STICKY_HEAD = "sticky top-14 z-20 bg-card";
+
 const KIND_BADGE_COLOR: Record<CapabilityKind, string> = {
   skill: "text-primary",
   agent: "text-kind-agent",
@@ -167,7 +172,7 @@ export function Matrix() {
 
   return (
     <section className="flex flex-col gap-2.5">
-      <div className="flex items-center gap-2.5">
+      <div className="sticky top-0 z-30 flex h-14 items-center gap-2.5 bg-background shadow-[0_-1.25rem_0_0_var(--background)]">
         <ToggleGroup
           type="single"
           value={view}
@@ -280,45 +285,43 @@ export function Matrix() {
           <AlertDescription>No capabilities match “{query.trim()}”.</AlertDescription>
         </Alert>
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Capability</TableHead>
-                <TableHead className="w-32">Source</TableHead>
-                {tools.map((t) => {
-                  const adapter = adapterMap.get(t.id);
-                  const off = adapter && !adapter.available;
-                  return (
-                    <TableHead
-                      key={t.id}
-                      className="w-[120px] text-center"
-                      title={adapter?.unavailableReason ?? ""}
-                    >
-                      {t.label}
-                      {off && (
-                        <span className="ml-1.5 rounded border px-1 text-[9px] uppercase text-muted-foreground">
-                          off
-                        </span>
-                      )}
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {view === "flat"
-                ? renderFlat(filtered, ctx)
-                : renderNodes(
-                    [...root.children.values()],
-                    0,
-                    ctx,
-                    effectiveCollapsed,
-                    toggleCollapsed,
-                  )}
-            </TableBody>
-          </Table>
-        </div>
+        <Table containerClassName="overflow-x-visible overflow-y-visible rounded-xl border bg-card">
+          <TableHeader>
+            <TableRow className="hover:bg-card">
+              <TableHead className={STICKY_HEAD}>Capability</TableHead>
+              <TableHead className={cn("w-32", STICKY_HEAD)}>Source</TableHead>
+              {tools.map((t) => {
+                const adapter = adapterMap.get(t.id);
+                const off = adapter && !adapter.available;
+                return (
+                  <TableHead
+                    key={t.id}
+                    className={cn("w-[120px] text-center", STICKY_HEAD)}
+                    title={adapter?.unavailableReason ?? ""}
+                  >
+                    {t.label}
+                    {off && (
+                      <span className="ml-1.5 rounded border px-1 text-[9px] uppercase text-muted-foreground">
+                        off
+                      </span>
+                    )}
+                  </TableHead>
+                );
+              })}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {view === "flat"
+              ? renderFlat(filtered, ctx)
+              : renderNodes(
+                  [...root.children.values()],
+                  0,
+                  ctx,
+                  effectiveCollapsed,
+                  toggleCollapsed,
+                )}
+          </TableBody>
+        </Table>
       )}
     </section>
   );
