@@ -16,9 +16,22 @@ use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 use watcher::WatcherState;
 
+/// Register the `tauri-nspanel` plugin on macOS so the palette window can be
+/// subclassed to a non-activating `NSPanel` (no-op on other platforms).
+fn with_macos_panel(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    #[cfg(target_os = "macos")]
+    {
+        builder.plugin(tauri_nspanel::init())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        builder
+    }
+}
+
 /// Build and run the Tauri application.
 pub fn run() {
-    tauri::Builder::default()
+    with_macos_panel(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -50,10 +63,10 @@ pub fn run() {
             if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());
             }
-            // Pre-create the (hidden) palette window so the first summon is
+            // Pre-create the (hidden) palette panel so the first summon is
             // instant, then register the configured global accelerator. A bad
             // saved accelerator falls back to the default so summon never breaks.
-            let _ = palette::create_palette_window(app.handle());
+            let _ = palette::setup_palette(app.handle());
             if palette::register_palette_shortcut(app.handle(), &settings.palette_shortcut).is_err()
             {
                 let _ =
@@ -69,7 +82,7 @@ pub fn run() {
             // Alfred-style dismiss: the palette hides as soon as it loses focus.
             if window.label() == palette::PALETTE_LABEL {
                 if let WindowEvent::Focused(false) = event {
-                    let _ = window.hide();
+                    palette::hide_palette(window.app_handle());
                 }
                 return;
             }

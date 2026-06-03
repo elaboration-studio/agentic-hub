@@ -25,7 +25,8 @@ type to find a capability, and press Enter to open its original file in my edito
 ### In scope
 
 - A dedicated floating palette window (label `palette`): borderless, transparent,
-  always-on-top, centered, hidden until summoned, dismissed on blur or Esc.
+  centered, hidden until summoned, dismissed on blur or Esc. On macOS it is a
+  non-activating `NSPanel` so it floats over other apps' full-screen Spaces.
 - A configurable global accelerator (default `Cmd+Alt+A`) that toggles it.
 - Flat resource search: match by name, relative path, or source; Enter opens the
   original file (skill/hook marker file, or the agent/rule file itself) in the
@@ -56,11 +57,17 @@ flowchart LR
   blur["blur / Esc"] --> hide["hide palette"]
 ```
 
-- **Window + shortcut (Rust).** `palette.rs` creates the hidden window at launch
-  and owns `toggle_palette` / `hide_palette` / `register_palette_shortcut`. The
-  `tauri-plugin-global-shortcut` handler toggles the palette on key press. The
-  window hides on `WindowEvent::Focused(false)`. `macOSPrivateApi` is enabled so
-  the window can be transparent.
+- **Panel + shortcut (Rust).** `palette.rs` creates the hidden window at launch
+  and owns `setup_palette` / `toggle_palette` / `hide_palette` /
+  `register_palette_shortcut`. On macOS `setup_palette` subclasses the window to a
+  non-activating `NSPanel` (via `tauri-nspanel`) with `FullScreenAuxiliary |
+  CanJoinAllSpaces` collection behavior so it overlays full-screen apps without
+  switching Spaces — standard `NSWindow` cannot ([tauri#11488](https://github.com/tauri-apps/tauri/issues/11488)).
+  Panel objc ops run on the main thread (`run_on_main_thread`); non-macOS falls
+  back to an always-on-top, all-workspaces window. The
+  `tauri-plugin-global-shortcut` handler toggles the palette on key press; it
+  hides on `WindowEvent::Focused(false)`. `macOSPrivateApi` is enabled so the
+  window can be transparent.
 - **Menu (Rust).** `menu.rs` builds the app menu and routes events: Settings ->
   show main + emit `menu-open-config`; Command Palette -> `toggle_palette`.
   `PredefinedMenuItem::quit` preserves Cmd+Q as the hard exit that bypasses the

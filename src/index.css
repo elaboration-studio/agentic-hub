@@ -51,8 +51,12 @@
   --secondary-foreground: #e6e8ee;
   --muted: #1d2029;
   --muted-foreground: #9aa0ad;
-  --accent: #1d2029;
-  --accent-foreground: #e6e8ee;
+  /* Hover / selection surface. MUST stay distinct from --popover/--card/--secondary
+     (all #1d2029) or `bg-accent` highlights become invisible in dark mode — the
+     root cause of the palette/menu/button hover bug. Sits one step above --border
+     (#272a33) so selection reads over popover, card, and bordered surfaces. */
+  --accent: #2c313d;
+  --accent-foreground: #f3f5f9;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
   --border: #272a33;
