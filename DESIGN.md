@@ -52,8 +52,12 @@ as a `--color-*` utility.
 - **Background** (`#0e0f13` dark / `#ffffff` light): app canvas
 - **Card / Popover** (`#16181f` dark): panels, tables, the elevated popover step
   uses `#1d2029` dark for menus/dialogs
-- **Secondary / Muted / Accent** (`#1d2029` dark / `#f2f3f5` light): inset
-  surfaces — inputs, ghost-hover, kind/tree group rows, chips
+- **Secondary / Muted** (`#1d2029` dark / `#f2f3f5` light): inset surfaces —
+  inputs, secondary buttons, kind/tree group rows, chips
+- **Accent** (`#2c313d` dark / `#eef0f3` light): the hover / selection surface.
+  Deliberately one step lighter than `Secondary/Muted/Popover` (all `#1d2029`
+  in dark) so `bg-accent` highlights are visible on every surface. Keep it
+  distinct from those tokens — collapsing them back is the hover-invisibility bug.
 
 ### States & Shadows
 
@@ -215,10 +219,10 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 - Per-row "more actions" (Open original, Reveal in Finder, Open in <tool>),
   replacing the hidden `<details>` menu. Trigger is a ghost `icon-xs` `⋯`
   revealed on row hover.
-- **Item highlight:** menus (`dropdown-menu`, `select`) sit on the `popover`
-  surface, which in dark equals `accent` — so `bg-accent` highlights are
-  invisible. Highlighted/hovered items therefore use a `foreground/10` overlay
-  (visible on any surface, both themes) and `cursor-pointer`, never `bg-accent`.
+- **Item highlight:** highlighted / hovered items use the standard
+  `bg-accent` + `text-accent-foreground` with `cursor-pointer`. This reads on the
+  `popover` surface because `accent` (`#2c313d` dark) is kept distinct from
+  `popover` (`#1d2029`); see the Accent surface note above.
 
 ### Toaster (`sonner`)
 
@@ -336,7 +340,7 @@ A desktop window, but it must stay usable when narrow.
 ### Quick Reference
 
 - Surfaces (dark): bg `#0e0f13`, card `#16181f`, popover/inset `#1d2029`,
-  border `#272a33`
+  hover/selection accent `#2c313d`, border `#272a33`
 - Text: fg `#e6e8ee`, muted `#9aa0ad`
 - Accent: primary `#4f46e5`, ring `#6366f1`
 - Semantic: success `#22c55e`, warning `#f59e0b`, destructive `#ef4444`,

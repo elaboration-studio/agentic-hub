@@ -1,6 +1,6 @@
 [package]
 name = "agentic-hub"
-version = "0.2.1"
+version = "0.3.0"
 description = "Tauri 2.x desktop shell for Agentic Hub. Thin #[tauri::command] wrappers over agentic-core."
 edition.workspace = true
 license.workspace = true
@@ -26,8 +26,14 @@ agentic-core = { path = "../agentic-core" }
 notify = "8"
 serde = { workspace = true }
 serde_json = { workspace = true }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
+# macOS-only: subclass the palette window to a non-activating NSPanel so it can
+# float over other apps' full-screen Spaces (standard NSWindow cannot — see
+# tauri#11488). Encapsulates the objc FFI, keeping this crate `unsafe`-free.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 ts-rs = { version = "10", optional = true }
