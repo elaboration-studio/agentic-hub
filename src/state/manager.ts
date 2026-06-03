@@ -32,6 +32,7 @@ import {
   enabledTools,
   key,
   messageOf,
+  WORKSPACE_ID_PREFIX,
   WORKSPACE_TOOL_IDS,
   WORKSPACE_TOOLS,
   type Scope,
@@ -106,12 +107,6 @@ function buildCurrentMap(result: InspectResult): Map<string, ToolCapabilityState
   for (const s of result.states) map.set(key(s.tool, s.itemId), s);
   return map;
 }
-
-// Workspace items are tagged with this id prefix so they never collide with a
-// global resource that happens to share the same relative path — both render
-// as their own source-filterable row. The `::` matches `key()`'s delimiter, so
-// `toolOfKey` still parses the tool from the head of the composite key.
-const WORKSPACE_ID_PREFIX = "ws::";
 
 function namespaceItem(it: CapabilityItem): CapabilityItem {
   return { ...it, id: WORKSPACE_ID_PREFIX + it.id };

@@ -8,7 +8,13 @@
 // it does not execute), where each row applies the suite to one tool as a full
 // reset. New commands drop in as additional root providers.
 
-import type { CapabilityItem, Settings, SuiteDefinition, ToolId } from "@/types";
+import type {
+  CapabilityItem,
+  Settings,
+  SuiteDefinition,
+  ToolId,
+  WorkspaceTarget,
+} from "@/types";
 import { editorApp, enabledTools, originalFile } from "@/shared";
 import { applySuite, openPath, type NavRoute } from "@/ipc";
 
@@ -25,14 +31,24 @@ export interface PaletteItem {
   dismissOnRun?: boolean;
 }
 
+/// One remembered workspace and the read-only inventory scanned from its tool
+/// dirs. Loaded per summon so the palette can search across every project.
+export interface WorkspaceInventoryEntry {
+  target: WorkspaceTarget;
+  items: CapabilityItem[];
+}
+
 export interface ProviderContext {
   settings: Settings;
   items: CapabilityItem[];
   suites: SuiteDefinition[];
+  workspaces: WorkspaceInventoryEntry[];
   query: string;
   navigate: (route: NavRoute) => void;
   /// Drill into the suite-tools view for the given suite.
   enterSuite: (suiteId: string, suiteName: string) => void;
+  /// Surface a workspace inventory item in the Hub's workspace matrix.
+  locate: (workspaceId: string, itemId: string) => void;
 }
 
 export type CommandProvider = (ctx: ProviderContext) => PaletteItem[];
@@ -65,6 +81,26 @@ const resourceSearchProvider: CommandProvider = ({ items, settings, query }) => 
       group: GROUP_BY_KIND[it.kind],
       run: () => openPath(originalFile(it), app),
     }));
+};
+
+// Workspace search — match inventory items across every remembered workspace.
+// Running a row locates the item in the Hub (it does not open a file), so the
+// user lands on that row in the workspace matrix. Returns nothing on an empty
+// query, like resource search, so the panel does not dump every project.
+const workspaceSearchProvider: CommandProvider = ({ workspaces, query, locate }) => {
+  const q = query.trim();
+  if (!q) return [];
+  return workspaces.flatMap(({ target, items }) =>
+    items
+      .filter((it) => matches(`${target.label} ${it.name} ${it.relativePath} ${it.sourceLabel}`, q))
+      .map((it) => ({
+        id: `workspace:${target.id}:${it.id}`,
+        title: it.name,
+        subtitle: `${target.label} · ${it.relativePath}`,
+        group: "Workspace",
+        run: () => locate(target.id, it.id),
+      })),
+  );
 };
 
 // Suite apply — match suites by name/description. Running a suite row drills
@@ -107,6 +143,7 @@ const navProvider: CommandProvider = ({ query, navigate }) => {
 /// is a resource (the primary "search and open" flow); suites then navigation.
 export const PROVIDERS: CommandProvider[] = [
   resourceSearchProvider,
+  workspaceSearchProvider,
   suiteApplyProvider,
   navProvider,
 ];

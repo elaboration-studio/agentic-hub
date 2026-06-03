@@ -3,11 +3,12 @@
 // and a result list. Esc or losing focus dismisses the window.
 
 import { useEffect, useRef } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { ChevronLeft, Search } from "lucide-react";
 import { usePaletteStore } from "@/state/palette";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { PALETTE_WIDTH, paletteWindowHeight } from "./layout";
 
 export function CommandPalette() {
   const status = usePaletteStore((s) => s.status);
@@ -24,7 +25,23 @@ export function CommandPalette() {
   const reset = usePaletteStore((s) => s.reset);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const inSuiteTools = view.kind === "suite-tools";
+
+  // Fit the transparent window to the panel so no dead space below the card
+  // reveals the main window behind it (the "stacked layers" look). The panel's
+  // height is content-driven, so a ResizeObserver re-syncs on every list change.
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const win = getCurrentWindow();
+    const sync = () =>
+      void win.setSize(new LogicalSize(PALETTE_WIDTH, paletteWindowHeight(panel.offsetHeight)));
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
 
   // Load on mount, and re-load + reset on every re-summon (window regains
   // focus) so resource edits are picked up and each summon starts clean.
@@ -85,7 +102,10 @@ export function CommandPalette() {
 
   return (
     <div className="flex h-full w-full items-start justify-center p-3" onKeyDown={onKeyDown}>
-      <div className="flex max-h-full w-full flex-col overflow-hidden rounded-xl border border-border bg-popover/95 text-popover-foreground shadow-2xl backdrop-blur-xl">
+      <div
+        ref={panelRef}
+        className="flex w-full flex-col overflow-hidden rounded-xl border border-border bg-popover/95 text-popover-foreground shadow-2xl backdrop-blur-xl"
+      >
         <div className="flex items-center gap-3 px-4 py-3.5">
           {inSuiteTools ? (
             <button

@@ -4,7 +4,7 @@
 // A shared search box filters both views. Group rows (kinds in flat, folders in
 // tree) carry batch toggles that flip every capability beneath them per tool.
 
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -112,6 +112,8 @@ export function Matrix() {
   const setKind = useManagerFiltersStore((s) => s.setKind);
   const enabledOnly = useManagerFiltersStore((s) => s.enabledOnly);
   const setEnabledOnly = useManagerFiltersStore((s) => s.setEnabledOnly);
+  const locateId = useManagerFiltersStore((s) => s.locateId);
+  const clearLocate = useManagerFiltersStore((s) => s.clearLocate);
 
   const items = data?.items ?? [];
   const adapterStatuses = data?.result.adapterStatuses ?? [];
@@ -151,6 +153,33 @@ export function Matrix() {
   const root = useMemo(() => buildTree(filtered), [filtered]);
   const folderPaths = useMemo(() => collectFolderPaths(root), [root]);
 
+  // Locate flow (from a palette workspace search): expand the row's ancestor
+  // folders so a tree-collapsed match becomes visible, scroll it into view, and
+  // clear the highlight after a moment. Reads collapsed via getState so the
+  // effect only re-runs when the located item changes, not on every expand.
+  useEffect(() => {
+    if (!locateId || !data) return;
+    const target = data.items.find((it) => it.id === locateId);
+    if (!target) return;
+
+    const ancestors = ancestorPaths(target.relativePath);
+    const { collapsed: cur, setCollapsed: set } = useManagerFiltersStore.getState();
+    if (ancestors.some((p) => cur.has(p))) {
+      set(new Set([...cur].filter((p) => !ancestors.includes(p))));
+    }
+
+    const scroll = setTimeout(() => {
+      document
+        .querySelector("[data-locate-row]")
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 80);
+    const clear = setTimeout(() => clearLocate(), 2200);
+    return () => {
+      clearTimeout(scroll);
+      clearTimeout(clear);
+    };
+  }, [locateId, data, clearLocate]);
+
   if (!data || items.length === 0) {
     return (
       <Alert>
@@ -173,6 +202,7 @@ export function Matrix() {
     onToggleMany,
     settings: data.settings,
     readOnly,
+    locateId,
   };
   const effectiveCollapsed = query.trim() ? EMPTY_COLLAPSE : collapsed;
 
@@ -348,6 +378,21 @@ interface BodyContext {
   settings: Settings;
   // Workspace scope: cells and aggregates render as static present/absent.
   readOnly: boolean;
+  // The row to surface from a palette locate (namespaced item id), or "".
+  locateId: string;
+}
+
+// The folder paths leading to a leaf, given its source-relative path. Used to
+// expand a collapsed tree down to a located row. `dev/cto/qa` -> [`dev`, `dev/cto`].
+function ancestorPaths(relativePath: string): string[] {
+  const parts = relativePath.split("/").filter(Boolean);
+  const out: string[] = [];
+  let acc = "";
+  for (let i = 0; i < parts.length - 1; i++) {
+    acc = acc ? `${acc}/${parts[i]}` : parts[i];
+    out.push(acc);
+  }
+  return out;
 }
 
 function filterItems(
@@ -479,8 +524,16 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
 }
 
 function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge?: boolean) {
+  const located = !!ctx.locateId && item.id === ctx.locateId;
   return (
-    <TableRow key={`l:${item.id}`} className="group">
+    <TableRow
+      key={`l:${item.id}`}
+      className={cn(
+        "group",
+        located && "bg-primary/10 ring-2 ring-inset ring-primary",
+      )}
+      {...(located ? { "data-locate-row": "" } : {})}
+    >
       <TableCell style={padding ? { paddingLeft: padding } : undefined}>
         {badge && (
           <Badge variant="outline" className={cn("mr-2 uppercase", KIND_BADGE_COLOR[item.kind])}>

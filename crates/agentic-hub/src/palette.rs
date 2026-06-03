@@ -74,6 +74,13 @@ mod imp {
                     .can_join_all_spaces()
                     .into(),
             );
+            // Changing the style mask above resets the panel to opaque with the
+            // default window background, undoing the builder's `transparent(true)`.
+            // Re-apply clear background + non-opaque (and drop the native window
+            // shadow) so only the rounded CSS card renders — otherwise the native
+            // dark background and shadow bleed through the card's corners/edges.
+            panel.set_transparent(true);
+            panel.set_has_shadow(false);
         }
         Ok(())
     }

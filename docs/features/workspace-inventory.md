@@ -5,7 +5,7 @@ Mode: Detailed
 Owner: Arno
 Last Updated: 2026-06-04
 Depends On: [docs/features/mvp-unified-agentic-capability-manager.md](./mvp-unified-agentic-capability-manager.md), [ARCHITECTURE.workspace.md](../../ARCHITECTURE.workspace.md)
-Related Docs: [docs/tech/modules/workspace-inventory.md](../tech/modules/workspace-inventory.md), [docs/tech/modules/watcher.md](../tech/modules/watcher.md)
+Related Docs: [docs/tech/modules/workspace-inventory.md](../tech/modules/workspace-inventory.md), [docs/tech/modules/watcher.md](../tech/modules/watcher.md), [docs/features/command-palette.md](./command-palette.md)
 
 ## Why now
 
@@ -45,6 +45,11 @@ audit**: pick a project, see exactly what each tool has, live-updated.
   (`sources-changed`) reloads the merged inventory too.
 - **No writes, ever.** Workspace scope never touches the filesystem. Toggles,
   apply, and ownership locks are all inert in read-only mode.
+- **Locate from the command palette.** The
+  [command palette](./command-palette.md) searches every remembered workspace's
+  inventory. Picking a result *locates* it: the Hub jumps to Workspace scope,
+  activates the owning workspace, and scrolls/highlights that row in the matrix —
+  a fast path into this view from anywhere.
 
 ## Scope
 
@@ -70,3 +75,6 @@ audit**: pick a project, see exactly what each tool has, live-updated.
    shared root.
 5. Edit the project's tool dirs in another tool — the matrix updates on save.
 6. Remove the workspace from the rail when finished; nothing is left behind.
+
+Alternatively, summon the command palette from anywhere, type a resource name,
+and pick a workspace hit — the Hub lands on this view with that row highlighted.

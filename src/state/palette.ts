@@ -7,10 +7,13 @@
 
 import { create } from "zustand";
 import {
+  emitHubLocate,
   emitHubNavigate,
   listSuites,
+  listWorkspaceTargets,
   loadSettings,
   scan,
+  scanWorkspace,
   showMain,
   type NavRoute,
 } from "../ipc";
@@ -20,6 +23,7 @@ import {
   computeResults,
   computeSuiteToolResults,
   type PaletteItem,
+  type WorkspaceInventoryEntry,
 } from "../components/palette/commands";
 
 export type Status = "loading" | "ready" | "error";
@@ -37,6 +41,7 @@ interface PaletteState {
   settings: Settings | null;
   items: CapabilityItem[];
   suites: SuiteDefinition[];
+  workspaces: WorkspaceInventoryEntry[];
   view: PaletteView;
   query: string;
   selectedIndex: number;
@@ -57,10 +62,29 @@ function navigate(route: NavRoute) {
   void emitHubNavigate(route).then(() => showMain());
 }
 
+// Ask the main window to locate a workspace item, then surface it.
+function locate(workspaceId: string, itemId: string) {
+  void emitHubLocate({ workspaceId, itemId }).then(() => showMain());
+}
+
+// Scan every remembered workspace's inventory so the palette can search across
+// all projects. `allSettled` keeps one unreadable project from breaking summon.
+async function loadWorkspaces(): Promise<WorkspaceInventoryEntry[]> {
+  const { workspaceTargets } = await listWorkspaceTargets();
+  const scanned = await Promise.allSettled(
+    workspaceTargets.map((target) => scanWorkspace(target.id)),
+  );
+  return workspaceTargets.flatMap((target, i) => {
+    const result = scanned[i];
+    return result.status === "fulfilled" ? [{ target, items: result.value.items }] : [];
+  });
+}
+
 function recompute(
   settings: Settings | null,
   items: CapabilityItem[],
   suites: SuiteDefinition[],
+  workspaces: WorkspaceInventoryEntry[],
   view: PaletteView,
   query: string,
   enterSuite: (suiteId: string, suiteName: string) => void,
@@ -69,7 +93,16 @@ function recompute(
   if (view.kind === "suite-tools") {
     return computeSuiteToolResults(settings, query, view.suiteId, view.suiteName);
   }
-  return computeResults({ settings, items, suites, query, navigate, enterSuite });
+  return computeResults({
+    settings,
+    items,
+    suites,
+    workspaces,
+    query,
+    navigate,
+    enterSuite,
+    locate,
+  });
 }
 
 function clamp(index: number, length: number): number {
@@ -83,6 +116,7 @@ export const getInitialState = () => ({
   settings: null,
   items: [],
   suites: [],
+  workspaces: [],
   view: ROOT_VIEW,
   query: "",
   selectedIndex: 0,
@@ -93,13 +127,13 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
   // A stable enterSuite for the provider context: switch to the suite-tools
   // view, clearing the query so the tool list shows in full.
   const enterSuite = (suiteId: string, suiteName: string) => {
-    const { settings, items, suites } = get();
+    const { settings, items, suites, workspaces } = get();
     const view: PaletteView = { kind: "suite-tools", suiteId, suiteName };
     set({
       view,
       query: "",
       selectedIndex: 0,
-      results: recompute(settings, items, suites, view, "", enterSuite),
+      results: recompute(settings, items, suites, workspaces, view, "", enterSuite),
     });
   };
 
@@ -108,7 +142,15 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
     set({
       ...overrides,
       selectedIndex: 0,
-      results: recompute(next.settings, next.items, next.suites, next.view, next.query, enterSuite),
+      results: recompute(
+        next.settings,
+        next.items,
+        next.suites,
+        next.workspaces,
+        next.view,
+        next.query,
+        enterSuite,
+      ),
     });
   };
 
@@ -119,8 +161,12 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
       set({ status: "loading", error: "" });
       try {
         const settings = await loadSettings();
-        const [{ items }, suites] = await Promise.all([scan(settings.sources), listSuites()]);
-        refreshResults({ settings, items, suites, status: "ready" });
+        const [{ items }, suites, workspaces] = await Promise.all([
+          scan(settings.sources),
+          listSuites(),
+          loadWorkspaces(),
+        ]);
+        refreshResults({ settings, items, suites, workspaces, status: "ready" });
       } catch (e) {
         set({ error: messageOf(e), status: "error" });
       }

@@ -14,6 +14,9 @@ interface ManagerFiltersState {
   kind: KindFilter;
   enabledOnly: boolean;
   collapsed: Set<string>;
+  // The matrix row to surface (namespaced item id), set by a palette locate.
+  // Empty when nothing is being located. The Matrix clears it after scrolling.
+  locateId: string;
 
   setView: (view: View) => void;
   setQuery: (query: string) => void;
@@ -22,6 +25,8 @@ interface ManagerFiltersState {
   setEnabledOnly: (enabledOnly: boolean) => void;
   setCollapsed: (collapsed: Set<string>) => void;
   toggleCollapsed: (path: string) => void;
+  setLocate: (id: string) => void;
+  clearLocate: () => void;
 }
 
 export const useManagerFiltersStore = create<ManagerFiltersState>((set) => ({
@@ -31,6 +36,7 @@ export const useManagerFiltersStore = create<ManagerFiltersState>((set) => ({
   kind: "all",
   enabledOnly: false,
   collapsed: new Set<string>(),
+  locateId: "",
 
   setView: (view) => set({ view }),
   setQuery: (query) => set({ query }),
@@ -45,4 +51,6 @@ export const useManagerFiltersStore = create<ManagerFiltersState>((set) => ({
       else next.add(path);
       return { collapsed: next };
     }),
+  setLocate: (id) => set({ locateId: id }),
+  clearLocate: () => set({ locateId: "" }),
 }));

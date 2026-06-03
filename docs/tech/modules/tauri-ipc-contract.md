@@ -512,6 +512,14 @@ Emitted (no payload) when the native "Settings…" menu item (Cmd+,) is activate
 
 Emitted by the palette window (payload: a route string `'manager' | 'suites' | 'config'`) when a navigation command runs. The main window listens and switches route; the palette then hides via `cmd_show_main`.
 
+### `hub-locate`
+
+Emitted by the palette window when a workspace search result is chosen. The main window switches to Manager + Workspace scope, activates the owning workspace (loading its inventory), and flags the matching matrix row so the `Matrix` expands its folders, scrolls to it, and highlights it briefly. The palette then surfaces the main window via `cmd_show_main`.
+
+```typescript
+type LocateRequest = { workspaceId: string; itemId: string };  // raw (non-namespaced) item id
+```
+
 ### `settings-changed`
 
 Emitted globally when `cmd_save_settings` succeeds.

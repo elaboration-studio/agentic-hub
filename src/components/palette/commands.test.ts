@@ -6,8 +6,20 @@ vi.mock("@/ipc", () => ({
 }));
 
 import { applySuite, openPath } from "@/ipc";
-import type { CapabilityItem, Settings, SuiteDefinition, ToolId, ToolSettings } from "@/types";
-import { computeResults, computeSuiteToolResults, type ProviderContext } from "./commands";
+import type {
+  CapabilityItem,
+  Settings,
+  SuiteDefinition,
+  ToolId,
+  ToolSettings,
+  WorkspaceTarget,
+} from "@/types";
+import {
+  computeResults,
+  computeSuiteToolResults,
+  type ProviderContext,
+  type WorkspaceInventoryEntry,
+} from "./commands";
 
 const mocked = {
   openPath: vi.mocked(openPath),
@@ -74,14 +86,27 @@ function makeItem(id: string, name: string): CapabilityItem {
   };
 }
 
+function makeTarget(overrides: Partial<WorkspaceTarget> = {}): WorkspaceTarget {
+  return { id: "w1", label: "my-project", dir: "/repos/my-project", lastUsedAt: "t", ...overrides };
+}
+
+function makeWorkspace(
+  target: WorkspaceTarget,
+  items: CapabilityItem[],
+): WorkspaceInventoryEntry {
+  return { target, items };
+}
+
 function ctx(overrides: Partial<ProviderContext> = {}): ProviderContext {
   return {
     settings: makeSettings(),
     items: [],
     suites: [],
+    workspaces: [],
     query: "",
     navigate: vi.fn(),
     enterSuite: vi.fn(),
+    locate: vi.fn(),
     ...overrides,
   };
 }
@@ -117,6 +142,58 @@ describe("root providers", () => {
     expect(row.dismissOnRun).toBeUndefined();
     row.run();
     expect(mocked.openPath).toHaveBeenCalledWith("/shared/skills/tdd/SKILL.md", undefined);
+  });
+});
+
+describe("workspace search provider", () => {
+  it("returns nothing on an empty query (does not dump every project)", () => {
+    const workspaces = [makeWorkspace(makeTarget(), [makeItem("skill:qa", "qa")])];
+    const rows = computeResults(ctx({ workspaces }));
+    expect(rows.filter((r) => r.group === "Workspace")).toEqual([]);
+  });
+
+  it("filters inventory items by name/path across remembered workspaces", () => {
+    const workspaces = [
+      makeWorkspace(makeTarget({ id: "w1", label: "alpha" }), [
+        makeItem("skill:qa", "qa"),
+        makeItem("skill:tdd", "tdd"),
+      ]),
+      makeWorkspace(makeTarget({ id: "w2", label: "beta" }), [makeItem("agent:qa-bot", "qa")]),
+    ];
+
+    const rows = computeResults(ctx({ workspaces, query: "qa" })).filter(
+      (r) => r.group === "Workspace",
+    );
+    expect(rows.map((r) => r.subtitle)).toEqual(["alpha · qa", "beta · qa"]);
+  });
+
+  it("matches the workspace name so searching a project surfaces all its items", () => {
+    const workspaces = [
+      makeWorkspace(makeTarget({ id: "w1", label: "portfolio" }), [
+        makeItem("rule:overview", "01-project-overview"),
+        makeItem("rule:i18n", "07-i18n"),
+      ]),
+      makeWorkspace(makeTarget({ id: "w2", label: "aicw" }), [makeItem("rule:styling", "04-styling")]),
+    ];
+
+    const rows = computeResults(ctx({ workspaces, query: "portfolio" })).filter(
+      (r) => r.group === "Workspace",
+    );
+    expect(rows.map((r) => r.title)).toEqual(["01-project-overview", "07-i18n"]);
+  });
+
+  it("running a workspace row locates the item (workspaceId + raw item id)", () => {
+    const locate = vi.fn();
+    const workspaces = [
+      makeWorkspace(makeTarget({ id: "w1" }), [makeItem("skill:qa", "qa")]),
+    ];
+    const row = computeResults(ctx({ workspaces, query: "qa", locate })).find(
+      (r) => r.group === "Workspace",
+    )!;
+
+    expect(row.dismissOnRun).toBeUndefined();
+    row.run();
+    expect(locate).toHaveBeenCalledWith("w1", "skill:qa");
   });
 });
 

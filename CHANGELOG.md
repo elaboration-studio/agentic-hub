@@ -22,6 +22,21 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   workspace's tool dirs and emits a new `workspace-changed` event; the UI
   re-scans on change. Picking / activating / removing a workspace restarts the
   watcher so it tracks the new active dirs.
+- **Palette workspace search & locate.** The command palette now searches the
+  read-only inventory of every remembered workspace (matched by project name
+  plus item name / path / source) and **locates** a hit in the Manager's
+  workspace matrix — switching to workspace scope, activating the workspace, and
+  scrolling to and highlighting the row instead of opening a file. Backed by a
+  new `hub-locate` window event.
+
+### Fixed
+
+- **The command palette renders as a clean floating card on macOS.** The
+  `NSPanel` now re-applies transparency and drops its native window shadow after
+  the style-mask change, so the native background and border no longer bleed
+  through the rounded card's corners. The transparent window sizes to its
+  content (removing the "stacked layers" dead space), and the result list no
+  longer collapses to a single visible row.
 
 ### Removed
 
