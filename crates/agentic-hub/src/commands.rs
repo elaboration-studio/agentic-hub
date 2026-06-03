@@ -519,7 +519,10 @@ pub struct ApplySuiteInput {
 }
 
 #[tauri::command]
-pub async fn cmd_apply_suite(input: ApplySuiteInput) -> IpcResult<ApplySuiteResult> {
+pub async fn cmd_apply_suite(
+    app: AppHandle,
+    input: ApplySuiteInput,
+) -> IpcResult<ApplySuiteResult> {
     let settings = Settings::load()?;
     let store = SuiteStore::with_path(settings.resolved_suites_path());
     let mut suite = store
@@ -538,6 +541,9 @@ pub async fn cmd_apply_suite(input: ApplySuiteInput) -> IpcResult<ApplySuiteResu
     // Bind this tool to the selected suite (not the base) so a later capability
     // edit re-syncs it.
     let _ = SuiteBindingStore::new().record(input.tool_id, &input.suite_id);
+    // Tool projections + suite ownership changed — nudge the manager (this window
+    // or the main window when applied from the palette) to re-scan and re-lock.
+    let _ = app.emit("sources-changed", ());
     Ok(result)
 }
 
@@ -552,8 +558,10 @@ pub async fn cmd_set_base_suite(app: AppHandle, id: Option<String>) -> IpcResult
         let settings = Settings::load()?;
         let scanned = api::scan(&settings);
         resync_bindings(&store, &settings, &scanned, &bindings);
-        let _ = app.emit("sources-changed", ());
     }
+    // Always refresh the manager: the base set changed, so cell-lock ownership
+    // must be recomputed even when no tool was re-applied (no bindings yet).
+    let _ = app.emit("sources-changed", ());
     emit_suite_changed(&app, "base-changed", id);
     Ok(())
 }

@@ -147,6 +147,35 @@ describe("manager store — refresh", () => {
     expect(s.pendingKeys).toEqual([]);
   });
 
+  it("re-syncs desired and ownership when refreshed after an external apply", async () => {
+    // Initial state: cursor disabled, no suite owns the cell.
+    seedHappyPath();
+    await useManagerStore.getState().refresh();
+    expect(useManagerStore.getState().desired["cursor::skill:a"]).toBe(false);
+    expect(useManagerStore.getState().ownership.size).toBe(0);
+
+    // A suite is applied externally (Suites page / palette) → the backend emits
+    // `sources-changed`, App calls refresh(). Disk now shows cursor enabled and
+    // owned by a suite. The Manager must reflect both.
+    mocked.inspect.mockResolvedValue({
+      states: [makeState("codex", "skill:a", "enabled"), makeState("cursor", "skill:a", "enabled")],
+      adapterStatuses: [
+        { tool: "codex", available: true, unavailableReason: null },
+        { tool: "cursor", available: true, unavailableReason: null },
+      ],
+    });
+    mocked.suiteOwnership.mockResolvedValue([
+      { tool: "cursor", itemId: "skill:a", suiteId: "s1", suiteName: "Backend", fromBase: false },
+    ]);
+
+    await useManagerStore.getState().refresh();
+    const s = useManagerStore.getState();
+
+    expect(s.desired["cursor::skill:a"]).toBe(true);
+    expect(s.ownership.get("cursor::skill:a")).toEqual({ suiteName: "Backend", fromBase: false });
+    expect(s.pendingKeys).toEqual([]);
+  });
+
   it("sets status=error and the message when a load step throws", async () => {
     mocked.loadSettings.mockRejectedValue(new Error("config unreadable"));
 
