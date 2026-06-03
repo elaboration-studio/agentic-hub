@@ -113,6 +113,26 @@ as a `--color-*` utility.
 
 All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 
+### Iconography (`lucide-react`)
+
+- **Library:** [`lucide-react`](https://lucide.dev) is the single icon source.
+  Never inline raw SVG or use unicode glyphs (e.g. `▸`/`▾`) for UI affordances.
+- **Sizing:** icons inherit the shadcn `[&_svg]` rules (default `size-4`; `size-3`
+  in `xs`/`icon-xs` controls). Pass an explicit `size-*` only to override.
+- **Color:** icons take `currentColor` — they follow the surrounding text/foreground
+  token. Standalone (non-text) icons sit on `text-muted-foreground` until hovered.
+- **Icon-only buttons** must carry an `aria-label` and a `Tooltip` with the action
+  label (text is never dropped, only relocated to the tooltip).
+- **Established icon language (Manager toolbar):**
+  - Scope: `Globe` (global) · `FolderGit2` (workspace)
+  - View: `List` (flat) · `FolderTree` (tree)
+  - Search field affix: `Search`
+  - Filters: `Tag` (type) · `Database` (source)
+  - Collapse all: `ChevronsDownUp` · Expand all: `ChevronsUpDown`
+  - Tree row caret: `ChevronRight` (collapsed) · `ChevronDown` (expanded)
+  - Row "more actions": `MoreHorizontal`
+  - Matrix cell state: `Check` (on) · `Minus` (mixed)
+
 ### Buttons (`@/components/ui/button`)
 
 - **Primary** (`variant="default"`): indigo fill, white text — Apply, Save,
@@ -140,9 +160,18 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 
 ### Toggles & Tabs (`tabs`, `toggle-group`, `toggle`, `switch`, `checkbox`)
 
-- **Nav** (Manager / Suites / Config): `Tabs`, indigo active state.
-- **Scope** (Global / Workspace) and **View** (Flat / Tree): `ToggleGroup`
-  (single-select), indigo active.
+- **Nav** (Manager / Suites / Config): `Tabs`, indigo active state — the selected
+  tab is an indigo fill with white text, never a graphite surface step. The
+  selection must be unmistakable at a glance.
+- **View** (Flat / Tree): `ToggleGroup` (single-select), indigo active (indigo
+  fill + white text on the selected item, applied at the `ToggleGroupItem` level
+  so the Watch `Toggle` keeps its dot look). Items are **icon-only** (`List` /
+  `FolderTree`) with a `Tooltip` and `aria-label` — no text, to keep the toolbar
+  compact.
+- **Scope** (Global / Workspace): a compact `Select` dropdown in the header's
+  left cluster (next to the title), not a toggle row — it switches context like
+  a workspace switcher and reclaims the vertical space a dedicated row would cost.
+  The trigger shows a leading scope icon (`Globe` / `FolderGit2`).
 - **Watch pill**: `Toggle` with a status dot — green glow when watching, muted
   when paused.
 - **Tool enable** (Config): `Switch`.
@@ -167,8 +196,12 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 ### Navigation (Header)
 
 - Solid `card` bar, hairline bottom border, 16px/24px padding. Logo + title +
-  capability/source count on the left; nav tabs, scope toggle, watch pill on the
-  right.
+  capability/source count on the left; nav tabs + watch pill on the right.
+- The header is a **stable nav**: the right cluster (nav tabs + watch pill) is
+  identical on every route and never reflows when switching Manager / Suites /
+  Config. The Manager's Global / Workspace **scope** `Select` lives in the left
+  cluster next to the title and appears only on the Manager route; because it
+  sits on the left, its show/hide leaves the right cluster anchored and stable.
 
 ### Dialogs (`dialog`, `alert-dialog`)
 
@@ -182,6 +215,10 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 - Per-row "more actions" (Open original, Reveal in Finder, Open in <tool>),
   replacing the hidden `<details>` menu. Trigger is a ghost `icon-xs` `⋯`
   revealed on row hover.
+- **Item highlight:** menus (`dropdown-menu`, `select`) sit on the `popover`
+  surface, which in dark equals `accent` — so `bg-accent` highlights are
+  invisible. Highlighted/hovered items therefore use a `foreground/10` overlay
+  (visible on any surface, both themes) and `cursor-pointer`, never `bg-accent`.
 
 ### Toaster (`sonner`)
 
@@ -332,3 +369,7 @@ A desktop window, but it must stay usable when narrow.
 | 2026-06-02 | System UI font as Body | Native desktop feel, offline-first, zero font-load cost; deliberate deviation from a web display font |
 | 2026-06-02 | Dark-first, light secondary | The product is a dense control surface used for long sessions; dark is the design, light is a faithful inversion |
 | 2026-06-02 | Custom success/warning/kind-agent tokens | Capability state and kind need stable semantic color beyond the shadcn default set |
+| 2026-06-03 | Indigo active for nav/scope/view | shadcn defaults rendered active states as a near-invisible graphite step; indigo fill makes the current selection unmistakable, matching the stated palette intent |
+| 2026-06-03 | Global `cursor: pointer` base rule | Tailwind v4 Preflight stopped setting pointer cursor on buttons; one base-layer rule restores it for native buttons + Radix role-based controls instead of per-component classes |
+| 2026-06-03 | `lucide-react` as the icon system + Manager toolbar icon language | Formalize a consistent, scannable icon vocabulary; replace unlabeled text actions (Expand/Collapse all) and unicode carets with tooltip'd lucide icon buttons |
+| 2026-06-03 | Scope switcher = header-left `Select` (not a content sub-bar) | A dedicated toggle row wasted vertical space; a compact dropdown next to the title reclaims it and, by living in the left cluster, keeps the right-side nav stable across routes |
