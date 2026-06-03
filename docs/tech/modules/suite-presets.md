@@ -103,6 +103,7 @@ pub struct SuiteDefinition {
     pub name: String,                        // unique, human-readable
     pub description: Option<String>,
     pub capabilities: Vec<SuiteCapabilityRef>, // source-qualified refs
+    pub is_base: bool,                       // single base suite (#[serde(default)] = false)
     pub created_at: String,                  // ISO 8601
     pub updated_at: String,
 }
@@ -125,6 +126,15 @@ Suite files sync across machines. Without a source identity, a synced `skill:foo
 - **Backfill**: on apply/update the store opportunistically qualifies unqualified refs whose bare id resolves to exactly one scanned item (`SuiteStore::backfill_sources`), then persists the upgrade.
 
 Adding or reordering sources never changes a suite's bare IDs. A present-source (or unqualified) ref that matches no scanned item is reported as stale (see stale reconciliation below).
+
+### Base suite (global merge)
+
+Exactly one suite may be marked **base** (`is_base: true`). Its capabilities are unioned into *every* global apply, so its rules/skills are always present whatever suite a tool runs. The flag is portable (lives in `~/.agentic-suites.json`) and defaults to `false` for legacy files.
+
+- **Single-base invariant**: setting one suite base clears the flag on every other. `SuiteStore::set_base(Some(id))` (or `update` with `is_base: Some(true)`) funnels through this rule; `set_base(None)` clears all.
+- **Merge semantics**: `api::merge_base_caps(selected, base)` clones the selected suite and appends the base's capabilities, deduped by `(cap, source)`. It keeps the **selected** suite's identity, so `ApplySuiteResult.suite` and the recorded binding still point at the explicitly chosen suite — the base is invisible to binding bookkeeping. A `None` base, or a base whose id equals the selected suite, is a no-op.
+- **Where it merges**: every global apply path — the Suites page apply, the palette suite apply, and bound-tool re-syncs — applies the merged "effective" suite. `apply_suite` itself takes the already-merged suite; it does not know about the base.
+- **Re-sync on base change**: setting/unsetting/editing the base re-applies **every** bound tool (each tool's own selected suite re-merged with the new base). Editing a normal suite re-applies only the tools bound to it (still base-merged).
 
 ### Dotfile contract
 
@@ -191,9 +201,18 @@ impl SuiteStore {
     pub fn update(&self, id: &str, input: SuiteUpdateInput) -> Result<SuiteDefinition>;
     pub fn remove(&self, id: &str) -> Result<()>;
     pub fn put(&self, suite: &SuiteDefinition) -> Result<()>; // in-place replace (backfill/upgrade)
+    pub fn base(&self) -> Result<Option<SuiteDefinition>>;     // the single base suite, if any
+    pub fn set_base(&self, id: Option<&str>) -> Result<()>;    // single-base invariant; None clears
     pub fn validate(suite: &SuiteDefinition, items: &[CapabilityItem], sources: &[SourceConfig]) -> SuiteValidationResult;
     pub fn backfill_sources(suite: &mut SuiteDefinition, items: &[CapabilityItem]) -> bool;
 }
+
+// Pure helpers (api.rs):
+//   merge_base_caps(selected: &SuiteDefinition, base: Option<&SuiteDefinition>) -> SuiteDefinition
+//   suite_ownership(items, bindings, suites, base) -> Vec<SuiteOwnership>
+// merge_base_caps unions+dedups keeping selected identity; suite_ownership maps
+// each managed (tool, item) to its owning suite (from_base marks base-merged items)
+// so the Manager can lock the cell and name the owner on hover.
 ```
 
 ## IPC commands
@@ -205,7 +224,9 @@ See [tauri-ipc-contract.md](./tauri-ipc-contract.md) for full schemas. Summary:
 - `cmd_create_suite(input) -> SuiteDefinition`
 - `cmd_update_suite(id, input) -> SuiteDefinition`
 - `cmd_delete_suite(id) -> ()`
-- `cmd_apply_suite({ tool_id, suite_id }) -> ApplySuiteResult`
+- `cmd_apply_suite({ tool_id, suite_id }) -> ApplySuiteResult` (merges the base suite into the effective set)
+- `cmd_set_base_suite(id: Option<String>) -> ()` (single-base invariant; re-applies every bound tool)
+- `cmd_suite_ownership() -> Vec<SuiteOwnership>` (which suite owns each managed `(tool, item)`)
 - Tauri event (global): `suite-store-changed`
 
 ## Apply flow (detailed)

@@ -55,6 +55,7 @@ function makeSuite(id: string, name: string): SuiteDefinition {
     name,
     description: null,
     capabilities: [{ cap: "skill:a", source: null }],
+    isBase: false,
     createdAt: "t",
     updatedAt: "t",
   };

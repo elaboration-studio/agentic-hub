@@ -9,6 +9,7 @@ import {
   createSuite,
   deleteSuite,
   listSuites,
+  setBaseSuite,
   updateSuite,
 } from "../ipc";
 import type { CapabilityItem, SuiteCapabilityRef, SuiteDefinition, ToolId } from "../types";
@@ -38,6 +39,7 @@ interface SuitesState {
   save: (items: CapabilityItem[]) => Promise<void>;
   remove: () => Promise<void>;
   applySelected: (tool: ToolId) => Promise<void>;
+  setBase: (id: string | null) => Promise<void>;
   pruneSelection: () => void;
 }
 
@@ -168,6 +170,19 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
       const msg = `Applied to ${tool} · ${parts.join(", ")}`;
       if (ar.errors.length > 0) toast.warning(msg);
       else toast.success(msg);
+    } catch (e) {
+      toast.error(messageOf(e));
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  setBase: async (id) => {
+    set({ busy: true });
+    try {
+      await setBaseSuite(id);
+      await get().reload();
+      toast.success(id ? "Marked as base suite" : "Base suite cleared");
     } catch (e) {
       toast.error(messageOf(e));
     } finally {

@@ -11,6 +11,7 @@ vi.mock("@/ipc", () => ({
   syncRules: vi.fn(),
   syncHooks: vi.fn(),
   setWatcherEnabled: vi.fn(),
+  suiteOwnership: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -23,6 +24,7 @@ import {
   plan,
   scan,
   setWatcherEnabled,
+  suiteOwnership,
   syncHooks,
   syncRules,
 } from "@/ipc";
@@ -48,6 +50,7 @@ const mocked = {
   syncRules: vi.mocked(syncRules),
   syncHooks: vi.mocked(syncHooks),
   setWatcherEnabled: vi.mocked(setWatcherEnabled),
+  suiteOwnership: vi.mocked(suiteOwnership),
 };
 
 function toolSettings(enabled: boolean): ToolSettings {
@@ -121,6 +124,7 @@ function seedHappyPath(result?: Partial<InspectResult>) {
   mocked.loadSettings.mockResolvedValue(makeSettings());
   mocked.scan.mockResolvedValue({ items: [item], errors: [] });
   mocked.inspect.mockResolvedValue(inspectResult);
+  mocked.suiteOwnership.mockResolvedValue([]);
 }
 
 beforeEach(() => {
@@ -176,6 +180,27 @@ describe("manager store — staging", () => {
 
     expect(s.desired["claude::skill:a"]).toBeUndefined();
     expect(s.pendingKeys).toEqual([]);
+  });
+
+  it("loads suite ownership on refresh and locks owned cells against toggle", async () => {
+    seedHappyPath();
+    mocked.suiteOwnership.mockResolvedValue([
+      { tool: "codex", itemId: "skill:a", suiteId: "s1", suiteName: "Backend", fromBase: false },
+    ]);
+    await useManagerStore.getState().refresh();
+
+    expect(useManagerStore.getState().ownership.get("codex::skill:a")).toEqual({
+      suiteName: "Backend",
+      fromBase: false,
+    });
+
+    // A suite owns this cell, so manual toggle is a no-op (locked).
+    useManagerStore.getState().toggle("codex", "skill:a");
+    expect(useManagerStore.getState().pendingKeys).toEqual([]);
+
+    // Batch toggles skip owned cells too.
+    useManagerStore.getState().toggleMany("codex", ["skill:a"], false);
+    expect(useManagerStore.getState().pendingKeys).toEqual([]);
   });
 
   it("toggleMany stages several keys and resetDesired restores the seeded state", async () => {

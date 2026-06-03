@@ -11,4 +11,10 @@ export type SuiteDefinition = { id: string, name: string, description: string | 
  * across devices. Legacy bare-string entries deserialize as `source:
  * None`.
  */
-capabilities: Array<SuiteCapabilityRef>, createdAt: string, updatedAt: string, };
+capabilities: Array<SuiteCapabilityRef>, 
+/**
+ * When `true`, this suite's capabilities are unioned into every global
+ * suite apply, so its rules/skills are always present. At most one suite
+ * is base at a time (enforced by the store). Legacy files load as `false`.
+ */
+isBase: boolean, createdAt: string, updatedAt: string, };

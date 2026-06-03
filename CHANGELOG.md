@@ -38,6 +38,14 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   skipped and preserved (counted as `ApplySuiteResult.skippedAbsentSource`),
   never deleted and never mis-resolved onto a same-named capability from a
   different source. `SuiteValidationResult` gains `absentIds`.
+- **Base suite (global merge) + Manager suite-lock.** A suite can be marked
+  base (portable `SuiteDefinition.isBase`; at most one, enforced by the store).
+  Its capabilities union into every global apply via `merge_base_caps`, so its
+  rules/skills are always present; the recorded binding stays the selected
+  suite. `cmd_set_base_suite(id | null)` flips the flag and re-applies every
+  bound tool, and editing the base re-syncs every binding. `cmd_suite_ownership`
+  reports which suite owns each `(tool, item)` (`SuiteOwnership`, `fromBase`),
+  and the Manager matrix locks those cells, naming the owning suite on hover.
 
 ### Changed
 

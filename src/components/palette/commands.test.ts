@@ -52,6 +52,7 @@ function makeSuite(overrides: Partial<SuiteDefinition> = {}): SuiteDefinition {
       { cap: "skill:a", source: null },
       { cap: "skill:b", source: null },
     ],
+    isBase: false,
     createdAt: "t",
     updatedAt: "t",
     ...overrides,

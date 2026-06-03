@@ -61,6 +61,10 @@ pub struct SuiteUpdateInput {
     pub description: Option<Option<String>>,
     #[serde(default)]
     pub capabilities: Option<Vec<SuiteCapabilityRef>>,
+    /// Mark/unmark this suite as the single base suite. `Some(true)` clears the
+    /// base flag on every other suite; `Some(false)` just unsets this one.
+    #[serde(default)]
+    pub is_base: Option<bool>,
 }
 
 /// Dotfile-backed suite store.
@@ -135,6 +139,7 @@ impl SuiteStore {
             name,
             description: input.description,
             capabilities: input.capabilities,
+            is_base: false,
             created_at: now.clone(),
             updated_at: now,
         };
@@ -170,8 +175,19 @@ impl SuiteStore {
         if let Some(capabilities) = input.capabilities {
             suite.capabilities = capabilities;
         }
+        if let Some(is_base) = input.is_base {
+            suite.is_base = is_base;
+        }
         suite.updated_at = now_iso8601();
         let updated = suite.clone();
+        // Single-base invariant: marking this suite base clears every other.
+        if input.is_base == Some(true) {
+            for s in &mut file.suites {
+                if s.id != id {
+                    s.is_base = false;
+                }
+            }
+        }
         self.write_file(&file)?;
         Ok(updated)
     }
@@ -197,6 +213,30 @@ impl SuiteStore {
             .position(|s| s.id == suite.id)
             .ok_or_else(|| CoreError::SuiteNotFound(suite.id.clone()))?;
         file.suites[pos] = suite.clone();
+        self.write_file(&file)
+    }
+
+    /// The single base suite, if one is marked.
+    pub fn base(&self) -> Result<Option<SuiteDefinition>> {
+        Ok(self.read_file()?.suites.into_iter().find(|s| s.is_base))
+    }
+
+    /// Set the base suite to `id` (clearing every other), or clear all bases
+    /// when `None`. Errors on an unknown id. Enforces the single-base invariant.
+    pub fn set_base(&self, id: Option<&str>) -> Result<()> {
+        let mut file = self.read_file()?;
+        if let Some(id) = id {
+            if !file.suites.iter().any(|s| s.id == id) {
+                return Err(CoreError::SuiteNotFound(id.to_string()));
+            }
+            for s in &mut file.suites {
+                s.is_base = s.id == id;
+            }
+        } else {
+            for s in &mut file.suites {
+                s.is_base = false;
+            }
+        }
         self.write_file(&file)
     }
 
@@ -377,6 +417,7 @@ mod tests {
             name: "s".into(),
             description: None,
             capabilities: vec!["skill:live".into(), "skill:gone".into()],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -402,6 +443,7 @@ mod tests {
             name: "s".into(),
             description: None,
             capabilities: vec![absent, "skill:gone".into()],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -446,6 +488,7 @@ mod tests {
             name: "s".into(),
             description: None,
             capabilities: vec!["skill:a".into(), "skill:missing".into()],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -465,5 +508,53 @@ mod tests {
             .find(|r| r.cap == "skill:missing")
             .unwrap();
         assert!(missing.source.is_none());
+    }
+
+    #[test]
+    fn set_base_enforces_single_base() {
+        let (_d, store) = store();
+        let a = store.create(create("a", &[])).unwrap();
+        let b = store.create(create("b", &[])).unwrap();
+        assert!(store.base().unwrap().is_none(), "no base by default");
+
+        store.set_base(Some(&a.id)).unwrap();
+        assert_eq!(store.base().unwrap().unwrap().id, a.id);
+
+        // Marking b base clears a.
+        store.set_base(Some(&b.id)).unwrap();
+        let base = store.base().unwrap().unwrap();
+        assert_eq!(base.id, b.id);
+        assert!(!store.get(&a.id).unwrap().unwrap().is_base, "a cleared");
+
+        // Clearing leaves no base.
+        store.set_base(None).unwrap();
+        assert!(store.base().unwrap().is_none());
+
+        assert!(matches!(
+            store.set_base(Some("nope")),
+            Err(CoreError::SuiteNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn update_is_base_clears_other_bases() {
+        let (_d, store) = store();
+        let a = store.create(create("a", &[])).unwrap();
+        let b = store.create(create("b", &[])).unwrap();
+        store.set_base(Some(&a.id)).unwrap();
+
+        // Updating b to base via the generic update path clears a.
+        let updated = store
+            .update(
+                &b.id,
+                SuiteUpdateInput {
+                    is_base: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(updated.is_base);
+        assert!(!store.get(&a.id).unwrap().unwrap().is_base, "a cleared");
+        assert_eq!(store.base().unwrap().unwrap().id, b.id);
     }
 }

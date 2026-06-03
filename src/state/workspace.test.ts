@@ -47,6 +47,7 @@ function makeSuite(id: string): SuiteDefinition {
     name: id,
     description: null,
     capabilities: [],
+    isBase: false,
     createdAt: "2026-01-01",
     updatedAt: "2026-01-01",
   };

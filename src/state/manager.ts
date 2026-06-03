@@ -13,6 +13,7 @@ import {
   plan,
   scan,
   setWatcherEnabled,
+  suiteOwnership,
   syncHooks,
   syncRules,
   type DesiredMap,
@@ -36,6 +37,11 @@ import {
 } from "../shared";
 
 export type Status = "loading" | "ready" | "error";
+
+export interface OwnershipInfo {
+  suiteName: string;
+  fromBase: boolean;
+}
 
 export interface ConflictRow {
   toolLabel: string;
@@ -66,6 +72,9 @@ interface ManagerState {
   workspaceTools: ToolDef[];
   currentMap: Map<string, ToolCapabilityState>;
   pendingKeys: string[];
+  // `key(tool, itemId)` -> owning suite, for cells a suite binding manages
+  // (locked in the matrix). Empty when no suite is applied.
+  ownership: Map<string, OwnershipInfo>;
 
   refresh: () => Promise<void>;
   setScope: (scope: Scope) => void;
@@ -90,6 +99,20 @@ function seedDesired(result: InspectResult): DesiredMap {
 function buildCurrentMap(result: InspectResult): Map<string, ToolCapabilityState> {
   const map = new Map<string, ToolCapabilityState>();
   for (const s of result.states) map.set(key(s.tool, s.itemId), s);
+  return map;
+}
+
+// Suite-managed cells, keyed by `key(tool, itemId)`. A failure here must not
+// break the matrix, so it degrades to an empty (no-lock) map.
+async function loadOwnership(): Promise<Map<string, OwnershipInfo>> {
+  const map = new Map<string, OwnershipInfo>();
+  try {
+    for (const o of await suiteOwnership()) {
+      map.set(key(o.tool, o.itemId), { suiteName: o.suiteName, fromBase: o.fromBase });
+    }
+  } catch {
+    // Leave empty — cells stay editable.
+  }
   return map;
 }
 
@@ -146,6 +169,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   workspaceTools: [],
   currentMap: new Map(),
   pendingKeys: [],
+  ownership: new Map(),
 
   refresh: async () => {
     set({ status: "loading", error: "" });
@@ -156,6 +180,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       const desired = seedDesired(result);
       const currentMap = buildCurrentMap(result);
       const tools = enabledTools(settings);
+      const ownership = await loadOwnership();
       set({
         data: { settings, items, scanErrors: errors, result },
         desired,
@@ -163,6 +188,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         tools,
         workspaceTools: tools.filter((t) => WORKSPACE_TOOL_IDS.has(t.id)),
         pendingKeys: [],
+        ownership,
         watching: settings.watcherEnabled,
         status: "ready",
       });
@@ -184,19 +210,20 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   },
 
   toggle: (tool, itemId) => {
-    const { currentMap, desired } = get();
+    const { currentMap, desired, ownership } = get();
     const k = key(tool, itemId);
-    if (!currentMap.has(k)) return;
+    // Suite-managed cells are locked: a binding owns them.
+    if (!currentMap.has(k) || ownership.has(k)) return;
     const nextDesired = { ...desired, [k]: !desired[k] };
     set({ desired: nextDesired, pendingKeys: computePending(nextDesired, currentMap) });
   },
 
   toggleMany: (tool, itemIds, value) => {
-    const { currentMap, desired } = get();
+    const { currentMap, desired, ownership } = get();
     const next = { ...desired };
     for (const id of itemIds) {
       const k = key(tool, id);
-      if (currentMap.has(k)) next[k] = value;
+      if (currentMap.has(k) && !ownership.has(k)) next[k] = value;
     }
     set({ desired: next, pendingKeys: computePending(next, currentMap) });
   },

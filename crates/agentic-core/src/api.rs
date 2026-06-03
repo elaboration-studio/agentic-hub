@@ -13,8 +13,8 @@ use crate::applier;
 use crate::hook_sync;
 use crate::model::{
     ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncOutcome,
-    PlannedOperation, RuleSyncOutcome, ScanResult, SuiteDefinition, SyncHooksResult,
-    SyncRulesResult, ToolCapabilityState, ToolId,
+    PlannedOperation, RuleSyncOutcome, ScanResult, SuiteBinding, SuiteDefinition, SuiteOwnership,
+    SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
 };
 use crate::planner;
 use crate::rule_sync;
@@ -263,12 +263,155 @@ pub fn apply_suite_to_tools(
         .collect()
 }
 
+/// Build the effective suite to apply: `selected`'s capabilities unioned with
+/// the base suite's, deduped by `(cap, source)`. The returned suite keeps
+/// `selected`'s identity (id/name/is_base) so `ApplySuiteResult` and the
+/// recorded binding still refer to the explicitly selected suite. A `None` base
+/// (or base == selected) returns `selected` unchanged.
+pub fn merge_base_caps(
+    selected: &SuiteDefinition,
+    base: Option<&SuiteDefinition>,
+) -> SuiteDefinition {
+    let mut merged = selected.clone();
+    if let Some(base) = base {
+        if base.id != selected.id {
+            for r in &base.capabilities {
+                if !merged.capabilities.contains(r) {
+                    merged.capabilities.push(r.clone());
+                }
+            }
+        }
+    }
+    merged
+}
+
+/// Resolve which suite owns each `(tool, item)` projection for the Manager to
+/// lock. For every binding, an item matched by the bound suite's own refs is
+/// owned by that suite; otherwise an item matched by the base suite's refs is
+/// owned by the base (`from_base = true`). Bound-suite ownership wins when an
+/// item is in both.
+pub fn suite_ownership(
+    items: &[CapabilityItem],
+    bindings: &[SuiteBinding],
+    suites: &[SuiteDefinition],
+    base: Option<&SuiteDefinition>,
+) -> Vec<SuiteOwnership> {
+    let mut out = Vec::new();
+    for b in bindings {
+        let Some(selected) = suites.iter().find(|s| s.id == b.suite_id) else {
+            continue;
+        };
+        for it in items {
+            if selected.capabilities.iter().any(|r| r.matches_item(it)) {
+                out.push(SuiteOwnership {
+                    tool: b.tool_id,
+                    item_id: it.id.clone(),
+                    suite_id: selected.id.clone(),
+                    suite_name: selected.name.clone(),
+                    from_base: selected.is_base,
+                });
+            } else if let Some(base) = base.filter(|base| base.id != selected.id) {
+                if base.capabilities.iter().any(|r| r.matches_item(it)) {
+                    out.push(SuiteOwnership {
+                        tool: b.tool_id,
+                        item_id: it.id.clone(),
+                        suite_id: base.id.clone(),
+                        suite_name: base.name.clone(),
+                        from_base: true,
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::SuiteCapabilityRef;
     use std::fs;
     use std::path::Path;
+
+    #[test]
+    fn merge_base_caps_unions_and_dedups_keeping_selected_identity() {
+        let selected = suite("editor", &["skill:a", "skill:shared"]);
+        let mut base = suite("base", &["skill:shared", "rule:global"]);
+        base.id = "base-id".into();
+        base.is_base = true;
+
+        let merged = merge_base_caps(&selected, Some(&base));
+        // Identity stays the selected suite's.
+        assert_eq!(merged.id, selected.id);
+        assert_eq!(merged.name, "editor");
+        assert!(!merged.is_base);
+        // Union, deduped: a, shared (once), global.
+        let caps: Vec<&str> = merged.capabilities.iter().map(|r| r.cap.as_str()).collect();
+        assert_eq!(caps, vec!["skill:a", "skill:shared", "rule:global"]);
+    }
+
+    #[test]
+    fn merge_base_caps_is_noop_without_base_or_when_self_is_base() {
+        let mut s = suite("base", &["skill:a"]);
+        s.id = "x".into();
+        assert_eq!(merge_base_caps(&s, None).capabilities.len(), 1);
+        // base == selected (same id) must not double-add.
+        assert_eq!(merge_base_caps(&s, Some(&s)).capabilities.len(), 1);
+    }
+
+    #[test]
+    fn suite_ownership_attributes_base_and_bound_items() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/a/SKILL.md"), "# a");
+        write(&root.path().join("skills/g/SKILL.md"), "# g");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        let mut editor = suite("editor", &["skill:a"]);
+        editor.id = "ed".into();
+        let mut base = suite("globals", &["skill:g"]);
+        base.id = "ba".into();
+        base.is_base = true;
+        let suites = vec![editor, base.clone()];
+        let bindings = vec![SuiteBinding {
+            tool_id: ToolId::Codex,
+            suite_id: "ed".into(),
+        }];
+
+        let own = suite_ownership(&scanned.items, &bindings, &suites, Some(&base));
+        let a = own.iter().find(|o| o.item_id == "skill:a").unwrap();
+        assert_eq!(a.suite_id, "ed");
+        assert!(!a.from_base, "bound suite owns skill:a");
+        let g = own.iter().find(|o| o.item_id == "skill:g").unwrap();
+        assert_eq!(g.suite_id, "ba");
+        assert!(g.from_base, "base owns skill:g");
+    }
+
+    #[test]
+    fn suite_ownership_prefers_bound_suite_when_item_in_both() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/shared/SKILL.md"), "# s");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        let mut editor = suite("editor", &["skill:shared"]);
+        editor.id = "ed".into();
+        let mut base = suite("globals", &["skill:shared"]);
+        base.id = "ba".into();
+        base.is_base = true;
+        let suites = vec![editor, base.clone()];
+        let bindings = vec![SuiteBinding {
+            tool_id: ToolId::Codex,
+            suite_id: "ed".into(),
+        }];
+
+        let own = suite_ownership(&scanned.items, &bindings, &suites, Some(&base));
+        assert_eq!(own.len(), 1);
+        assert_eq!(own[0].suite_id, "ed", "bound suite wins over base");
+        assert!(!own[0].from_base);
+    }
 
     fn write(path: &Path, contents: &str) {
         if let Some(parent) = path.parent() {
@@ -310,6 +453,7 @@ mod tests {
             name: "both".into(),
             description: None,
             capabilities: vec!["skill:keep".into(), "skill:drop".into()],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -360,6 +504,7 @@ mod tests {
             name: name.into(),
             description: None,
             capabilities: caps.iter().map(|s| (*s).into()).collect(),
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         }
@@ -584,6 +729,7 @@ mod tests {
             name: "s".into(),
             description: None,
             capabilities: vec![absent],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -613,6 +759,7 @@ mod tests {
                 cap: "skill:a".into(),
                 source: Some(present),
             }],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -680,6 +827,7 @@ mod tests {
                 cap: "skill:dup".into(),
                 source: Some(b_ref),
             }],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };

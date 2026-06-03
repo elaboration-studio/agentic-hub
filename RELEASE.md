@@ -18,6 +18,9 @@ file verbatim as the GitHub Release body. For the full version history see
 - Source-aware suites: suites now remember which source each capability came
   from, so a suite synced across devices resolves per-source and skips — never
   deletes or mis-resolves — capabilities whose source isn't on the machine.
+- Base suite: mark one suite as the base and its rules/skills merge into every
+  applied suite, so your global resources are always present. The Manager locks
+  cells a suite manages and names the owning suite (and base) on hover.
 
 ### Changes
 
@@ -37,6 +40,11 @@ file verbatim as the GitHub Release body. For the full version history see
   home-relative path + folder); suite entries are now source-qualified
   (`SuiteCapabilityRef { cap, source }`). Apply resolves refs source-aware and
   reports `ApplySuiteResult.skippedAbsentSource` for refs whose source is absent.
+- Suites carry a portable `isBase` flag (at most one base, enforced by the
+  store). Every global apply unions the base via `merge_base_caps`; the recorded
+  binding stays the selected suite. New `cmd_set_base_suite` re-syncs all bound
+  tools, and editing the base re-syncs every binding. `cmd_suite_ownership`
+  surfaces which suite owns each `(tool, item)` so the Manager can lock the cell.
 
 ### Migration
 
@@ -46,3 +54,5 @@ file verbatim as the GitHub Release body. For the full version history see
 - Suite files (`~/.agentic-suites.json`) with legacy bare-string capabilities
   load unchanged and upgrade to the qualified object form on the next save —
   non-breaking, no manual migration.
+- The new suite `isBase` flag defaults to `false`, so existing suite files load
+  unchanged with no base set — non-breaking.

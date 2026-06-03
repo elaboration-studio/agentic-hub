@@ -417,6 +417,7 @@ mod tests {
             name: "coding".into(),
             description: None,
             capabilities: caps.iter().map(|s| SuiteCapabilityRef::bare(*s)).collect(),
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         }
@@ -508,6 +509,7 @@ mod tests {
                     folder: "other".into(),
                 }),
             }],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -542,6 +544,7 @@ mod tests {
                     folder: ".agentic".into(),
                 }),
             }],
+            is_base: false,
             created_at: "t".into(),
             updated_at: "t".into(),
         };

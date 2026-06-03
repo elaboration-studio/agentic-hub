@@ -52,20 +52,35 @@ API: `read()`, `record(tool, suite_id)` (upsert by tool),
 
 ```mermaid
 flowchart TD
-  apply["cmd_apply_suite(tool, suite)"] --> reset["api::apply_suite (full reset)"]
+  apply["cmd_apply_suite(tool, suite)"] --> merge["effective = suite ∪ base"]
+  merge --> reset["api::apply_suite (full reset)"]
   apply --> rec["store.record(tool, suite)"]
-  upd["cmd_update_suite (caps changed)"] --> tf["store.tools_for_suite(id)"]
-  tf --> resync["api::apply_suite_to_tools (guarded) → emit sources-changed"]
+  upd["cmd_update_suite (caps changed)"] --> which{"is base?"}
+  which -- "no" --> tf["tools bound to this suite"]
+  which -- "yes" --> allb["every binding"]
+  tf --> resync["resync_bindings (base-merged, guarded) → emit sources-changed"]
+  allb --> resync
+  setb["cmd_set_base_suite(id?)"] --> allb
   del["cmd_delete_suite"] --> drop["store.drop_suite(id) (projections untouched)"]
 ```
 
-- **Apply** (palette or Suites page): full-reset apply, then record the binding.
-- **Update** (capability edit): re-apply the new suite to every bound tool as a
-  full reset, serialized against the filesystem watcher via the reconcile guard
+- **Apply** (palette or Suites page): merge the base suite into the selected
+  suite, full-reset apply, then record the binding to the **selected** suite
+  (the base is never the recorded binding).
+- **Update** (capability edit): re-apply as a full reset, base-merged, serialized
+  against the filesystem watcher via the reconcile guard
   (`watcher::with_reconcile_guard`) so the two never write the same tool dirs.
-  Emits `sources-changed` so the main window refreshes.
+  Editing a **normal** suite re-syncs only the tools bound to it; editing the
+  **base** suite re-syncs **every** binding (each with its own selected suite
+  re-merged). Emits `sources-changed` so the main window refreshes.
+- **Set base** (`cmd_set_base_suite`): flip the single-base flag, then re-sync
+  every binding so all tools pick up (or drop) the new base.
 - **Delete**: drop the suite's bindings only. Deleting a suite is not a
   destructive tool wipe — on-disk projections are left as they are.
+
+`resync_bindings` resolves each binding's selected suite fresh, unions the
+current base via `api::merge_base_caps`, and full-reset applies per tool under
+one reconcile guard.
 
 ## Cross-device note
 

@@ -6,12 +6,20 @@ vi.mock("@/ipc", () => ({
   updateSuite: vi.fn(),
   deleteSuite: vi.fn(),
   applySuite: vi.fn(),
+  setBaseSuite: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
-import { applySuite, createSuite, deleteSuite, listSuites, updateSuite } from "@/ipc";
+import {
+  applySuite,
+  createSuite,
+  deleteSuite,
+  listSuites,
+  setBaseSuite,
+  updateSuite,
+} from "@/ipc";
 import { toast } from "sonner";
 import type {
   ApplyError,
@@ -28,6 +36,7 @@ const mocked = {
   updateSuite: vi.mocked(updateSuite),
   deleteSuite: vi.mocked(deleteSuite),
   applySuite: vi.mocked(applySuite),
+  setBaseSuite: vi.mocked(setBaseSuite),
 };
 
 const SRC: SourceRef = { relHome: "~/.agentic", folder: ".agentic" };
@@ -38,6 +47,7 @@ function makeSuite(overrides: Partial<SuiteDefinition> = {}): SuiteDefinition {
     name: "Backend",
     description: null,
     capabilities: [{ cap: "skill:a", source: SRC }],
+    isBase: false,
     createdAt: "2026-01-01",
     updatedAt: "2026-01-01",
     ...overrides,
@@ -293,5 +303,25 @@ describe("suites store — apply & prune", () => {
     useSuitesStore.getState().pruneSelection();
 
     expect(useSuitesStore.getState().selectedId).toBeUndefined();
+  });
+
+  it("setBase marks a suite as base via IPC and reloads", async () => {
+    mocked.setBaseSuite.mockResolvedValue(undefined);
+    mocked.listSuites.mockResolvedValue([makeSuite({ isBase: true })]);
+
+    await useSuitesStore.getState().setBase("s1");
+
+    expect(mocked.setBaseSuite).toHaveBeenCalledWith("s1");
+    expect(mocked.listSuites).toHaveBeenCalled();
+    expect(useSuitesStore.getState().suites[0].isBase).toBe(true);
+  });
+
+  it("setBase(null) clears the base suite via IPC", async () => {
+    mocked.setBaseSuite.mockResolvedValue(undefined);
+    mocked.listSuites.mockResolvedValue([makeSuite({ isBase: false })]);
+
+    await useSuitesStore.getState().setBase(null);
+
+    expect(mocked.setBaseSuite).toHaveBeenCalledWith(null);
   });
 });

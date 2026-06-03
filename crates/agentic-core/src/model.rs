@@ -392,6 +392,11 @@ pub struct SuiteDefinition {
     /// across devices. Legacy bare-string entries deserialize as `source:
     /// None`.
     pub capabilities: Vec<SuiteCapabilityRef>,
+    /// When `true`, this suite's capabilities are unioned into every global
+    /// suite apply, so its rules/skills are always present. At most one suite
+    /// is base at a time (enforced by the store). Legacy files load as `false`.
+    #[serde(default)]
+    pub is_base: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -518,6 +523,26 @@ pub struct ApplySuiteResult {
 pub struct SuiteBinding {
     pub tool_id: ToolId,
     pub suite_id: String,
+}
+
+/// One `(tool, item)` projection that a suite currently manages, surfaced so the
+/// Manager matrix can lock the cell and name its owning suite on hover. Computed
+/// from the live bindings, the suites, and the base suite against a fresh scan.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiteOwnership {
+    pub tool: ToolId,
+    pub item_id: String,
+    pub suite_id: String,
+    pub suite_name: String,
+    /// True when the owning suite is the base suite (merged in globally) rather
+    /// than the tool's explicitly bound suite.
+    pub from_base: bool,
 }
 
 /// The suite last applied to a workspace for one tool. Lets the watcher

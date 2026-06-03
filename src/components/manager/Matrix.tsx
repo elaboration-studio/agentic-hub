@@ -40,7 +40,7 @@ import {
   type ToolDef,
   type View,
 } from "@/shared";
-import { useManagerStore } from "@/state/manager";
+import { useManagerStore, type OwnershipInfo } from "@/state/manager";
 import { useManagerFiltersStore } from "@/state/managerFilters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +89,7 @@ export function Matrix() {
   const tools = useManagerStore((s) => s.tools);
   const currentMap = useManagerStore((s) => s.currentMap);
   const desired = useManagerStore((s) => s.desired);
+  const ownership = useManagerStore((s) => s.ownership);
   const onToggle = useManagerStore((s) => s.toggle);
   const onToggleMany = useManagerStore((s) => s.toggleMany);
 
@@ -157,6 +158,7 @@ export function Matrix() {
     adapterMap,
     currentMap,
     desired,
+    ownership,
     onToggle,
     onToggleMany,
     settings: data.settings,
@@ -327,6 +329,7 @@ interface BodyContext {
   adapterMap: Map<ToolId, AdapterStatus>;
   currentMap: Map<string, ToolCapabilityState>;
   desired: Record<string, boolean>;
+  ownership: Map<string, OwnershipInfo>;
   onToggle: (tool: ToolId, itemId: string) => void;
   onToggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
   settings: Settings;
@@ -470,6 +473,7 @@ function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge
         adapterMap={ctx.adapterMap}
         currentMap={ctx.currentMap}
         desired={ctx.desired}
+        ownership={ctx.ownership}
         onToggle={ctx.onToggle}
       />
     </TableRow>

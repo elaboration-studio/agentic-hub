@@ -16,6 +16,7 @@ export type { SourceRef } from "./generated/SourceRef";
 export type { SuiteBinding } from "./generated/SuiteBinding";
 export type { SuiteCapabilityRef } from "./generated/SuiteCapabilityRef";
 export type { SuiteDefinition } from "./generated/SuiteDefinition";
+export type { SuiteOwnership } from "./generated/SuiteOwnership";
 export type { SuiteValidationResult } from "./generated/SuiteValidationResult";
 export type { SuiteStoreChangedEvent } from "./generated/SuiteStoreChangedEvent";
 export type { WorkspaceApply } from "./generated/WorkspaceApply";
