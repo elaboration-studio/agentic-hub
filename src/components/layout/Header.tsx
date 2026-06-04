@@ -22,6 +22,7 @@ export function Header(props: { route: Route; onNavigate: (route: Route) => void
 
   const count = data?.items.length ?? 0;
   const sources = data?.settings.sources.length ?? 0;
+  const skillsEnabled = data?.settings.skills.enabled ?? false;
 
   return (
     <header className="flex items-center justify-between gap-4 border-b bg-card px-6 py-4">
@@ -57,6 +58,7 @@ export function Header(props: { route: Route; onNavigate: (route: Route) => void
           <TabsList>
             <TabsTrigger value="manager">Manager</TabsTrigger>
             <TabsTrigger value="suites">Suites</TabsTrigger>
+            {skillsEnabled && <TabsTrigger value="skills">Resources</TabsTrigger>}
             <TabsTrigger value="config">Config</TabsTrigger>
           </TabsList>
         </Tabs>

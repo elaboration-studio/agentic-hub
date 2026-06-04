@@ -62,6 +62,7 @@ function makeSettings(): Settings {
     watcherEnabled: true,
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
+    skills: { enabled: false, favoritesPath: null },
     tools: {
       codex: toolSettings(true),
       claude: toolSettings(true),

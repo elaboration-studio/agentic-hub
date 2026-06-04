@@ -27,6 +27,15 @@ pub enum CoreError {
     #[error("a suite named \"{0}\" already exists")]
     SuiteNameConflict(String),
 
+    #[error("invalid skill reference: {0}")]
+    InvalidSkillRef(String),
+
+    #[error("unknown skill source provider: {0}")]
+    UnknownProvider(String),
+
+    #[error("skills.sh search failed: {0}")]
+    SkillSearch(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 

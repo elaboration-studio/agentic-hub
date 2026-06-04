@@ -46,6 +46,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     watcherEnabled: true,
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
+    skills: { enabled: false, favoritesPath: null },
     tools: {
       codex: toolSettings(overrides.codex ?? true),
       claude: toolSettings(overrides.claude ?? true),

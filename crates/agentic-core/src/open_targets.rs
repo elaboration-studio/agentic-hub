@@ -51,6 +51,23 @@ pub fn is_openable(candidate: &Path, settings: &Settings, workspace_dirs: &[Path
     false
 }
 
+/// True if `url` is safe to hand to the system browser: an absolute `http`/
+/// `https` URL with a host. Everything else (no scheme, `file:`, `javascript:`,
+/// `mailto:`, scheme-relative `//host`, …) is rejected so the open affordance
+/// can never be coerced into running a local handler from WebView-supplied data.
+pub fn is_safe_external_url(url: &str) -> bool {
+    let url = url.trim();
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    // Reject `https:///path` and `https://` — require a non-empty host.
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    !host.is_empty()
+}
+
 fn collect_tool_targets(tool: &ToolSettings, dirs: &mut Vec<PathBuf>, files: &mut Vec<PathBuf>) {
     dirs.push(tool.skills_path.clone());
     dirs.push(tool.agents_path.clone());
@@ -135,5 +152,24 @@ mod tests {
         let tools = tempfile::tempdir().unwrap();
         let settings = Settings::sandboxed(root.path(), tools.path());
         assert!(!is_openable(&root.path().join("nope"), &settings, &[]));
+    }
+
+    #[test]
+    fn accepts_http_and_https_urls_with_a_host() {
+        assert!(is_safe_external_url("https://skills.sh/skills/openhands/skills"));
+        assert!(is_safe_external_url("http://github.com/owner/repo"));
+        assert!(is_safe_external_url("  https://skills.sh  "));
+    }
+
+    #[test]
+    fn rejects_non_http_schemes_and_malformed_urls() {
+        assert!(!is_safe_external_url("file:///etc/passwd"));
+        assert!(!is_safe_external_url("javascript:alert(1)"));
+        assert!(!is_safe_external_url("mailto:a@b.com"));
+        assert!(!is_safe_external_url("//skills.sh"));
+        assert!(!is_safe_external_url("skills.sh"));
+        assert!(!is_safe_external_url("https://"));
+        assert!(!is_safe_external_url("https:///path"));
+        assert!(!is_safe_external_url(""));
     }
 }

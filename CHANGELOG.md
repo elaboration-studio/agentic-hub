@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.6.0] — 2026-06-04
+
+### Added
+
+- **Skills.sh as a pluggable resource source (opt-in).** A `SkillsConfig` on
+  `Settings` (off by default) enables a Config panel (CLI check, starred-file
+  override) and a conditional **Resources** tab that searches skills.sh and
+  stars favorites to `~/.agentic-hub/skills-favorites.json` (new
+  `agentic-core::skill_favorites`). Search uses the **keyless** public index
+  (`https://skills.sh/api/search` — the same endpoint the `skills` CLI uses, no
+  API key), routed through Rust (`cmd_search_skills`, a blocking `reqwest` GET)
+  because that endpoint sends no CORS header. Workspace scope gains **Install
+  skill…** (`cmd_install_skill`): the one explicit, user-initiated workspace
+  write. It runs `npx skills add <owner/repo>` via a controlled
+  `std::process::Command` (validated ref, cwd = the remembered workspace,
+  login-shell `PATH`, no `tauri-plugin-shell`), then re-scans the read-only
+  inventory. Built behind a `SkillProvider` seam (`agentic-core::skill_source`)
+  for future registries. New IPC: `cmd_skill_cli_check`, `cmd_search_skills`,
+  `cmd_list_skill_favorites`, `cmd_add_skill_favorite`, `cmd_remove_skill_favorite`,
+  `cmd_install_skill`; new error codes `invalid_skill_ref`, `unknown_provider`,
+  `skill_search`, `install_failed`.
+
+### Changed
+
+- **The "Skills" tab is now "Resources."** skills.sh is the first of several
+  planned public resource channels, so the tab name reflects the broader scope.
+  The internal route key is unchanged.
+
+### Fixed
+
+- **External links on skill rows now open.** The "Open on skills.sh" and "Open
+  on GitHub" buttons (and the Config skills.sh link) used plain anchors, which
+  are a no-op inside the Tauri WebView. They now route through a new
+  `cmd_open_url` command that opens the URL in the system browser after
+  validating it is an `http`/`https` URL with a host
+  (`agentic-core::open_targets::is_safe_external_url`). New error code
+  `url_not_openable`.
+
 ## [0.5.0] — 2026-06-04
 
 ### Added

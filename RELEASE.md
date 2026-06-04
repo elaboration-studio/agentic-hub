@@ -5,51 +5,43 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.5.0] — 2026-06-04
+## [0.6.0] — 2026-06-04
 
 ### Highlights
 
-- Workspace scope is now a **read-only audit**. Add a project to the left rail
-  and the Manager matrix shows exactly which skills, agents, and rules each tool
-  (Cursor, Claude, Codex) already has in that project — live-updated as the
-  project's own tool dirs change. The hub never writes into a workspace.
-- The old "apply a suite into a workspace" flow is gone for good. Capabilities
-  are still written only through the global projection engine, where the
-  plan-then-apply safety net lives.
-- The command palette can now **search across every remembered workspace** and
-  **locate** an item — search a project by name, hit Enter, and the Manager
-  jumps to workspace scope and highlights that row in the matrix (no file is
-  opened). The palette also renders as a clean floating card on macOS again.
+- **Install skills from skills.sh — no API key (opt-in).** Enable the source in
+  Config, open the new **Resources** tab, and search
+  [skills.sh](https://skills.sh) directly. Search uses the keyless public index
+  (the same endpoint the `skills` CLI uses), so anyone can use it. **Star** the
+  skills you want; from Workspace scope, **Install skill…** runs the source CLI
+  into the active project and the read-only inventory re-scans to show what
+  landed. Built behind a provider seam, so more public resource channels can plug
+  in later.
+- **The "Skills" tab is now "Resources."** skills.sh is the first of several
+  planned channels for installing agentic resources, and the tab name reflects
+  that broader scope.
+- **External links now open.** The "Open on skills.sh" and "Open on GitHub"
+  buttons on each result open in your default browser again.
 
 ### Changes
 
-- New `cmd_scan_workspace` (backed by `agentic-core::workspace_inventory`) walks
-  a project's `.cursor` / `.claude` / `.agents` skills + agents, `.cursor/rules`,
-  and `AGENTS.md` / `CLAUDE.md`, dedupes resources across tools, and returns a
-  `WorkspaceInventory { items, states, errors }` with present-only `enabled`
-  states. The global Manager matrix renders it read-only (static cells, inert
-  aggregates).
-- The filesystem watcher now also subscribes to the active workspace's tool
-  dirs and emits a new `workspace-changed` event so the inventory live-refreshes.
-  Picking, activating, or removing a workspace restarts the watcher.
-- The command palette searches every remembered workspace's inventory (matched
-  by project name + item name / path / source) and, on Enter, emits a new
-  `hub-locate` event that surfaces the item in the Manager's workspace matrix.
-  Palette window rendering on macOS is fixed: the `NSPanel` re-applies
-  transparency and drops its native shadow after the style-mask change, sizes to
-  its content, and no longer collapses the result list to one row.
-
-### Removed (breaking)
-
-- `cmd_apply_workspace_patch`, the `agentic-core::workspace_patch` module, the
-  `WorkspacePatchResult` / `WorkspaceApply` types, `WorkspaceTarget.lastApplied`
-  + `record_apply`, the `<ws>/.agentic-hub/workspace-patch.json` manifest, and
-  the `workspace-apply-progress` event. Any caller of the workspace-apply IPC
-  must migrate to the read-only inventory.
+- Config gains a skills.sh panel (enable toggle, starred-file override, CLI
+  check). The **Resources** tab (shown only when enabled) searches skills.sh and
+  stars favorites to `~/.agentic-hub/skills-favorites.json`. Search needs **no
+  API key** — it uses the keyless public index (`https://skills.sh/api/search`),
+  routed through Rust (`cmd_search_skills`) since that endpoint sends no CORS
+  header.
+- Workspace scope gains an **Install skill…** action backed by
+  `cmd_install_skill`, which runs `npx skills add <owner/repo>` via a controlled
+  subprocess (no `tauri-plugin-shell`) into the active project and re-scans the
+  read-only inventory. New `agentic-core` modules `skill_source` (provider seam +
+  `SkillsShProvider`) and `skill_favorites`, plus `SkillsConfig` on `Settings`.
+- External links route through a new `cmd_open_url` command. Anchor navigation
+  is a no-op inside the WebView, so the UI now asks Rust to open `http`/`https`
+  URLs in the system browser after validating the scheme and host
+  (`agentic-core::open_targets::is_safe_external_url`).
 
 ### Migration
 
-- No on-disk migration needed. Old `<ws>/.agentic-hub/workspace-patch.json`
-  manifests are simply ignored — workspace scope no longer reads or writes them.
-  Existing workspace targets in `~/.agentic-hub/state.json` load unchanged; the
-  obsolete `lastApplied` field is dropped on the next write.
+- None. The skills.sh source is opt-in and off by default; existing settings and
+  workspace state load unchanged.

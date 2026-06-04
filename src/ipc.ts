@@ -15,6 +15,11 @@ import type {
   ScaffoldResult,
   ScanResult,
   Settings,
+  SkillCliStatus,
+  SkillFavorite,
+  SkillFavoritesState,
+  SkillInstallResult,
+  SkillSearchHit,
   SourceConfig,
   SuiteCapabilityRef,
   SuiteDefinition,
@@ -100,6 +105,11 @@ export const openPath = (path: string, openWith?: string): Promise<void> =>
 /// Reveal a file in the system file explorer (Finder / Explorer).
 export const revealPath = (path: string): Promise<void> =>
   invoke("cmd_reveal_path", { input: { path } });
+
+/// Open an external http(s) URL in the default browser. Anchor navigation is a
+/// no-op inside the Tauri WebView, so external links route through Rust.
+export const openUrl = (url: string): Promise<void> =>
+  invoke("cmd_open_url", { input: { url } });
 
 export const inspect = (
   items: CapabilityItem[],
@@ -217,3 +227,37 @@ export const scanWorkspace = (workspaceId: string): Promise<WorkspaceInventory> 
 /// Fired by the watcher after a workspace's tool dirs change.
 export const onWorkspaceChanged = (cb: () => void): Promise<UnlistenFn> =>
   listen("workspace-changed", () => cb());
+
+// ---- Skill sources (skills.sh) --------------------------------------------
+
+/// Search a provider's keyless public index. Runs through Rust (`cmd_search_skills`)
+/// rather than a WebView fetch: the skills.sh search endpoint sends no CORS
+/// header, so the WebView can't call it directly. No API key is involved.
+export const searchSkills = (
+  provider: string,
+  query: string,
+  limit = 30,
+): Promise<SkillSearchHit[]> =>
+  invoke("cmd_search_skills", { input: { provider, query, limit } });
+
+export const skillCliCheck = (provider: string): Promise<SkillCliStatus> =>
+  invoke("cmd_skill_cli_check", { input: { provider } });
+
+export const listSkillFavorites = (): Promise<SkillFavoritesState> =>
+  invoke("cmd_list_skill_favorites");
+
+export const addSkillFavorite = (favorite: SkillFavorite): Promise<SkillFavorite> =>
+  invoke("cmd_add_skill_favorite", { favorite });
+
+export const removeSkillFavorite = (provider: string, id: string): Promise<void> =>
+  invoke("cmd_remove_skill_favorite", { input: { provider, id } });
+
+export interface InstallSkillPayload {
+  provider: string;
+  installRef: string;
+  workspaceId: string;
+  toolIds: ToolId[];
+}
+
+export const installSkill = (input: InstallSkillPayload): Promise<SkillInstallResult> =>
+  invoke("cmd_install_skill", { input });
