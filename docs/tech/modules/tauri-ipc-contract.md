@@ -480,12 +480,37 @@ Upserts a favorite by `(provider, id)`, newest-first; stamps `starredAt`.
 
 Unstars by `(provider, id)`; absent entries are a no-op.
 
-### `cmd_install_skill(input) -> SkillInstallResult`
+### Skill install window
 
-The **one** explicit workspace write. Resolves + validates the workspace dir
-against the target store, runs the provider's install (`npx skills add <ref>`),
-then restarts the watcher and emits `workspace-changed` so the read-only
-inventory re-scans.
+Skill install is the **one** explicit workspace write, and it runs in its own
+dedicated `install` window (mirroring the `palette` window) so output can stream
+live and the run can be cancelled. The workspace FAB opens the window; the window
+loads the selection matrix and drives the streaming command per chosen skill.
+
+#### `cmd_open_install_window(workspaceId: string) -> ()`
+
+Stores the target [`InstallContext`](#install-context-changed) and builds/shows
+the `install` window. If the window was already open, emits `install-context-changed`
+so it re-reads the context. Errors: `workspace_not_found`, `window_build_failed`.
+
+#### `cmd_take_install_context() -> InstallContext`
+
+Read by the install window on mount to learn which workspace it targets.
+
+```typescript
+type InstallContext = { workspaceId: string; workspaceLabel: string };
+```
+
+Errors: `no_install_context`.
+
+#### `cmd_install_skill_stream(input, onEvent: Channel<SkillInstallEvent>) -> ()`
+
+Resolves + validates the workspace dir against the target store, spawns the
+provider's install (`npx skills add <ref>`) with piped stdio, and streams output
+over `onEvent` — one `line` per output line, then a terminal `done`. The child is
+stored so `cmd_cancel_install` can kill it. On success the watcher is restarted
+and `workspace-changed` is emitted so the read-only inventory re-scans. Resolves
+when the run finishes (or is cancelled).
 
 ```typescript
 type InstallSkillInput = {
@@ -494,11 +519,19 @@ type InstallSkillInput = {
   workspaceId: string;
   toolIds: ToolId[];           // advisory; the CLI auto-detects agents
 };
-type SkillInstallResult = { ok: boolean; log: string };
+type SkillInstallEvent =
+  | { kind: 'line'; stream: string; text: string }
+  | { kind: 'done'; ok: boolean; cancelled: boolean };
 ```
 
 Errors: `invalid_skill_ref`, `unknown_provider`, `skill_cli_missing`,
 `install_failed`, `workspace_not_found`.
+
+#### `cmd_cancel_install() -> ()`
+
+Kills the in-flight install child (if any); the current stream then ends as
+`cancelled`. The install-window close handler calls the same path so an abandoned
+window never strands a running `npx`.
 
 ## Scaffold command
 
@@ -603,6 +636,12 @@ Emitted by the palette window when a workspace search result is chosen. The main
 type LocateRequest = { workspaceId: string; itemId: string };  // raw (non-namespaced) item id
 ```
 
+### `install-context-changed`
+
+Emitted (no payload) to the `install` window when it is reopened for a different
+workspace while already open. The window re-reads its context via
+`cmd_take_install_context`.
+
 ### `settings-changed`
 
 Emitted globally when `cmd_save_settings` succeeds.
@@ -630,7 +669,13 @@ type WorkspaceTargetsChangedEvent = {};
 
 ## Capability requirements
 
-Every command listed here must appear in `src-tauri/capabilities/default.json` under the main window's permission list. The Suite Manager window inherits the same permission set in v1 to keep things simple; a future tighter capability split is possible.
+Every command listed here must appear in `crates/agentic-hub/capabilities/default.json` under the main window's permission list. The Suite Manager window inherits the same permission set in v1 to keep things simple; a future tighter capability split is possible.
+
+The floating `palette` and `install` windows have their own capability files
+(`palette.json`, `install.json`) granting `core:default` plus the window
+show/hide/focus (and, for `install`, close/start-dragging) and event
+emit/listen they need. Custom app commands (`cmd_*`) are cross-window and need no
+plugin permission, so the install window's `cmd_*` calls work without listing.
 
 See [ARCHITECTURE.permissions.md](../../../ARCHITECTURE.permissions.md) for the full capability model.
 

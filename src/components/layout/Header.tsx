@@ -1,22 +1,12 @@
 import logoUrl from "@/assets/logo.png";
-import { FolderGit2, Globe } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useManagerStore } from "@/state/manager";
 import type { Route } from "@/shared";
 
 export function Header(props: { route: Route; onNavigate: (route: Route) => void }) {
   const data = useManagerStore((s) => s.data);
-  const scope = useManagerStore((s) => s.scope);
-  const setScope = useManagerStore((s) => s.setScope);
   const watching = useManagerStore((s) => s.watching);
   const toggleWatching = useManagerStore((s) => s.toggleWatching);
 
@@ -34,24 +24,6 @@ export function Header(props: { route: Route; onNavigate: (route: Route) => void
             {count} capabilities · {sources || 1} source{sources === 1 ? "" : "s"}
           </p>
         </div>
-        {/* Scope switcher sits with the title context; rendering it here (only on
-            the Manager route) keeps the right-side nav + watch pill from reflowing. */}
-        {props.route === "manager" && (
-          <div className="ml-1 border-l pl-3.5">
-            <Select value={scope} onValueChange={(v) => v && setScope(v as typeof scope)}>
-              <SelectTrigger size="sm" className="w-[148px]" title="Capability scope">
-                <span className="flex min-w-0 items-center gap-2">
-                  {scope === "global" ? <Globe /> : <FolderGit2 />}
-                  <SelectValue />
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="global">Global</SelectItem>
-                <SelectItem value="workspace">Workspace</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
       </div>
       <div className="flex items-center gap-3">
         <Tabs value={props.route} onValueChange={(v) => props.onNavigate(v as Route)}>

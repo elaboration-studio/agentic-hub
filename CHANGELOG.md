@@ -6,7 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
-## [0.6.1] — 2026-06-04
+## [0.7.0] — 2026-06-04
+
+### Added
+
+- **A dedicated, live-streaming install window.** Installing starred skills into
+  a workspace now opens its own `install` window (mirroring the `palette`
+  window) instead of a modal dialog. It hosts the **skill × tool matrix**,
+  streams the `npx skills add` stdout/stderr **live** into an auto-scrolling
+  console over a Tauri `Channel<SkillInstallEvent>`, and exposes a **Cancel**
+  button that kills the in-flight child (closing the window does too). New IPC:
+  `cmd_open_install_window`, `cmd_take_install_context`,
+  `cmd_install_skill_stream`, `cmd_cancel_install`; new `install.json`
+  capability; new exported types `SkillInstallEvent` and `InstallContext`. Core
+  gains a pure `skills_install_command()` builder so the shell layer only does IO.
+- **Scope-aware filter reset.** `resetScopedFilters()` on the manager-filters
+  store clears the scope-specific filters (`source`, `enabledOnly`, `collapsed`,
+  `locateId`) while preserving the universal `query`/`kind`/`view`.
+
+### Changed
+
+- **Global and Workspace are now one unified rail.** The header scope `Select` is
+  gone. The Manager renders a single left `ScopeRail` with **Global pinned at the
+  top** and the remembered workspaces below; `ManagerView` replaces
+  `WorkspaceView` and serves both scopes. The rail is sticky and scrolls
+  internally. Switching scope kind (global ↔ workspace) resets the scope-specific
+  filters so a `source` selected in one scope can't blank the matrix in the other.
+- **Workspace install is a batch matrix behind a floating action button.** A
+  round **+** FAB in workspace scope opens the install window; tick any
+  combination of starred skills and target tools (a column header toggles a tool
+  across all skills) and install them sequentially — partial-tolerant, so a single
+  failure never aborts the rest, and each is cancellable mid-run.
+- **Install state left the skills store.** Selection and streaming now live in the
+  install window; the skills store drops `installMany`/`installLog` and the
+  single-skill `install`, and the blocking `cmd_install_skill` command is removed
+  in favor of the streaming command.
 
 ### Fixed
 
@@ -17,25 +51,8 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   asks an **interactive** login shell (`$SHELL` first, then zsh/bash/sh, via
   `-ilc`) and frames the printed `PATH` with a sentinel so rc-file chatter can't
   corrupt it. A spawn that still can't find `npx` now returns a typed
-  `SkillCliMissing` error with an actionable hint instead of the raw OS error.
-- **Install failures are no longer a dead-end toast.** The install dialog now
-  shows the combined per-skill CLI output (and errors) in an Output panel, keeps
-  itself open on failure, and carries a standing hint that installs need Node.js
-  (npx) on `PATH` (verifiable via Config → skills.sh → Check CLI).
-
-### Changed
-
-- **Workspace install is now a batch matrix behind a floating action button.**
-  The per-pane "Install skill…" button is replaced by a round **+** FAB pinned to
-  the bottom-right of Workspace scope. Its dialog is a **skill × tool matrix**:
-  tick any combination of starred skills and target tools (a column header toggles
-  a tool across all skills) and install them in one batch — partial-tolerant, so a
-  single failure never aborts the rest. The skills store gains `installMany`
-  (replacing the single-skill `install`), which spans one busy window over the
-  batch, toasts each outcome, and returns an `{ installed, failed }` summary.
-- **The workspace rail is sticky.** The left list of remembered workspaces is
-  pinned (`position: sticky`) and scrolls internally, so it stays visible while
-  the inventory matrix scrolls.
+  `SkillCliMissing` error (code `skill_cli_missing`) with an actionable hint
+  instead of the raw OS error.
 
 ## [0.6.0] — 2026-06-04
 

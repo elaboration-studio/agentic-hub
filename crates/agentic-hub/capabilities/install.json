@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "install",
+  "description": "Skill-install window. Core defaults plus its own window show/hide/close/focus/drag and cross-window event listen so it can react to a context change. Custom app commands (cmd_*) are cross-window and need no plugin permission.",
+  "windows": ["install"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-start-dragging",
+    "core:event:allow-listen"
+  ]
+}

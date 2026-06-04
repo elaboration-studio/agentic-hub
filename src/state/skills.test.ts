@@ -5,7 +5,6 @@ vi.mock("@/ipc", () => ({
   listSkillFavorites: vi.fn(),
   addSkillFavorite: vi.fn(),
   removeSkillFavorite: vi.fn(),
-  installSkill: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -13,7 +12,6 @@ vi.mock("sonner", () => ({
 
 import {
   addSkillFavorite,
-  installSkill,
   listSkillFavorites,
   removeSkillFavorite,
   searchSkills,
@@ -27,7 +25,6 @@ const mocked = {
   listSkillFavorites: vi.mocked(listSkillFavorites),
   addSkillFavorite: vi.mocked(addSkillFavorite),
   removeSkillFavorite: vi.mocked(removeSkillFavorite),
-  installSkill: vi.mocked(installSkill),
 };
 
 function makeResult(slug: string): SkillSearchHit {
@@ -137,97 +134,5 @@ describe("skills store — favorites", () => {
 
     expect(mocked.removeSkillFavorite).toHaveBeenCalledWith(SKILLS_SH_PROVIDER, "a");
     expect(useSkillsStore.getState().favorites.map((f) => f.id)).toEqual(["b"]);
-  });
-});
-
-describe("skills store — installMany", () => {
-  it("installs a single skill via IPC and reports success", async () => {
-    mocked.installSkill.mockResolvedValue({ ok: true, log: "done" });
-
-    const summary = await useSkillsStore
-      .getState()
-      .installMany([{ favorite: makeFavorite("a"), toolIds: ["claude", "cursor"] }], "ws-1");
-
-    expect(mocked.installSkill).toHaveBeenCalledWith({
-      provider: SKILLS_SH_PROVIDER,
-      installRef: "vercel-labs/agent-skills",
-      workspaceId: "ws-1",
-      toolIds: ["claude", "cursor"],
-    });
-    expect(summary).toEqual({ installed: 1, failed: 0 });
-    expect(toast.success).toHaveBeenCalledTimes(1);
-    expect(useSkillsStore.getState().installing).toBe(false);
-  });
-
-  it("installs several skills sequentially and tallies the outcomes", async () => {
-    mocked.installSkill
-      .mockResolvedValueOnce({ ok: true, log: "ok" })
-      .mockResolvedValueOnce({ ok: false, log: "npx not found" });
-
-    const summary = await useSkillsStore.getState().installMany(
-      [
-        { favorite: makeFavorite("a"), toolIds: ["cursor"] },
-        { favorite: makeFavorite("b"), toolIds: ["claude"] },
-      ],
-      "ws-1",
-    );
-
-    expect(mocked.installSkill).toHaveBeenCalledTimes(2);
-    expect(summary).toEqual({ installed: 1, failed: 1 });
-    expect(toast.success).toHaveBeenCalledTimes(1);
-    expect(toast.error).toHaveBeenCalledTimes(1);
-  });
-
-  it("counts a thrown install as a failure without aborting the batch", async () => {
-    mocked.installSkill
-      .mockRejectedValueOnce(new Error("workspace gone"))
-      .mockResolvedValueOnce({ ok: true, log: "ok" });
-
-    const summary = await useSkillsStore.getState().installMany(
-      [
-        { favorite: makeFavorite("a"), toolIds: ["cursor"] },
-        { favorite: makeFavorite("b"), toolIds: ["cursor"] },
-      ],
-      "ws-1",
-    );
-
-    expect(summary).toEqual({ installed: 1, failed: 1 });
-    expect(toast.error).toHaveBeenCalledWith("workspace gone");
-    expect(useSkillsStore.getState().installing).toBe(false);
-  });
-
-  it("no-ops on an empty batch", async () => {
-    const summary = await useSkillsStore.getState().installMany([], "ws-1");
-
-    expect(mocked.installSkill).not.toHaveBeenCalled();
-    expect(summary).toEqual({ installed: 0, failed: 0 });
-  });
-
-  it("captures the combined per-skill log for the output panel", async () => {
-    mocked.installSkill
-      .mockResolvedValueOnce({ ok: true, log: "added next-js" })
-      .mockRejectedValueOnce(new Error("npx (Node.js) was not found on PATH"));
-
-    await useSkillsStore.getState().installMany(
-      [
-        { favorite: makeFavorite("a"), toolIds: ["cursor"] },
-        { favorite: makeFavorite("b"), toolIds: ["claude"] },
-      ],
-      "ws-1",
-    );
-
-    const log = useSkillsStore.getState().installLog ?? "";
-    expect(log).toContain("✓ a → cursor");
-    expect(log).toContain("added next-js");
-    expect(log).toContain("✗ b → claude");
-    expect(log).toContain("npx (Node.js) was not found on PATH");
-  });
-
-  it("clearInstallLog resets the captured output", async () => {
-    useSkillsStore.setState({ installLog: "stale output" });
-
-    useSkillsStore.getState().clearInstallLog();
-
-    expect(useSkillsStore.getState().installLog).toBeNull();
   });
 });

@@ -31,8 +31,10 @@ pub fn provider_for(id: &str) -> Option<Box<dyn SkillProvider>>; // "skills.sh" 
 ```
 
 - `SkillCliStatus { available, version, message }` — advisory health, surfaced in Config.
-- `SkillInstallResult { ok, log }` — the child exit status + combined output. The
-  authoritative view of what landed is the subsequent re-scan, not this struct.
+- `SkillInstallResult { ok, log }` — the blocking trait's result (child exit
+  status + combined output). The live `install` window streams instead, calling
+  `skills_install_command` directly; either way the authoritative view of what
+  landed is the subsequent re-scan, not this struct.
 
 ### SkillsShProvider
 
@@ -43,6 +45,10 @@ Installs via `npx skills add <owner/repo>`. Pure, unit-tested bits:
   `..` components. This is the injection guard before the ref reaches a process
   arg — it can never carry shell metacharacters or path traversal.
 - `skills_npx_args(ref)` → `["--yes", "skills@latest", "add", ref]`.
+- `skills_install_command(ref)` → a ready-to-spawn `Command` (program `npx`, the
+  args above, login `PATH` applied, `DISABLE_TELEMETRY=1`). Pure assembly, no
+  spawn, so the exact program + argv is asserted in tests and the shell layer
+  owns IO (sets `cwd`, pipes stdio, spawns, streams).
 
 The spawn is thin: the ref is passed as an **argument vector element** (never
 interpolated into a shell string), with `cwd = workspace_dir` and
@@ -115,27 +121,49 @@ reconstructs URLs.
 - `cmd_list_skill_favorites() -> SkillFavoritesState`
 - `cmd_add_skill_favorite(favorite) -> SkillFavorite`
 - `cmd_remove_skill_favorite({ provider, id })`
-- `cmd_install_skill({ provider, installRef, workspaceId, toolIds }) -> SkillInstallResult`
-  — resolves + validates the workspace dir against the target store (installs
-  only into a remembered target), runs the provider, then `restart_if_running`
-  the watcher and emits `workspace-changed` so the read-only inventory re-scans.
 
-Error codes: `invalid_skill_ref`, `unknown_provider`, `skill_search`,
-`skill_cli_missing`, `install_failed`, `workspace_not_found`. See
+Install runs in a **dedicated `install` window** (live output + Cancel), not a
+blocking command — see [The install window](#the-install-window). Error codes:
+`invalid_skill_ref`, `unknown_provider`, `skill_search`, `skill_cli_missing`,
+`install_failed`, `workspace_not_found`. See
 [tauri-ipc-contract.md](./tauri-ipc-contract.md).
+
+## The install window
+
+The one explicit workspace write is driven from its own `install` window
+(mirroring the `palette` window) so output streams live and the run is
+cancellable. The lifecycle (all in `crates/agentic-hub/src/install_window.rs`):
+
+- `cmd_open_install_window(workspaceId)` — the workspace FAB stores an
+  `InstallContext { workspaceId, workspaceLabel }` and builds/shows the window.
+- `cmd_take_install_context()` — the window reads its target on mount (re-read on
+  the `install-context-changed` event if reopened for another workspace).
+- `cmd_install_skill_stream(input, Channel<SkillInstallEvent>)` — validates the
+  ref + resolves the workspace dir against the target store (installs only into a
+  remembered target), spawns `skills_install_command` with piped stdio, stores
+  the `Child` in `InstallState`, and streams one `line` event per output line then
+  a terminal `done { ok, cancelled }`. On success it `restart_if_running`s the
+  watcher and emits `workspace-changed` so the read-only inventory re-scans.
+- `cmd_cancel_install()` — kills the stored child; the stream then ends as
+  `cancelled`. Closing the window kills any in-flight child too.
+
+Installs run sequentially, so a single in-flight child in `InstallState` is
+enough. `SkillInstallEvent` is the streamed, ts-rs-exported event type.
 
 ## Testing
 
 - `skill_source`: `validate_install_ref` accept/reject (metachars, traversal,
-  empty components), fixed `npx` arg vector, install rejects a bad ref before
-  spawning, provider lookup, `search_url` keyless+encoded, `parse_search_response`
-  link enrichment (GitHub vs well-known) + malformed JSON, short-query short-circuit.
+  empty components), fixed `npx` arg vector, `skills_install_command` program +
+  argv, install rejects a bad ref before spawning, provider lookup, `search_url`
+  keyless+encoded, `parse_search_response` link enrichment (GitHub vs well-known) +
+  malformed JSON, short-query short-circuit.
 - `skill_favorites`: add stamps + newest-first, upsert by `(provider, id)`,
   distinct providers, remove only the match, disk roundtrip, empty on missing.
 - `settings`: skills block defaults off, roundtrips, legacy config without the
   block defaults off.
 - UI store (`src/state/skills.ts`): search (success / blank / error), favorites
-  load / star / unstar, install (ok / failed / throw). Mocks `@/ipc` + toasts.
+  load / star / unstar. Mocks `@/ipc` + toasts. (Install is window-local state in
+  `InstallWindow`, no longer in this store.)
 
 ## Follow-ups
 

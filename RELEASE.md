@@ -5,22 +5,24 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.6.1] — 2026-06-04
+## [0.7.0] — 2026-06-04
 
 ### Highlights
 
-- **Workspace install, refined.** Installing starred skills into a project is now
-  faster and roomier:
-  - **A floating action button.** The cramped "Install skill…" toolbar button is
-    gone; a round **+** button in the bottom-right corner opens the installer and
-    stays reachable while the inventory matrix scrolls.
-  - **Install several skills at once.** The picker is now a **skill × tool
-    matrix** — tick the tools you want for each starred skill (with a column
-    header to select a tool across all skills) and install the whole batch in one
-    click. One failed install never aborts the rest.
-- **The workspace list stays put.** The left rail of workspaces is now pinned to
-  the side and scrolls on its own, so picking a project no longer means scrolling
-  past a long inventory to get back to the list.
+- **One unified scope view.** The Global / Workspace dropdown is gone. The
+  Manager now has a single left rail with **Global pinned on top** and your
+  remembered project folders below — click to switch. The rail stays pinned and
+  scrolls on its own, so picking a project never means scrolling past a long
+  inventory to get back to the list.
+- **Filters reset when you switch scope.** Filters that only make sense in one
+  scope (a source, "enabled only", collapsed folders) no longer follow you into
+  the other and hide everything; your search, type, and view carry over.
+- **A dedicated, live install window.** Installing starred skills now opens its
+  own window: the **skill × tool matrix** (tick any skills and tools, with a
+  column header to select a tool across all skills), a **live console** that
+  streams the `npx skills add` output as it runs, and a **Cancel** button that
+  stops a running install. The round **+** button in workspace scope opens it;
+  one failed install never aborts the rest.
 
 ### Fixed
 
@@ -28,10 +30,10 @@ file verbatim as the GitHub Release body. For the full version history see
   work.** The hub read your `PATH` from a shell that skipped `.zshrc`, so a
   Node.js installed via nvm/fnm/Homebrew was invisible and `npx` couldn't be
   found. It now reads `PATH` from your interactive login shell, so installs find
-  Node the same way your terminal does. When something does go wrong, the dialog
-  shows the actual CLI output and a clear hint instead of an opaque error toast.
+  Node the same way your terminal does — and a missing `npx` shows a clear,
+  actionable hint instead of an opaque error.
 
 ### Migration
 
-- None. UX-only enhancements; settings, favorites, and workspace state load
-  unchanged.
+- None. Settings, favorites, and workspace state load unchanged. The scope
+  dropdown is replaced by the rail; nothing to reconfigure.

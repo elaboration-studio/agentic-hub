@@ -65,4 +65,29 @@ describe("managerFilters store", () => {
     useManagerFiltersStore.getState().toggleCollapsed("x");
     expect(useManagerFiltersStore.getState().collapsed).not.toBe(before);
   });
+
+  it("resetScopedFilters clears scope-specific filters but keeps query/kind/view", () => {
+    const { setView, setQuery, setSource, setKind, setEnabledOnly, setCollapsed, setLocate } =
+      useManagerFiltersStore.getState();
+    setView("flat");
+    setQuery("auth");
+    setKind("skill");
+    setSource("shared");
+    setEnabledOnly(true);
+    setCollapsed(new Set(["a", "b"]));
+    setLocate("ws::skill:qa");
+
+    useManagerFiltersStore.getState().resetScopedFilters();
+
+    const s = useManagerFiltersStore.getState();
+    // Scope-specific: cleared.
+    expect(s.source).toBe("");
+    expect(s.enabledOnly).toBe(false);
+    expect(s.collapsed.size).toBe(0);
+    expect(s.locateId).toBe("");
+    // Universal: preserved.
+    expect(s.view).toBe("flat");
+    expect(s.query).toBe("auth");
+    expect(s.kind).toBe("skill");
+  });
 });

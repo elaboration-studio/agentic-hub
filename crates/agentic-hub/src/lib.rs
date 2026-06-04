@@ -6,6 +6,7 @@
 
 mod commands;
 mod error;
+mod install_window;
 mod menu;
 mod palette;
 mod watcher;
@@ -47,6 +48,8 @@ pub fn run() {
                 .build(),
         )
         .manage(WatcherState::default())
+        .manage(install_window::InstallContextState::default())
+        .manage(install_window::InstallState::default())
         .menu(menu::build_menu)
         .on_menu_event(menu::handle_menu_event)
         // The main window starts hidden (tauri.conf.json `visible: false`) to
@@ -83,6 +86,15 @@ pub fn run() {
             if window.label() == palette::PALETTE_LABEL {
                 if let WindowEvent::Focused(false) = event {
                     palette::hide_palette(window.app_handle());
+                }
+                return;
+            }
+            // The install window closes normally (it is rebuilt per open), but
+            // kill any in-flight install so an abandoned window never strands a
+            // running `npx`.
+            if window.label() == install_window::INSTALL_LABEL {
+                if let WindowEvent::CloseRequested { .. } = event {
+                    install_window::on_install_window_closed(window.app_handle());
                 }
                 return;
             }
@@ -138,7 +150,10 @@ pub fn run() {
             commands::cmd_list_skill_favorites,
             commands::cmd_add_skill_favorite,
             commands::cmd_remove_skill_favorite,
-            commands::cmd_install_skill,
+            install_window::cmd_open_install_window,
+            install_window::cmd_take_install_context,
+            install_window::cmd_install_skill_stream,
+            install_window::cmd_cancel_install,
         ])
         .build(tauri::generate_context!())
         .expect("error while building the Agentic Hub Tauri application")

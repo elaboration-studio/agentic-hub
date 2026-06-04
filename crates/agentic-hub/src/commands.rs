@@ -18,7 +18,7 @@ use agentic_core::paths::expand_tilde;
 use agentic_core::scaffold::{self, ScaffoldMode, ScaffoldResult};
 use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
 use agentic_core::skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
-use agentic_core::skill_source::{provider_for, SkillCliStatus, SkillInstallResult, SkillSearchHit};
+use agentic_core::skill_source::{provider_for, SkillCliStatus, SkillSearchHit};
 use agentic_core::suite_binding_store::SuiteBindingStore;
 use agentic_core::suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 use agentic_core::workspace_inventory::{self, WorkspaceInventory};
@@ -742,43 +742,5 @@ pub async fn cmd_remove_skill_favorite(input: RemoveFavoriteInput) -> IpcResult<
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InstallSkillInput {
-    pub provider: String,
-    pub install_ref: String,
-    pub workspace_id: String,
-    #[serde(default)]
-    pub tool_ids: Vec<ToolId>,
-}
-
-/// Install a skill into a remembered workspace via its provider. This is the one
-/// explicit workspace write path: the inventory scan stays read-only. The target
-/// dir is resolved from the workspace store (never an arbitrary path), then the
-/// watcher is nudged and `workspace-changed` is emitted so the inventory
-/// re-scans and reflects what landed.
-#[tauri::command]
-pub async fn cmd_install_skill(
-    app: AppHandle,
-    watcher: State<'_, WatcherState>,
-    input: InstallSkillInput,
-) -> IpcResult<SkillInstallResult> {
-    let provider = provider_for(&input.provider)
-        .ok_or_else(|| IpcError::new("unknown_provider", "Unknown skill source provider"))?;
-    let target = WorkspaceTargetStore::new()
-        .read()?
-        .workspace_targets
-        .into_iter()
-        .find(|t| t.id == input.workspace_id)
-        .ok_or_else(|| IpcError::new("workspace_not_found", "Workspace target no longer exists"))?;
-
-    let result = provider
-        .install(&target.dir, &input.install_ref, &input.tool_ids)
-        .map_err(|e| IpcError::new("install_failed", e.to_string()))?;
-
-    // The project's tool dirs changed — re-subscribe the watcher to the active
-    // dirs and tell the UI to re-scan the read-only inventory.
-    watcher.restart_if_running(app.clone());
-    let _ = app.emit("workspace-changed", ());
-    Ok(result)
-}
+// Skill install is a streaming, cancellable flow that owns its own window; see
+// `install_window.rs` for `cmd_install_skill_stream` / `cmd_cancel_install`.

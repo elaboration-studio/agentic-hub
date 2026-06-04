@@ -55,6 +55,24 @@ pub struct SkillInstallResult {
     pub log: String,
 }
 
+/// A streamed install event, sent one-per-output-line over a Tauri channel and
+/// terminated by a single `done`. Mirrors the shape the install window's live
+/// console consumes; tagged by `kind` so the UI can switch on it.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SkillInstallEvent {
+    /// One line of process output. `stream` is `"stdout"` or `"stderr"`.
+    Line { stream: String, text: String },
+    /// Terminal event: the run finished. `ok` mirrors the exit status;
+    /// `cancelled` is true when the user killed it mid-run.
+    Done { ok: bool, cancelled: bool },
+}
+
 /// One skill returned by a provider's search. Mirrors the keyless skills.sh
 /// search shape plus links derived once in Rust so the UI never reconstructs
 /// URLs: `install_ref` is the `owner/repo` the CLI accepts, `github_url` is the
@@ -143,6 +161,17 @@ pub fn skills_npx_args(install_ref: &str) -> Vec<String> {
         "add".to_string(),
         install_ref.to_string(),
     ]
+}
+
+/// Build the `npx skills add <install_ref>` command with the resolved login
+/// `PATH` and telemetry disabled — ready for the caller to set `current_dir`,
+/// pipe stdio, and spawn. Pure assembly (no spawn) so the streaming shell layer
+/// owns IO; the exact program + arg vector is asserted in tests. Callers must
+/// `validate_install_ref` first — this does not re-check the ref.
+pub fn skills_install_command(install_ref: &str) -> Command {
+    let mut cmd = npx_command();
+    cmd.args(skills_npx_args(install_ref));
+    cmd
 }
 
 /// Percent-encode a query component (RFC 3986 unreserved set passes through).
@@ -422,6 +451,17 @@ mod tests {
                 "vercel-labs/agent-skills".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn install_command_builds_fixed_npx_invocation() {
+        let cmd = skills_install_command("vercel-labs/agent-skills");
+        assert_eq!(cmd.get_program().to_string_lossy(), "npx");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args, skills_npx_args("vercel-labs/agent-skills"));
     }
 
     #[test]
