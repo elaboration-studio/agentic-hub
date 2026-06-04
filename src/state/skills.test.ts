@@ -140,13 +140,13 @@ describe("skills store — favorites", () => {
   });
 });
 
-describe("skills store — install", () => {
-  it("installs via IPC and reports success", async () => {
+describe("skills store — installMany", () => {
+  it("installs a single skill via IPC and reports success", async () => {
     mocked.installSkill.mockResolvedValue({ ok: true, log: "done" });
 
-    const result = await useSkillsStore
+    const summary = await useSkillsStore
       .getState()
-      .install(makeFavorite("a"), "ws-1", ["claude", "cursor"]);
+      .installMany([{ favorite: makeFavorite("a"), toolIds: ["claude", "cursor"] }], "ws-1");
 
     expect(mocked.installSkill).toHaveBeenCalledWith({
       provider: SKILLS_SH_PROVIDER,
@@ -154,31 +154,52 @@ describe("skills store — install", () => {
       workspaceId: "ws-1",
       toolIds: ["claude", "cursor"],
     });
-    expect(result?.ok).toBe(true);
-    expect(toast.success).toHaveBeenCalled();
+    expect(summary).toEqual({ installed: 1, failed: 0 });
+    expect(toast.success).toHaveBeenCalledTimes(1);
     expect(useSkillsStore.getState().installing).toBe(false);
   });
 
-  it("reports a failed install without throwing", async () => {
-    mocked.installSkill.mockResolvedValue({ ok: false, log: "npx not found" });
+  it("installs several skills sequentially and tallies the outcomes", async () => {
+    mocked.installSkill
+      .mockResolvedValueOnce({ ok: true, log: "ok" })
+      .mockResolvedValueOnce({ ok: false, log: "npx not found" });
 
-    const result = await useSkillsStore
-      .getState()
-      .install(makeFavorite("a"), "ws-1", []);
+    const summary = await useSkillsStore.getState().installMany(
+      [
+        { favorite: makeFavorite("a"), toolIds: ["cursor"] },
+        { favorite: makeFavorite("b"), toolIds: ["claude"] },
+      ],
+      "ws-1",
+    );
 
-    expect(result?.ok).toBe(false);
-    expect(toast.error).toHaveBeenCalled();
+    expect(mocked.installSkill).toHaveBeenCalledTimes(2);
+    expect(summary).toEqual({ installed: 1, failed: 1 });
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledTimes(1);
   });
 
-  it("toasts and returns null when the IPC call throws", async () => {
-    mocked.installSkill.mockRejectedValue(new Error("workspace gone"));
+  it("counts a thrown install as a failure without aborting the batch", async () => {
+    mocked.installSkill
+      .mockRejectedValueOnce(new Error("workspace gone"))
+      .mockResolvedValueOnce({ ok: true, log: "ok" });
 
-    const result = await useSkillsStore
-      .getState()
-      .install(makeFavorite("a"), "ws-1", []);
+    const summary = await useSkillsStore.getState().installMany(
+      [
+        { favorite: makeFavorite("a"), toolIds: ["cursor"] },
+        { favorite: makeFavorite("b"), toolIds: ["cursor"] },
+      ],
+      "ws-1",
+    );
 
-    expect(result).toBeNull();
+    expect(summary).toEqual({ installed: 1, failed: 1 });
     expect(toast.error).toHaveBeenCalledWith("workspace gone");
     expect(useSkillsStore.getState().installing).toBe(false);
+  });
+
+  it("no-ops on an empty batch", async () => {
+    const summary = await useSkillsStore.getState().installMany([], "ws-1");
+
+    expect(mocked.installSkill).not.toHaveBeenCalled();
+    expect(summary).toEqual({ installed: 0, failed: 0 });
   });
 });

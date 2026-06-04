@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.6.1] — 2026-06-04
+
+### Changed
+
+- **Workspace install is now a batch matrix behind a floating action button.**
+  The per-pane "Install skill…" button is replaced by a round **+** FAB pinned to
+  the bottom-right of Workspace scope. Its dialog is a **skill × tool matrix**:
+  tick any combination of starred skills and target tools (a column header toggles
+  a tool across all skills) and install them in one batch — partial-tolerant, so a
+  single failure never aborts the rest. The skills store gains `installMany`
+  (replacing the single-skill `install`), which spans one busy window over the
+  batch, toasts each outcome, and returns an `{ installed, failed }` summary.
+- **The workspace rail is sticky.** The left list of remembered workspaces is
+  pinned (`position: sticky`) and scrolls internally, so it stays visible while
+  the inventory matrix scrolls.
+
 ## [0.6.0] — 2026-06-04
 
 ### Added

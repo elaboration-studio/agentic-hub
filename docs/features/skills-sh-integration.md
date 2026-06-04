@@ -20,8 +20,9 @@ Three surfaces:
    uses the keyless public index.
 2. **Skills page** (a header tab shown only when the source is enabled) — search
    skills.sh, open a result on GitHub / skills.sh, and star/unstar favorites.
-3. **Workspace → Install skill…** — pick a starred skill and target tools, then
-   install it into the active project via the source CLI.
+3. **Workspace → Install skills** — a floating action button opens a skill × tool
+   matrix; tick the tools for one or more starred skills and install them into the
+   active project via the source CLI in a single batch.
 
 ## Why local "stars"
 
@@ -60,9 +61,11 @@ record of what is installed; the source CLI's own lock file
    `npx`/Node for installs). No key needed for search.
 2. Open the **Skills** tab, type to search (debounced), and **star** the skills
    you want.
-3. Switch the Manager to **Workspace** scope, pick a project, click **Install
-   skill…**, choose a favorite + target tools, **Install**.
-4. The matrix re-scans and shows the new skill under each tool that has it.
+3. Switch the Manager to **Workspace** scope, pick a project, click the floating
+   **+** action, tick the target tools for one or more starred skills in the
+   matrix, **Install**.
+4. Each skill installs in turn (one failure never aborts the rest); the matrix
+   re-scans and shows the new skills under each tool that has them.
 
 ## Limitations / follow-ups
 

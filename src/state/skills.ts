@@ -40,6 +40,18 @@ export function favoriteFromResult(r: SkillSearchHit): SkillFavorite {
   };
 }
 
+/// One row of a batch install: a starred skill and the tools to target.
+export interface InstallItem {
+  favorite: SkillFavorite;
+  toolIds: ToolId[];
+}
+
+/// Outcome of a batch install: how many of the requested skills landed.
+export interface InstallSummary {
+  installed: number;
+  failed: number;
+}
+
 interface SkillsState {
   query: string;
   results: SkillSearchHit[];
@@ -52,11 +64,29 @@ interface SkillsState {
   search: () => Promise<void>;
   star: (result: SkillSearchHit) => Promise<void>;
   unstar: (provider: string, id: string) => Promise<void>;
-  install: (
-    favorite: SkillFavorite,
-    workspaceId: string,
-    toolIds: ToolId[],
-  ) => Promise<SkillInstallResult | null>;
+  installMany: (items: InstallItem[], workspaceId: string) => Promise<InstallSummary>;
+}
+
+/// Run a single install through IPC, toasting the outcome. Returns whether it
+/// landed so the batch caller can tally without re-inspecting the result.
+async function runInstall(item: InstallItem, workspaceId: string): Promise<boolean> {
+  try {
+    const result: SkillInstallResult = await installSkill({
+      provider: item.favorite.provider,
+      installRef: item.favorite.installRef,
+      workspaceId,
+      toolIds: item.toolIds,
+    });
+    if (result.ok) {
+      toast.success(`Installed ${item.favorite.name}`);
+      return true;
+    }
+    toast.error(`Install failed: ${item.favorite.name}`);
+    return false;
+  } catch (e) {
+    toast.error(messageOf(e));
+    return false;
+  }
 }
 
 export const useSkillsStore = create<SkillsState>((set, get) => ({
@@ -125,26 +155,23 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  install: async (favorite, workspaceId, toolIds) => {
+  // Install one or more starred skills sequentially into the active workspace.
+  // The busy flag spans the whole batch so a single Install click can't overlap;
+  // each skill toasts its own outcome and the summary lets the caller decide
+  // whether to keep the dialog open (partial failure) or close it (all landed).
+  installMany: async (items, workspaceId) => {
+    if (items.length === 0) return { installed: 0, failed: 0 };
     set({ installing: true });
+    let installed = 0;
+    let failed = 0;
     try {
-      const result = await installSkill({
-        provider: favorite.provider,
-        installRef: favorite.installRef,
-        workspaceId,
-        toolIds,
-      });
-      if (result.ok) {
-        toast.success(`Installed ${favorite.name}`);
-      } else {
-        toast.error(`Install failed: ${favorite.name}`);
+      for (const item of items) {
+        if (await runInstall(item, workspaceId)) installed += 1;
+        else failed += 1;
       }
-      return result;
-    } catch (e) {
-      toast.error(messageOf(e));
-      return null;
     } finally {
       set({ installing: false });
     }
+    return { installed, failed };
   },
 }));

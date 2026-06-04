@@ -15,7 +15,7 @@ export function WorkspaceRail() {
   const remove = useWorkspaceStore((s) => s.remove);
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col gap-2.5">
+    <aside className="sticky top-0 flex max-h-[calc(100vh-7.5rem)] w-64 shrink-0 flex-col gap-2.5 self-start">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Workspaces
@@ -36,7 +36,7 @@ export function WorkspaceRail() {
           No workspaces yet. Add a project folder to audit its agentic resources.
         </p>
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="-mr-1 flex flex-col gap-1.5 overflow-y-auto pr-1">
           {targets.map((t) => (
             <li
               key={t.id}

@@ -32,11 +32,6 @@ export function WorkspaceView() {
     <div className="flex flex-1 gap-5">
       <WorkspaceRail />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        {skillsEnabled && activeId && (
-          <div className="flex justify-end">
-            <InstallSkillDialog />
-          </div>
-        )}
         {activeId && data && readOnly ? (
           <Matrix />
         ) : (
@@ -49,6 +44,9 @@ export function WorkspaceView() {
           </Alert>
         )}
       </div>
+      {/* Floating install action: a fixed FAB so it stays reachable while the
+          matrix scrolls and never crowds the inventory toolbar. */}
+      {skillsEnabled && activeId && <InstallSkillDialog />}
     </div>
   );
 }
