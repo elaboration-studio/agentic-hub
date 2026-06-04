@@ -58,7 +58,7 @@ export function Header(props: { route: Route; onNavigate: (route: Route) => void
           <TabsList>
             <TabsTrigger value="manager">Manager</TabsTrigger>
             <TabsTrigger value="suites">Suites</TabsTrigger>
-            {skillsEnabled && <TabsTrigger value="skills">Skills</TabsTrigger>}
+            {skillsEnabled && <TabsTrigger value="skills">Resources</TabsTrigger>}
             <TabsTrigger value="config">Config</TabsTrigger>
           </TabsList>
         </Tabs>
