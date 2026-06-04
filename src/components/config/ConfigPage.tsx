@@ -5,8 +5,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
-import { addSource, removeSource, rescanResync, saveSettings } from "@/ipc";
-import type { Settings, ToolId } from "@/types";
+import {
+  addSource,
+  removeSource,
+  rescanResync,
+  saveSettings,
+  skillCliCheck,
+} from "@/ipc";
+import type { Settings, SkillCliStatus, ToolId } from "@/types";
 import { ALL_TOOLS, messageOf, resolveSourceIds } from "@/shared";
 import { useManagerStore } from "@/state/manager";
 import { Button } from "@/components/ui/button";
@@ -41,6 +47,7 @@ export function ConfigPage() {
       <EditorPanel {...props} />
       <ShortcutPanel {...props} />
       <SuiteFilePanel {...props} />
+      <SkillsSourcePanel {...props} />
       <ToolsPanel {...props} />
       <WatcherPanel {...props} />
     </div>
@@ -376,6 +383,138 @@ function SuiteFilePanel({ settings, onChanged }: PanelProps) {
             Reset to default
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SkillsSourcePanel({ settings, onChanged }: PanelProps) {
+  const skills = settings.skills;
+  const [favPath, setFavPath] = useState(skills.favoritesPath ?? "");
+  const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [cli, setCli] = useState<SkillCliStatus | null>(null);
+
+  useEffect(() => {
+    setFavPath(settings.skills.favoritesPath ?? "");
+  }, [settings.skills]);
+
+  const persist = useCallback(
+    async (next: Settings["skills"]) => {
+      setBusy(true);
+      try {
+        await saveSettings({ ...settings, skills: next });
+        onChanged();
+      } catch (e) {
+        toast.error(messageOf(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [settings, onChanged],
+  );
+
+  const onBrowse = useCallback(async () => {
+    try {
+      const dir = await open({
+        directory: true,
+        multiple: false,
+        title: "Choose a folder for the starred-skills file",
+      });
+      if (typeof dir !== "string") return;
+      const next = `${dir}/skills-favorites.json`;
+      setFavPath(next);
+      await persist({ ...skills, favoritesPath: next });
+    } catch (e) {
+      toast.error(messageOf(e));
+    }
+  }, [persist, skills]);
+
+  const onCheck = useCallback(async () => {
+    setChecking(true);
+    setCli(null);
+    try {
+      setCli(await skillCliCheck("skills.sh"));
+    } catch (e) {
+      toast.error(messageOf(e));
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  return (
+    <Card className="p-4">
+      <CardHeader className="flex-row items-center justify-between p-0">
+        <CardTitle className={sectionTitle}>Skills.sh source</CardTitle>
+        <Switch
+          checked={skills.enabled}
+          disabled={busy}
+          onCheckedChange={(v) => void persist({ ...skills, enabled: v })}
+          aria-label="Enable skills.sh source"
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 p-0">
+        <p className={hint}>
+          Search public skills on{" "}
+          <a
+            className="underline"
+            href="https://skills.sh"
+            target="_blank"
+            rel="noreferrer"
+          >
+            skills.sh
+          </a>
+          , star favorites, and install them into a workspace from the Workspace
+          scope. Search uses the public skills.sh index — no key needed. Node
+          (npx) is required for installs.
+        </p>
+        {skills.enabled && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium">Starred-skills file</Label>
+              <p className={hint}>
+                Where favorites are stored. Default:{" "}
+                <code className="font-mono">~/.agentic-hub/skills-favorites.json</code>
+              </p>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Input
+                  className="flex-1 font-mono"
+                  value={favPath}
+                  placeholder="~/.agentic-hub/skills-favorites.json (default)"
+                  onChange={(e) => setFavPath(e.target.value)}
+                />
+                <Button variant="ghost" onClick={() => void onBrowse()} disabled={busy}>
+                  Browse folder…
+                </Button>
+                <Button
+                  onClick={() =>
+                    void persist({
+                      ...skills,
+                      favoritesPath: favPath.trim() === "" ? null : favPath.trim(),
+                    })
+                  }
+                  disabled={busy}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="ghost" onClick={() => void onCheck()} disabled={checking}>
+                {checking ? "Checking…" : "Check CLI"}
+              </Button>
+              {cli && (
+                <span className={hint}>
+                  CLI:{" "}
+                  <span className={cli.available ? "text-success" : "text-destructive"}>
+                    {cli.available ? "ready" : "missing"}
+                  </span>{" "}
+                  — {cli.message}
+                </span>
+              )}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

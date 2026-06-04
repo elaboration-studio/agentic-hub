@@ -22,6 +22,8 @@ pub mod rule_sync;
 pub mod scaffold;
 pub mod scanner;
 pub mod settings;
+pub mod skill_favorites;
+pub mod skill_source;
 pub mod suite_binding_store;
 pub mod suite_store;
 pub mod workspace_inventory;
@@ -45,7 +47,12 @@ pub use planner::{build_plan, inspect_tool};
 pub use reconcile::{reconcile_all, reconcile_tool, ReconcileToolOutcome};
 pub use scaffold::{scaffold_demo, ScaffoldMode, ScaffoldResult};
 pub use scanner::{scan, scan_all};
-pub use settings::{Settings, SourceConfig, ToolSettings, ToolsSettings};
+pub use settings::{Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings};
+pub use skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
+pub use skill_source::{
+    provider_for, SkillCliStatus, SkillInstallResult, SkillProvider, SkillSearchHit,
+    SkillsShProvider,
+};
 pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 pub use workspace_inventory::{scan_workspace, WorkspaceInventory};

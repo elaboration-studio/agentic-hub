@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 export type Scope = "global" | "workspace";
-export type Route = "manager" | "suites" | "config";
+export type Route = "manager" | "suites" | "skills" | "config";
 export type View = "flat" | "tree";
 export type KindFilter = "all" | CapabilityKind;
 

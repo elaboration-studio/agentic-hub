@@ -18,12 +18,13 @@ import { EmptyState } from "./components/manager/EmptyState";
 import { ConflictDialog } from "./components/manager/ConflictDialog";
 import { ConfigPage } from "./components/config/ConfigPage";
 import { SuitesPage } from "./components/suites/SuitesPage";
+import { SkillsPage } from "./components/skills/SkillsPage";
 import { WorkspaceView } from "./components/workspace/WorkspaceView";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 
-const ROUTES: Route[] = ["manager", "suites", "config"];
+const ROUTES: Route[] = ["manager", "suites", "skills", "config"];
 
 function routeFromHash(): Route {
   const hash = window.location.hash.replace(/^#\/?/, "") as Route;
@@ -138,6 +139,7 @@ export function App() {
           )}
           {data && route === "config" && <ConfigPage />}
           {data && route === "suites" && <SuitesPage />}
+          {data && route === "skills" && <SkillsPage />}
           {data && route === "manager" && (
             <>
               {data.scanErrors.length > 0 && (

@@ -20,6 +20,11 @@ file verbatim as the GitHub Release body. For the full version history see
   **locate** an item — search a project by name, hit Enter, and the Manager
   jumps to workspace scope and highlights that row in the matrix (no file is
   opened). The palette also renders as a clean floating card on macOS again.
+- **Skills.sh as a pluggable skill source (opt-in).** Enable it in Config, then
+  search [skills.sh](https://skills.sh) and **star** skills locally. From
+  Workspace scope, **Install skill…** runs the source CLI into the active
+  project; the read-only inventory re-scans to show what landed. Built behind a
+  provider seam for future registries.
 
 ### Changes
 
@@ -38,6 +43,19 @@ file verbatim as the GitHub Release body. For the full version history see
   Palette window rendering on macOS is fixed: the `NSPanel` re-applies
   transparency and drops its native shadow after the style-mask change, sizes to
   its content, and no longer collapses the result list to one row.
+
+- New opt-in **skills.sh source**. Config gains a Skills.sh panel (enable toggle,
+  starred-file override, CLI check). A **Skills** tab (shown only when enabled)
+  searches skills.sh and stars favorites to
+  `~/.agentic-hub/skills-favorites.json`. Search needs **no API key** — it uses
+  the keyless public index (`https://skills.sh/api/search`, the same endpoint the
+  `skills` CLI uses), routed through Rust (`cmd_search_skills`) since that
+  endpoint sends no CORS header. Workspace scope gains an **Install skill…**
+  action backed by `cmd_install_skill`, which runs `npx skills add <owner/repo>`
+  via a controlled subprocess (no `tauri-plugin-shell`) into the active project
+  and re-scans the read-only inventory. New `agentic-core` modules `skill_source`
+  (provider seam + `SkillsShProvider`) and `skill_favorites`, plus `SkillsConfig`
+  on `Settings`.
 
 ### Removed (breaking)
 

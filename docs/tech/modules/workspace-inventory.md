@@ -99,6 +99,7 @@ The `agentic-hub` watcher subscribes to the shared source roots **and** the acti
 - `cmd_scan_workspace(workspace_id) -> WorkspaceInventory` — resolve the dir from the target store, scan it.
 - `cmd_pick_workspace_dir`, `cmd_list_workspace_targets`, `cmd_set_active_workspace_target`, `cmd_remove_workspace_target` — target store CRUD; the mutating ones restart the watcher.
 - Event `workspace-changed` — the UI reloads the active inventory while in workspace scope.
+- `cmd_install_skill` (opt-in skills.sh source only) — the **one** explicit workspace write. It installs a starred skill into the active project via a controlled subprocess, then emits `workspace-changed` so this read-only scan re-runs. The scan never writes; see [skill-sources.md](./skill-sources.md).
 
 See [tauri-ipc-contract.md](./tauri-ipc-contract.md).
 

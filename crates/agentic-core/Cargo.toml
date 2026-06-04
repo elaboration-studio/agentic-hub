@@ -21,6 +21,10 @@ thiserror = { workspace = true }
 include_dir = "0.7"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
+# Keyless GET against the public skills.sh search index (the same endpoint the
+# `skills` CLI uses). Blocking client: the provider methods are sync. `rustls`
+# avoids a system OpenSSL build dependency for the Linux bundles.
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
 ts-rs = { version = "10", optional = true }
 
 [dev-dependencies]

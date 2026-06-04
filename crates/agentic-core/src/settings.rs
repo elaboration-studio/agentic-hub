@@ -96,6 +96,24 @@ impl EditorPref {
     }
 }
 
+/// Configuration for the skills.sh public skill source. Opt-in: off by default.
+/// Search uses the keyless public index (no API key), so the only knob besides
+/// the toggle is `favorites_path`, which optionally overrides where starred
+/// skills are stored.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub favorites_path: Option<PathBuf>,
+}
+
 /// Per-tool target paths and toggles. Mirrors the IPC `ToolSettings` shape.
 #[cfg_attr(
     feature = "ts-export",
@@ -159,6 +177,9 @@ pub struct Settings {
     /// `Cmd+Alt+A`.
     #[serde(default = "default_palette_shortcut")]
     pub palette_shortcut: String,
+    /// Opt-in skills.sh public source config. Defaults to disabled.
+    #[serde(default)]
+    pub skills: SkillsConfig,
     pub tools: ToolsSettings,
 }
 
@@ -266,6 +287,7 @@ impl Default for Settings {
             watcher_enabled: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
+            skills: SkillsConfig::default(),
             tools: ToolsSettings::default(),
         }
     }
@@ -283,6 +305,15 @@ impl Settings {
         match &self.suites_path {
             Some(p) => expand_tilde(&p.to_string_lossy()),
             None => crate::suite_store::default_path(),
+        }
+    }
+
+    /// Effective skill-favorites path: the user's custom override (tilde-expanded)
+    /// or the canonical `~/.agentic-hub/skills-favorites.json`.
+    pub fn resolved_favorites_path(&self) -> PathBuf {
+        match &self.skills.favorites_path {
+            Some(p) => expand_tilde(&p.to_string_lossy()),
+            None => crate::skill_favorites::default_path(),
         }
     }
 
@@ -405,6 +436,7 @@ impl Settings {
             watcher_enabled: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
+            skills: SkillsConfig::default(),
             tools: ToolsSettings {
                 codex: tool("codex"),
                 claude: tool("claude"),
@@ -450,6 +482,53 @@ mod tests {
             .as_ref()
             .unwrap()
             .ends_with(".openclaw/workspace/SOUL.md"));
+    }
+
+    #[test]
+    fn skills_source_defaults_off_and_roundtrips() {
+        let s = Settings::default();
+        assert!(!s.skills.enabled);
+        assert!(s.skills.favorites_path.is_none());
+        // Default favorites path is the canonical hub dotfile.
+        assert!(s
+            .resolved_favorites_path()
+            .ends_with(".agentic-hub/skills-favorites.json"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let configured = Settings {
+            skills: SkillsConfig {
+                enabled: true,
+                favorites_path: Some(PathBuf::from("/tmp/fav.json")),
+            },
+            ..Settings::default()
+        };
+        configured.save_to(&path).unwrap();
+        let reloaded = Settings::load_from(&path).unwrap();
+        assert_eq!(reloaded.skills, configured.skills);
+        assert_eq!(
+            reloaded.resolved_favorites_path(),
+            PathBuf::from("/tmp/fav.json")
+        );
+    }
+
+    #[test]
+    fn legacy_config_without_skills_block_defaults_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        // A config written before the skills block existed (no `skills` key).
+        fs::write(
+            &path,
+            r#"{ "sharedRoot": "/tmp/agentic", "tools": {
+                "codex": {"enabled": true, "skillsPath": "/c/skills", "agentsPath": "/c/agents", "rulesPath": "/c/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "claude": {"enabled": true, "skillsPath": "/cl/skills", "agentsPath": "/cl/agents", "rulesPath": "/cl/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "cursor": {"enabled": true, "skillsPath": "/cu/skills", "agentsPath": "/cu/agents", "rulesPath": "/cu/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "openclaw": {"enabled": false, "skillsPath": "/o/skills", "agentsPath": "/o/agents", "rulesPath": "/o/rules", "instructionsPath": null, "hooksEnabled": false, "hooksFile": null}
+            } }"#,
+        )
+        .unwrap();
+        let loaded = Settings::load_from(&path).unwrap();
+        assert!(!loaded.skills.enabled, "absent block defaults to off");
     }
 
     #[test]

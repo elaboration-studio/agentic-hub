@@ -56,6 +56,10 @@ Common error codes:
 | `reveal_failed` | The opener plugin could not reveal the path |
 | `invalid_shortcut` | The palette accelerator string in settings is malformed |
 | `shortcut_register_failed` | The global palette shortcut could not be registered with the OS |
+| `invalid_skill_ref` | A skill install reference failed `owner/repo` validation |
+| `unknown_provider` | A skill source provider id is not registered |
+| `skill_search` | A skill source search request failed (network / non-200 / malformed) |
+| `install_failed` | A skill install subprocess could not be run |
 | `internal` | Catch-all unexpected error; surface for bug reports |
 
 ## Settings commands
@@ -423,6 +427,76 @@ type WorkspaceInventory = {
 ```
 
 Errors: `workspace_not_found` (unknown id).
+
+## Skill source commands (opt-in skills.sh source)
+
+Gated behind `settings.skills.enabled`. Search runs through Rust (below) against
+the keyless public skills.sh index — no API key. See
+[skill-sources.md](./skill-sources.md).
+
+### `cmd_skill_cli_check(input: { provider: string }) -> SkillCliStatus`
+
+Probes a provider's installer tooling (for skills.sh: `npx`/Node). Advisory.
+
+```typescript
+type SkillCliStatus = { available: boolean; version: string | null; message: string };
+```
+
+Errors: `unknown_provider`.
+
+### `cmd_search_skills(input: { provider, query, limit? }) -> SkillSearchHit[]`
+
+Searches a provider's keyless public index. Runs in Rust (not a WebView `fetch`)
+because the skills.sh search endpoint sends no CORS header. Queries under two
+characters return `[]` without a request. Links are derived in Rust.
+
+```typescript
+type SkillSearchHit = {
+  id: string;            // "{source}/{slug}"
+  skillId: string;       // per-skill slug
+  name: string;
+  source: string;        // e.g. "owner/repo"
+  installs: number;
+  installRef: string;    // ref for `npx skills add`
+  githubUrl: string | null;
+  pageUrl: string;
+};
+```
+
+Errors: `unknown_provider`, `skill_search`.
+
+### `cmd_list_skill_favorites() -> SkillFavoritesState`
+
+Reads the local starred-skills file (`~/.agentic-hub/skills-favorites.json` or
+the configured override).
+
+### `cmd_add_skill_favorite(favorite: SkillFavorite) -> SkillFavorite`
+
+Upserts a favorite by `(provider, id)`, newest-first; stamps `starredAt`.
+
+### `cmd_remove_skill_favorite(input: { provider: string; id: string }) -> null`
+
+Unstars by `(provider, id)`; absent entries are a no-op.
+
+### `cmd_install_skill(input) -> SkillInstallResult`
+
+The **one** explicit workspace write. Resolves + validates the workspace dir
+against the target store, runs the provider's install (`npx skills add <ref>`),
+then restarts the watcher and emits `workspace-changed` so the read-only
+inventory re-scans.
+
+```typescript
+type InstallSkillInput = {
+  provider: string;
+  installRef: string;          // validated owner/repo (or owner/repo/skill)
+  workspaceId: string;
+  toolIds: ToolId[];           // advisory; the CLI auto-detects agents
+};
+type SkillInstallResult = { ok: boolean; log: string };
+```
+
+Errors: `invalid_skill_ref`, `unknown_provider`, `install_failed`,
+`workspace_not_found`.
 
 ## Scaffold command
 

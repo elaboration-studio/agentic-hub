@@ -8,6 +8,7 @@ import { useWorkspaceStore } from "@/state/workspace";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Matrix } from "@/components/manager/Matrix";
 import { WorkspaceRail } from "./WorkspaceRail";
+import { InstallSkillDialog } from "./InstallSkillDialog";
 
 export function WorkspaceView() {
   const activeId = useWorkspaceStore((s) => s.activeId);
@@ -15,6 +16,7 @@ export function WorkspaceView() {
   const data = useManagerStore((s) => s.data);
   const readOnly = useManagerStore((s) => s.readOnly);
   const loadWorkspace = useManagerStore((s) => s.loadWorkspace);
+  const skillsEnabled = useManagerStore((s) => s.data?.settings.skills.enabled ?? false);
 
   // On entering workspace scope: load remembered targets, then the active one's
   // inventory. Self-contained so the view works regardless of how it mounts.
@@ -29,7 +31,12 @@ export function WorkspaceView() {
   return (
     <div className="flex flex-1 gap-5">
       <WorkspaceRail />
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {skillsEnabled && activeId && (
+          <div className="flex justify-end">
+            <InstallSkillDialog />
+          </div>
+        )}
         {activeId && data && readOnly ? (
           <Matrix />
         ) : (

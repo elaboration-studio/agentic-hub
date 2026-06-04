@@ -172,6 +172,16 @@ impl ToolId {
         ToolId::Cursor,
         ToolId::Openclaw,
     ];
+
+    /// Lowercase id, matching the serde wire representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ToolId::Codex => "codex",
+            ToolId::Claude => "claude",
+            ToolId::Cursor => "cursor",
+            ToolId::Openclaw => "openclaw",
+        }
+    }
 }
 
 /// Per-(tool, item) projection state on disk.

@@ -4,37 +4,37 @@ overview: "Add skills.sh as the first pluggable public skill source: a Config op
 todos:
   - id: settings-skills-config
     content: Add SkillsConfig (enabled, api_key, favorites_path) to Settings + resolved_favorites_path(); ts-export; tests for roundtrip/default.
-    status: pending
+    status: completed
   - id: favorites-store
     content: Create agentic-core skill_favorites.rs store (read/add/remove, atomic write, dedupe by provider+id) with TDD.
-    status: pending
+    status: completed
   - id: skill-source-provider
     content: "Create agentic-core skill_source.rs: SkillProvider seam + SkillsShProvider, validate_install_ref, CLI arg construction, cli_check; login-shell PATH handling; unit tests for validation."
-    status: pending
+    status: completed
   - id: ipc-commands
     content: Add cmd_skill_cli_check, favorites CRUD commands, and cmd_install_skill (workspace-dir guard + watcher nudge + workspace-changed emit); register in lib.rs.
-    status: pending
+    status: completed
   - id: ts-types-ipc
     content: Regenerate ts-rs types; export in types/index.ts; add ipc.ts wrappers + skillsSearch/skillDetail WebView fetch helper.
-    status: pending
+    status: completed
   - id: skills-store
     content: Create src/state/skills.ts store (search/star/unstar/loadFavorites/install) with Vitest tests mocking ipc + fetch.
-    status: pending
+    status: completed
   - id: config-panel
     content: "Add SkillsPanel to ConfigPage: enable toggle, API key, favorites-path override, and CLI+API health check button."
-    status: pending
+    status: completed
   - id: skills-page
     content: Add 'skills' route + conditional Header tab + SkillsPage (search results, links, star toggles, favorites list).
-    status: pending
+    status: completed
   - id: workspace-install
     content: Add InstallSkillDialog + 'Install skill…' entry in WorkspaceView; pick favorite + target tools; install and auto re-scan.
-    status: pending
+    status: completed
   - id: docs-release
     content: Write skills-sh feature + skill-sources tech docs; update workspace-inventory, ARCHITECTURE.workspace, AGENTS.md, ipc-contract; RELEASE + CHANGELOG.
-    status: pending
+    status: completed
   - id: verify
     content: Run cargo test/clippy, pnpm test/lint; manual end-to-end install into a test workspace.
-    status: pending
+    status: completed
 isProject: false
 ---
 

@@ -28,6 +28,23 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   workspace matrix — switching to workspace scope, activating the workspace, and
   scrolling to and highlighting the row instead of opening a file. Backed by a
   new `hub-locate` window event.
+- **Skills.sh as a pluggable workspace skill source (opt-in).** A `SkillsConfig`
+  on `Settings` (off by default) enables a Config panel (CLI check, starred-file
+  override) and a conditional **Skills** tab that searches skills.sh and stars
+  favorites to `~/.agentic-hub/skills-favorites.json` (new
+  `agentic-core::skill_favorites`). Search uses the **keyless** public index
+  (`https://skills.sh/api/search` — the same endpoint the `skills` CLI uses, no
+  API key), routed through Rust (`cmd_search_skills`, a blocking `reqwest` GET)
+  because that endpoint sends no CORS header. Workspace scope gains **Install
+  skill…** (`cmd_install_skill`): the one explicit, user-initiated workspace
+  write. It runs `npx skills add <owner/repo>` via a controlled
+  `std::process::Command` (validated ref, cwd = the remembered workspace,
+  login-shell `PATH`, no `tauri-plugin-shell`), then re-scans the read-only
+  inventory. Built behind a `SkillProvider` seam (`agentic-core::skill_source`)
+  for future registries. New IPC: `cmd_skill_cli_check`, `cmd_search_skills`,
+  `cmd_list_skill_favorites`, `cmd_add_skill_favorite`, `cmd_remove_skill_favorite`,
+  `cmd_install_skill`; new error codes `invalid_skill_ref`, `unknown_provider`,
+  `skill_search`, `install_failed`.
 
 ### Fixed
 
