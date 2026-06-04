@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
-## [0.7.0] — 2026-06-04
+## [0.6.1] — 2026-06-04
 
 ### Added
 
@@ -53,6 +53,16 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   corrupt it. A spawn that still can't find `npx` now returns a typed
   `SkillCliMissing` error (code `skill_cli_missing`) with an actionable hint
   instead of the raw OS error.
+- **The Manager toolbar now lines up with the matrix.** The search bar and
+  filters along the top edge stretch to match the table width, so the left and
+  right edges stay aligned instead of drifting apart on wider inventories.
+- **The flat / tree view buttons show which one is active.** Selecting a layout
+  now highlights its button (a solid indigo pill); previously the active state
+  was swallowed and both buttons looked the same.
+- **Skill search moved into a focused modal.** On the Resources page, "Search
+  skills.sh…" opens a dedicated dialog with its own scrolling result list, and
+  your starred skills now fill the whole page instead of sharing the space with
+  the search box.
 
 ## [0.6.0] — 2026-06-04
 

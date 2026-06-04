@@ -5,7 +5,7 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.7.0] — 2026-06-04
+## [0.6.1] — 2026-06-04
 
 ### Highlights
 
@@ -32,6 +32,10 @@ file verbatim as the GitHub Release body. For the full version history see
   found. It now reads `PATH` from your interactive login shell, so installs find
   Node the same way your terminal does — and a missing `npx` shows a clear,
   actionable hint instead of an opaque error.
+- **A round of Manager polish.** The top toolbar now lines up with the matrix
+  below it, the flat / tree view buttons clearly show which layout is active,
+  and skill search moved into a focused modal so your starred skills get the
+  full page.
 
 ### Migration
 
