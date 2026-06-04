@@ -58,6 +58,10 @@ interface SkillsState {
   favorites: SkillFavorite[];
   searching: boolean;
   installing: boolean;
+  /// Combined, human-readable output of the last install batch (per-skill CLI
+  /// logs / errors). `null` until a batch runs; shown in the install dialog so a
+  /// failure isn't a dead-end toast.
+  installLog: string | null;
 
   setQuery: (q: string) => void;
   loadFavorites: () => Promise<void>;
@@ -65,11 +69,17 @@ interface SkillsState {
   star: (result: SkillSearchHit) => Promise<void>;
   unstar: (provider: string, id: string) => Promise<void>;
   installMany: (items: InstallItem[], workspaceId: string) => Promise<InstallSummary>;
+  clearInstallLog: () => void;
 }
 
-/// Run a single install through IPC, toasting the outcome. Returns whether it
-/// landed so the batch caller can tally without re-inspecting the result.
-async function runInstall(item: InstallItem, workspaceId: string): Promise<boolean> {
+/// Run a single install through IPC, toasting the outcome. Returns the outcome
+/// plus its CLI log so the batch caller can both tally and assemble a combined
+/// output panel. A thrown IPC error becomes a failed result whose log is the
+/// error message (so the cause is visible, not just a transient toast).
+async function runInstall(
+  item: InstallItem,
+  workspaceId: string,
+): Promise<{ ok: boolean; log: string }> {
   try {
     const result: SkillInstallResult = await installSkill({
       provider: item.favorite.provider,
@@ -77,15 +87,13 @@ async function runInstall(item: InstallItem, workspaceId: string): Promise<boole
       workspaceId,
       toolIds: item.toolIds,
     });
-    if (result.ok) {
-      toast.success(`Installed ${item.favorite.name}`);
-      return true;
-    }
-    toast.error(`Install failed: ${item.favorite.name}`);
-    return false;
+    if (result.ok) toast.success(`Installed ${item.favorite.name}`);
+    else toast.error(`Install failed: ${item.favorite.name}`);
+    return { ok: result.ok, log: result.log };
   } catch (e) {
-    toast.error(messageOf(e));
-    return false;
+    const msg = messageOf(e);
+    toast.error(msg);
+    return { ok: false, log: msg };
   }
 }
 
@@ -95,8 +103,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   favorites: [],
   searching: false,
   installing: false,
+  installLog: null,
 
   setQuery: (query) => set({ query }),
+
+  clearInstallLog: () => set({ installLog: null }),
 
   loadFavorites: async () => {
     try {
@@ -161,16 +172,20 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   // whether to keep the dialog open (partial failure) or close it (all landed).
   installMany: async (items, workspaceId) => {
     if (items.length === 0) return { installed: 0, failed: 0 };
-    set({ installing: true });
+    set({ installing: true, installLog: null });
     let installed = 0;
     let failed = 0;
+    const logs: string[] = [];
     try {
       for (const item of items) {
-        if (await runInstall(item, workspaceId)) installed += 1;
+        const { ok, log } = await runInstall(item, workspaceId);
+        if (ok) installed += 1;
         else failed += 1;
+        const head = `${ok ? "✓" : "✗"} ${item.favorite.name} → ${item.toolIds.join(", ")}`;
+        logs.push(log.trim() ? `${head}\n${log.trim()}` : head);
       }
     } finally {
-      set({ installing: false });
+      set({ installing: false, installLog: logs.join("\n\n") });
     }
     return { installed, failed };
   },

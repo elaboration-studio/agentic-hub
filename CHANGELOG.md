@@ -8,6 +8,21 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [0.6.1] — 2026-06-04
 
+### Fixed
+
+- **Skill installs failing with "No such file or directory (os error 2)".** The
+  provider read the user's `PATH` from a *non-interactive* login shell
+  (`zsh -lc`), which sources `.zprofile`/`.zlogin` but **skips `.zshrc`** — where
+  nvm/fnm/Homebrew almost always export `PATH` — so `npx` wasn't found. It now
+  asks an **interactive** login shell (`$SHELL` first, then zsh/bash/sh, via
+  `-ilc`) and frames the printed `PATH` with a sentinel so rc-file chatter can't
+  corrupt it. A spawn that still can't find `npx` now returns a typed
+  `SkillCliMissing` error with an actionable hint instead of the raw OS error.
+- **Install failures are no longer a dead-end toast.** The install dialog now
+  shows the combined per-skill CLI output (and errors) in an Output panel, keeps
+  itself open on failure, and carries a standing hint that installs need Node.js
+  (npx) on `PATH` (verifiable via Config → skills.sh → Check CLI).
+
 ### Changed
 
 - **Workspace install is now a batch matrix behind a floating action button.**

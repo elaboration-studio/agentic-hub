@@ -6,7 +6,7 @@
 // skills can be installed at once (and future resource sources can reuse it).
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 import { useSkillsStore, type InstallItem } from "@/state/skills";
 import { useWorkspaceStore } from "@/state/workspace";
 import { WORKSPACE_TOOLS } from "@/shared";
@@ -40,17 +40,20 @@ export function InstallSkillDialog() {
 
   const favorites = useSkillsStore((s) => s.favorites);
   const installing = useSkillsStore((s) => s.installing);
+  const installLog = useSkillsStore((s) => s.installLog);
   const installMany = useSkillsStore((s) => s.installMany);
+  const clearInstallLog = useSkillsStore((s) => s.clearInstallLog);
   const loadFavorites = useSkillsStore((s) => s.loadFavorites);
   const activeId = useWorkspaceStore((s) => s.activeId);
 
-  // Refresh the starred list and clear any prior selection each time it opens.
+  // Refresh the starred list and clear prior selection + output each time it opens.
   useEffect(() => {
     if (open) {
       void loadFavorites();
       setPicks({});
+      clearInstallLog();
     }
-  }, [open, loadFavorites]);
+  }, [open, loadFavorites, clearInstallLog]);
 
   const toggleCell = useCallback((favId: string, tool: ToolId, on: boolean) => {
     setPicks((prev) => {
@@ -122,6 +125,15 @@ export function InstallSkillDialog() {
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex items-start gap-2 rounded-lg border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+          <Info className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            Installs run <code className="font-mono">npx skills add</code>, so they
+            need Node.js (npx) on your PATH. Verify in{" "}
+            <span className="font-medium">Config → skills.sh → Check CLI</span>.
+          </span>
+        </div>
+
         {favorites.length === 0 ? (
           <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
             No starred skills. Star some on the Resources page first.
@@ -170,6 +182,15 @@ export function InstallSkillDialog() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {installLog && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">Output</span>
+            <pre className="max-h-40 overflow-auto rounded-lg border bg-secondary/40 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap wrap-break-word">
+              {installLog}
+            </pre>
           </div>
         )}
 

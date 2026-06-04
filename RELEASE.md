@@ -22,6 +22,15 @@ file verbatim as the GitHub Release body. For the full version history see
   the side and scrolls on its own, so picking a project no longer means scrolling
   past a long inventory to get back to the list.
 
+### Fixed
+
+- **Installs that failed with "No such file or directory (os error 2)" now
+  work.** The hub read your `PATH` from a shell that skipped `.zshrc`, so a
+  Node.js installed via nvm/fnm/Homebrew was invisible and `npx` couldn't be
+  found. It now reads `PATH` from your interactive login shell, so installs find
+  Node the same way your terminal does. When something does go wrong, the dialog
+  shows the actual CLI output and a clear hint instead of an opaque error toast.
+
 ### Migration
 
 - None. UX-only enhancements; settings, favorites, and workspace state load

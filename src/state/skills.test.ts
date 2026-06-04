@@ -202,4 +202,32 @@ describe("skills store — installMany", () => {
     expect(mocked.installSkill).not.toHaveBeenCalled();
     expect(summary).toEqual({ installed: 0, failed: 0 });
   });
+
+  it("captures the combined per-skill log for the output panel", async () => {
+    mocked.installSkill
+      .mockResolvedValueOnce({ ok: true, log: "added next-js" })
+      .mockRejectedValueOnce(new Error("npx (Node.js) was not found on PATH"));
+
+    await useSkillsStore.getState().installMany(
+      [
+        { favorite: makeFavorite("a"), toolIds: ["cursor"] },
+        { favorite: makeFavorite("b"), toolIds: ["claude"] },
+      ],
+      "ws-1",
+    );
+
+    const log = useSkillsStore.getState().installLog ?? "";
+    expect(log).toContain("✓ a → cursor");
+    expect(log).toContain("added next-js");
+    expect(log).toContain("✗ b → claude");
+    expect(log).toContain("npx (Node.js) was not found on PATH");
+  });
+
+  it("clearInstallLog resets the captured output", async () => {
+    useSkillsStore.setState({ installLog: "stale output" });
+
+    useSkillsStore.getState().clearInstallLog();
+
+    expect(useSkillsStore.getState().installLog).toBeNull();
+  });
 });

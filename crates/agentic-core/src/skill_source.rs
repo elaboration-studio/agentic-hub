@@ -241,20 +241,54 @@ fn http_search(query: &str, limit: u32) -> Result<Vec<SkillSearchHit>> {
     parse_search_response(&body)
 }
 
-/// Best-effort `PATH` from the user's login shell. GUI apps launched from the
-/// macOS Dock inherit a minimal `PATH` that omits Homebrew / nvm, so `npx` is
-/// often invisible. We read the login shell's `PATH` once and hand it to the
-/// child. `None` falls back to the inherited environment.
+/// Sentinel framing our `PATH` print so we can recover it even when a shell's
+/// startup files write their own banner/chatter to stdout.
+const PATH_MARKER: &str = "__AGENTIC_HUB_PATH__";
+
+/// Pull the value framed by `marker` on both sides out of `raw`. Returns `None`
+/// when the framing is absent. Pure so the parsing is unit-tested without a
+/// shell.
+fn extract_framed(raw: &str, marker: &str) -> Option<String> {
+    let start = raw.find(marker)? + marker.len();
+    let rest = &raw[start..];
+    let end = rest.find(marker)?;
+    Some(rest[..end].to_string())
+}
+
+/// Candidate shells to read `PATH` from, the user's own `$SHELL` first.
+fn path_shells() -> Vec<String> {
+    let mut shells: Vec<String> = Vec::new();
+    if let Ok(s) = std::env::var("SHELL") {
+        if !s.is_empty() {
+            shells.push(s);
+        }
+    }
+    for fallback in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
+        if !shells.iter().any(|s| s == fallback) {
+            shells.push(fallback.to_string());
+        }
+    }
+    shells
+}
+
+/// Best-effort `PATH` from the user's shell. GUI apps launched from the macOS
+/// Dock inherit a minimal `PATH` that omits Homebrew / nvm / fnm, so `npx` is
+/// often invisible. We ask the user's shell — as an **interactive login** shell
+/// (`-ilc`) so it sources `.zshrc` / `.bashrc`, where version managers and
+/// Homebrew almost always put their `PATH` (a plain login shell skips those) —
+/// to print its `PATH`, framed by a sentinel so rc-file chatter can't corrupt
+/// it. `None` falls back to the inherited environment.
 fn login_path() -> Option<String> {
-    for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
-        if !Path::new(shell).exists() {
+    let script = format!("printf '{PATH_MARKER}%s{PATH_MARKER}' \"$PATH\"");
+    for shell in path_shells() {
+        if !Path::new(&shell).exists() {
             continue;
         }
-        if let Ok(out) = Command::new(shell).args(["-lc", "printf %s \"$PATH\""]).output() {
-            if out.status.success() {
-                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(path);
+        if let Ok(out) = Command::new(&shell).args(["-ilc", &script]).output() {
+            let raw = String::from_utf8_lossy(&out.stdout);
+            if let Some(path) = extract_framed(&raw, PATH_MARKER) {
+                if !path.trim().is_empty() {
+                    return Some(path.trim().to_string());
                 }
             }
         }
@@ -325,7 +359,13 @@ impl SkillProvider for SkillsShProvider {
             .args(skills_npx_args(install_ref))
             .current_dir(workspace_dir)
             .output()
-            .map_err(CoreError::Io)?;
+            .map_err(|e| match e.kind() {
+                // The most common failure: `npx` isn't on the resolved PATH.
+                // Turn the opaque "No such file or directory (os error 2)" into
+                // an actionable hint.
+                std::io::ErrorKind::NotFound => CoreError::SkillCliMissing,
+                _ => CoreError::Io(e),
+            })?;
 
         let mut log = String::new();
         let tool_list: Vec<&str> = tools.iter().map(|t| t.as_str()).collect();
@@ -391,6 +431,28 @@ mod tests {
             .install(dir.path(), "evil; rm -rf /", &[])
             .unwrap_err();
         assert!(matches!(err, CoreError::InvalidSkillRef(_)));
+    }
+
+    #[test]
+    fn extract_framed_recovers_path_amid_chatter() {
+        // rc files can print a banner before/after our framed PATH.
+        let raw = "welcome!\n__M__/opt/homebrew/bin:/usr/bin__M__\nbye";
+        assert_eq!(
+            extract_framed(raw, "__M__").as_deref(),
+            Some("/opt/homebrew/bin:/usr/bin")
+        );
+        assert_eq!(extract_framed("no markers here", "__M__"), None);
+        assert_eq!(extract_framed("__M__only-one-side", "__M__"), None);
+    }
+
+    #[test]
+    fn path_shells_prefers_user_shell_then_falls_back() {
+        // Pure ordering check; uses whatever $SHELL the test env carries.
+        let shells = path_shells();
+        assert!(shells.iter().any(|s| s == "/bin/sh"));
+        // No duplicate fallbacks even if $SHELL is one of them.
+        let bash = shells.iter().filter(|s| *s == "/bin/bash").count();
+        assert!(bash <= 1);
     }
 
     #[test]

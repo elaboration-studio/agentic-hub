@@ -49,11 +49,18 @@ interpolated into a shell string), with `cwd = workspace_dir` and
 `DISABLE_TELEMETRY=1`.
 
 **macOS PATH gotcha.** A Dock-launched app inherits a minimal `PATH` that omits
-Homebrew / nvm, so `npx` is often invisible. The provider reads the login
-shell's `PATH` once (`/bin/zsh -lc 'printf %s "$PATH"'`, falling back to
-bash/sh) and applies it to the child's environment. The login shell is used
-**only** to read `PATH`; the install command itself is a fixed arg vector, so no
-untrusted string ever reaches a shell.
+Homebrew / nvm / fnm, so `npx` is often invisible. The provider reads the user's
+shell `PATH` once and applies it to the child's environment. It asks an
+**interactive login** shell — the user's `$SHELL` first, then `/bin/zsh`,
+`/bin/bash`, `/bin/sh` — via `-ilc 'printf "<marker>%s<marker>" "$PATH"'`. The
+`-i` matters: a plain login shell (`-lc`) sources `.zprofile`/`.zlogin` but
+**skips `.zshrc`**, which is exactly where version managers and Homebrew usually
+export `PATH`; without it `npx` resolves to "No such file or directory (os error
+2)". The output is framed by a sentinel so rc-file banner chatter can't corrupt
+the captured `PATH`. The shell is used **only** to read `PATH`; the install
+command itself is a fixed arg vector, so no untrusted string ever reaches a
+shell. If the spawn still fails with `NotFound`, the provider returns a typed
+`SkillCliMissing` error with an actionable hint instead of the raw OS error.
 
 ## Local favorites store
 
