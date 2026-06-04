@@ -2,7 +2,7 @@
 // Payloads are single typed objects; argument keys match the Rust parameter
 // names. See docs/tech/modules/tauri-ipc-contract.md.
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ApplyProgressEvent,
@@ -10,6 +10,7 @@ import type {
   ApplySuiteResult,
   CapabilityItem,
   InspectResult,
+  InstallContext,
   PlannedOperation,
   ScaffoldMode,
   ScaffoldResult,
@@ -18,7 +19,7 @@ import type {
   SkillCliStatus,
   SkillFavorite,
   SkillFavoritesState,
-  SkillInstallResult,
+  SkillInstallEvent,
   SkillSearchHit,
   SourceConfig,
   SuiteCapabilityRef,
@@ -252,12 +253,39 @@ export const addSkillFavorite = (favorite: SkillFavorite): Promise<SkillFavorite
 export const removeSkillFavorite = (provider: string, id: string): Promise<void> =>
   invoke("cmd_remove_skill_favorite", { input: { provider, id } });
 
-export interface InstallSkillPayload {
+// ---- Skill install window (dedicated, live-streaming) ---------------------
+
+/// Open (or focus) the install window targeting a workspace. The window reads
+/// its context on mount via `takeInstallContext`.
+export const openInstallWindow = (workspaceId: string): Promise<void> =>
+  invoke("cmd_open_install_window", { workspaceId });
+
+/// Install window: read the workspace context set when it was opened.
+export const takeInstallContext = (): Promise<InstallContext> =>
+  invoke("cmd_take_install_context");
+
+export interface InstallSkillStreamPayload {
   provider: string;
   installRef: string;
   workspaceId: string;
+  /// The one skill slug to install — pins `--skill` so a multi-skill repo never
+  /// opens an interactive picker.
+  slug: string;
   toolIds: ToolId[];
 }
 
-export const installSkill = (input: InstallSkillPayload): Promise<SkillInstallResult> =>
-  invoke("cmd_install_skill", { input });
+/// Install one skill, streaming stdout/stderr lines (then a terminal `done`)
+/// over `onEvent`. Resolves when the run finishes (or is cancelled).
+export const installSkillStream = (
+  input: InstallSkillStreamPayload,
+  onEvent: Channel<SkillInstallEvent>,
+): Promise<void> => invoke("cmd_install_skill_stream", { input, onEvent });
+
+/// Kill the in-flight install (if any). The current stream then ends as
+/// `cancelled`.
+export const cancelInstall = (): Promise<void> => invoke("cmd_cancel_install");
+
+/// Install window: the targeted workspace context changed (window reopened for a
+/// different workspace) — re-read it.
+export const onInstallContextChanged = (cb: () => void): Promise<UnlistenFn> =>
+  listen("install-context-changed", () => cb());

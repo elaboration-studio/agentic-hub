@@ -207,7 +207,7 @@ export function Matrix() {
   const effectiveCollapsed = query.trim() ? EMPTY_COLLAPSE : collapsed;
 
   return (
-    <section className="flex flex-col gap-2.5">
+    <section className="flex min-w-fit flex-col gap-2.5">
       <div className="sticky top-0 z-30 flex h-14 items-center gap-2.5 bg-background shadow-[0_-1.25rem_0_0_var(--background)]">
         <ToggleGroup
           type="single"
@@ -215,22 +215,12 @@ export function Matrix() {
           onValueChange={(v) => v && setView(v as View)}
           variant="outline"
         >
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToggleGroupItem value="flat" aria-label="Flat view — grouped by kind">
-                <List />
-              </ToggleGroupItem>
-            </TooltipTrigger>
-            <TooltipContent>Flat — by kind</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToggleGroupItem value="tree" aria-label="Tree view — grouped by folder">
-                <FolderTree />
-              </ToggleGroupItem>
-            </TooltipTrigger>
-            <TooltipContent>Tree — by folder</TooltipContent>
-          </Tooltip>
+          <ToggleGroupItem value="flat" aria-label="Flat view — grouped by kind" title="Flat — by kind">
+            <List />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="tree" aria-label="Tree view — grouped by folder" title="Tree — by folder">
+            <FolderTree />
+          </ToggleGroupItem>
         </ToggleGroup>
         <div className="relative flex-1">
           <Search

@@ -1,23 +1,19 @@
 // Skills-source state: skills.sh search results and the local "starred"
 // favorites. Search runs through Rust (keyless public index, no API key);
-// starring and installing go through typed IPC. Favorites are a local reference
-// list reused across projects — there is no remote sync. Errors surface as toasts.
+// starring goes through typed IPC. Favorites are a local reference list reused
+// across projects — there is no remote sync. Errors surface as toasts. The
+// install flow lives in its own window (see components/install/), so it owns its
+// selection + streaming state; this store only serves the starred list.
 
 import { create } from "zustand";
 import { toast } from "sonner";
 import {
   addSkillFavorite,
-  installSkill,
   listSkillFavorites,
   removeSkillFavorite,
   searchSkills,
 } from "../ipc";
-import type {
-  SkillFavorite,
-  SkillInstallResult,
-  SkillSearchHit,
-  ToolId,
-} from "../types";
+import type { SkillFavorite, SkillSearchHit } from "../types";
 import { messageOf } from "../shared";
 
 /// The only source provider today. Centralized so the seam is obvious when more
@@ -45,18 +41,12 @@ interface SkillsState {
   results: SkillSearchHit[];
   favorites: SkillFavorite[];
   searching: boolean;
-  installing: boolean;
 
   setQuery: (q: string) => void;
   loadFavorites: () => Promise<void>;
   search: () => Promise<void>;
   star: (result: SkillSearchHit) => Promise<void>;
   unstar: (provider: string, id: string) => Promise<void>;
-  install: (
-    favorite: SkillFavorite,
-    workspaceId: string,
-    toolIds: ToolId[],
-  ) => Promise<SkillInstallResult | null>;
 }
 
 export const useSkillsStore = create<SkillsState>((set, get) => ({
@@ -64,7 +54,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   results: [],
   favorites: [],
   searching: false,
-  installing: false,
 
   setQuery: (query) => set({ query }),
 
@@ -122,29 +111,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       }));
     } catch (e) {
       toast.error(messageOf(e));
-    }
-  },
-
-  install: async (favorite, workspaceId, toolIds) => {
-    set({ installing: true });
-    try {
-      const result = await installSkill({
-        provider: favorite.provider,
-        installRef: favorite.installRef,
-        workspaceId,
-        toolIds,
-      });
-      if (result.ok) {
-        toast.success(`Installed ${favorite.name}`);
-      } else {
-        toast.error(`Install failed: ${favorite.name}`);
-      }
-      return result;
-    } catch (e) {
-      toast.error(messageOf(e));
-      return null;
-    } finally {
-      set({ installing: false });
     }
   },
 }));

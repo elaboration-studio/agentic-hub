@@ -27,6 +27,10 @@ interface ManagerFiltersState {
   toggleCollapsed: (path: string) => void;
   setLocate: (id: string) => void;
   clearLocate: () => void;
+  // Reset only the scope-specific filters (source, enabledOnly, collapsed,
+  // locateId) when switching between global and workspace. The universal
+  // query/kind/view carry over since they mean the same thing in both scopes.
+  resetScopedFilters: () => void;
 }
 
 export const useManagerFiltersStore = create<ManagerFiltersState>((set) => ({
@@ -53,4 +57,6 @@ export const useManagerFiltersStore = create<ManagerFiltersState>((set) => ({
     }),
   setLocate: (id) => set({ locateId: id }),
   clearLocate: () => set({ locateId: "" }),
+  resetScopedFilters: () =>
+    set({ source: "", enabledOnly: false, collapsed: new Set<string>(), locateId: "" }),
 }));

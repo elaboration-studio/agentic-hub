@@ -55,6 +55,24 @@ pub struct SkillInstallResult {
     pub log: String,
 }
 
+/// A streamed install event, sent one-per-output-line over a Tauri channel and
+/// terminated by a single `done`. Mirrors the shape the install window's live
+/// console consumes; tagged by `kind` so the UI can switch on it.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SkillInstallEvent {
+    /// One line of process output. `stream` is `"stdout"` or `"stderr"`.
+    Line { stream: String, text: String },
+    /// Terminal event: the run finished. `ok` mirrors the exit status;
+    /// `cancelled` is true when the user killed it mid-run.
+    Done { ok: bool, cancelled: bool },
+}
+
 /// One skill returned by a provider's search. Mirrors the keyless skills.sh
 /// search shape plus links derived once in Rust so the UI never reconstructs
 /// URLs: `install_ref` is the `owner/repo` the CLI accepts, `github_url` is the
@@ -96,12 +114,15 @@ pub trait SkillProvider {
     /// Search the provider's public index for `query`. Returns at most `limit`
     /// hits; queries under two characters return an empty list without a call.
     fn search(&self, query: &str, limit: u32) -> Result<Vec<SkillSearchHit>>;
-    /// Install `install_ref` into `workspace_dir`. `tools` is the user's target
-    /// selection (advisory; the CLI auto-detects agents from the project).
+    /// Install `install_ref` into `workspace_dir`. `skill` is the one slug to
+    /// install (a multi-skill repo otherwise prompts an interactive picker);
+    /// `tools` is the user's target selection, mapped to explicit `--agent`
+    /// flags so the CLI never prompts for agents either.
     fn install(
         &self,
         workspace_dir: &Path,
         install_ref: &str,
+        skill: Option<&str>,
         tools: &[ToolId],
     ) -> Result<SkillInstallResult>;
 }
@@ -133,16 +154,64 @@ pub fn validate_install_ref(r: &str) -> bool {
     })
 }
 
-/// The fixed `npx` argument vector for installing a (pre-validated) ref. Kept
-/// pure so the exact invocation is asserted in tests. `--yes` makes npx
-/// non-interactive; `skills@latest` pins to the published CLI.
-pub fn skills_npx_args(install_ref: &str) -> Vec<String> {
-    vec![
+/// The skills.sh CLI's `--agent` identifier for a tool. The CLI names Claude
+/// `claude-code`; the others match our `ToolId`. Kept here rather than on
+/// `ToolId` because the naming is provider-specific.
+fn skills_agent_id(tool: ToolId) -> &'static str {
+    match tool {
+        ToolId::Codex => "codex",
+        ToolId::Claude => "claude-code",
+        ToolId::Cursor => "cursor",
+        ToolId::Openclaw => "openclaw",
+    }
+}
+
+/// True when `s` is a safe skill slug: non-empty, only `[A-Za-z0-9._-]`, and not
+/// leading with `-` (so it can never be read as a CLI flag). Like the ref guard,
+/// this runs before the slug becomes a process arg.
+pub fn validate_skill_slug(s: &str) -> bool {
+    !s.is_empty()
+        && !s.starts_with('-')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+/// The full, non-interactive `npx` argument vector for installing a single
+/// (pre-validated) skill. Kept pure so the exact invocation is asserted in
+/// tests. The leading `--yes` is npx's (fetch `skills@latest` without a prompt);
+/// `--skill <slug>` pins the one starred skill — a multi-skill repo otherwise
+/// opens an interactive picker that hangs a headless run; one `--agent <id>` per
+/// selected tool targets exactly those agents (else the CLI prompts for agents);
+/// the trailing `--yes` skips the skills CLI's own confirmation. Callers must
+/// `validate_install_ref` / `validate_skill_slug` first.
+pub fn skills_npx_args(install_ref: &str, skill: Option<&str>, tools: &[ToolId]) -> Vec<String> {
+    let mut args = vec![
         "--yes".to_string(),
         "skills@latest".to_string(),
         "add".to_string(),
         install_ref.to_string(),
-    ]
+    ];
+    if let Some(slug) = skill {
+        args.push("--skill".to_string());
+        args.push(slug.to_string());
+    }
+    for tool in tools {
+        args.push("--agent".to_string());
+        args.push(skills_agent_id(*tool).to_string());
+    }
+    args.push("--yes".to_string());
+    args
+}
+
+/// Build the `npx skills add …` command with the resolved login `PATH` and
+/// telemetry disabled — ready for the caller to set `current_dir`, pipe stdio,
+/// and spawn. Pure assembly (no spawn) so the streaming shell layer owns IO; the
+/// exact program + arg vector is asserted in tests. Callers must
+/// `validate_install_ref` / `validate_skill_slug` first — this does not re-check.
+pub fn skills_install_command(install_ref: &str, skill: Option<&str>, tools: &[ToolId]) -> Command {
+    let mut cmd = npx_command();
+    cmd.args(skills_npx_args(install_ref, skill, tools));
+    cmd
 }
 
 /// Percent-encode a query component (RFC 3986 unreserved set passes through).
@@ -241,20 +310,54 @@ fn http_search(query: &str, limit: u32) -> Result<Vec<SkillSearchHit>> {
     parse_search_response(&body)
 }
 
-/// Best-effort `PATH` from the user's login shell. GUI apps launched from the
-/// macOS Dock inherit a minimal `PATH` that omits Homebrew / nvm, so `npx` is
-/// often invisible. We read the login shell's `PATH` once and hand it to the
-/// child. `None` falls back to the inherited environment.
+/// Sentinel framing our `PATH` print so we can recover it even when a shell's
+/// startup files write their own banner/chatter to stdout.
+const PATH_MARKER: &str = "__AGENTIC_HUB_PATH__";
+
+/// Pull the value framed by `marker` on both sides out of `raw`. Returns `None`
+/// when the framing is absent. Pure so the parsing is unit-tested without a
+/// shell.
+fn extract_framed(raw: &str, marker: &str) -> Option<String> {
+    let start = raw.find(marker)? + marker.len();
+    let rest = &raw[start..];
+    let end = rest.find(marker)?;
+    Some(rest[..end].to_string())
+}
+
+/// Candidate shells to read `PATH` from, the user's own `$SHELL` first.
+fn path_shells() -> Vec<String> {
+    let mut shells: Vec<String> = Vec::new();
+    if let Ok(s) = std::env::var("SHELL") {
+        if !s.is_empty() {
+            shells.push(s);
+        }
+    }
+    for fallback in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
+        if !shells.iter().any(|s| s == fallback) {
+            shells.push(fallback.to_string());
+        }
+    }
+    shells
+}
+
+/// Best-effort `PATH` from the user's shell. GUI apps launched from the macOS
+/// Dock inherit a minimal `PATH` that omits Homebrew / nvm / fnm, so `npx` is
+/// often invisible. We ask the user's shell — as an **interactive login** shell
+/// (`-ilc`) so it sources `.zshrc` / `.bashrc`, where version managers and
+/// Homebrew almost always put their `PATH` (a plain login shell skips those) —
+/// to print its `PATH`, framed by a sentinel so rc-file chatter can't corrupt
+/// it. `None` falls back to the inherited environment.
 fn login_path() -> Option<String> {
-    for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
-        if !Path::new(shell).exists() {
+    let script = format!("printf '{PATH_MARKER}%s{PATH_MARKER}' \"$PATH\"");
+    for shell in path_shells() {
+        if !Path::new(&shell).exists() {
             continue;
         }
-        if let Ok(out) = Command::new(shell).args(["-lc", "printf %s \"$PATH\""]).output() {
-            if out.status.success() {
-                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(path);
+        if let Ok(out) = Command::new(&shell).args(["-ilc", &script]).output() {
+            let raw = String::from_utf8_lossy(&out.stdout);
+            if let Some(path) = extract_framed(&raw, PATH_MARKER) {
+                if !path.trim().is_empty() {
+                    return Some(path.trim().to_string());
                 }
             }
         }
@@ -313,19 +416,31 @@ impl SkillProvider for SkillsShProvider {
         &self,
         workspace_dir: &Path,
         install_ref: &str,
+        skill: Option<&str>,
         tools: &[ToolId],
     ) -> Result<SkillInstallResult> {
         if !validate_install_ref(install_ref) {
             return Err(CoreError::InvalidSkillRef(install_ref.to_string()));
         }
+        if let Some(slug) = skill {
+            if !validate_skill_slug(slug) {
+                return Err(CoreError::InvalidSkillRef(slug.to_string()));
+            }
+        }
         if !workspace_dir.is_dir() {
             return Err(CoreError::NotADirectory(workspace_dir.to_path_buf()));
         }
         let output = npx_command()
-            .args(skills_npx_args(install_ref))
+            .args(skills_npx_args(install_ref, skill, tools))
             .current_dir(workspace_dir)
             .output()
-            .map_err(CoreError::Io)?;
+            .map_err(|e| match e.kind() {
+                // The most common failure: `npx` isn't on the resolved PATH.
+                // Turn the opaque "No such file or directory (os error 2)" into
+                // an actionable hint.
+                std::io::ErrorKind::NotFound => CoreError::SkillCliMissing,
+                _ => CoreError::Io(e),
+            })?;
 
         let mut log = String::new();
         let tool_list: Vec<&str> = tools.iter().map(|t| t.as_str()).collect();
@@ -372,25 +487,112 @@ mod tests {
     }
 
     #[test]
-    fn npx_args_are_fixed_and_nonshell() {
+    fn npx_args_pin_skill_and_agents_non_interactively() {
+        // The slug and one --agent per tool keep `skills add` from opening its
+        // interactive skill / agent pickers; the trailing --yes skips its
+        // confirmation. Claude maps to the CLI's `claude-code`.
         assert_eq!(
-            skills_npx_args("vercel-labs/agent-skills"),
+            skills_npx_args(
+                "vercel-labs/agent-skills",
+                Some("vercel-react-best-practices"),
+                &[ToolId::Cursor, ToolId::Claude],
+            ),
             vec![
                 "--yes".to_string(),
                 "skills@latest".to_string(),
                 "add".to_string(),
                 "vercel-labs/agent-skills".to_string(),
+                "--skill".to_string(),
+                "vercel-react-best-practices".to_string(),
+                "--agent".to_string(),
+                "cursor".to_string(),
+                "--agent".to_string(),
+                "claude-code".to_string(),
+                "--yes".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn npx_args_omit_skill_and_agents_when_unspecified() {
+        // Whole-repo, auto-detected agents: still wrapped by npx --yes + the
+        // skills CLI --yes so a single-skill repo installs without a prompt.
+        assert_eq!(
+            skills_npx_args("vercel-labs/agent-skills", None, &[]),
+            vec![
+                "--yes".to_string(),
+                "skills@latest".to_string(),
+                "add".to_string(),
+                "vercel-labs/agent-skills".to_string(),
+                "--yes".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn install_command_builds_the_pinned_npx_invocation() {
+        let tools = [ToolId::Codex];
+        let cmd = skills_install_command("vercel-labs/agent-skills", Some("pr-review"), &tools);
+        assert_eq!(cmd.get_program().to_string_lossy(), "npx");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            skills_npx_args("vercel-labs/agent-skills", Some("pr-review"), &tools)
+        );
+    }
+
+    #[test]
+    fn validates_skill_slug() {
+        assert!(validate_skill_slug("vercel-react-best-practices"));
+        assert!(validate_skill_slug("pr_review.v2"));
+        assert!(!validate_skill_slug(""), "empty");
+        assert!(!validate_skill_slug("-rf"), "leads with a dash (flag-like)");
+        assert!(!validate_skill_slug("a/b"), "slash");
+        assert!(!validate_skill_slug("a b"), "space");
+        assert!(!validate_skill_slug("a;b"), "metachar");
     }
 
     #[test]
     fn install_rejects_bad_ref_before_spawning() {
         let dir = tempfile::tempdir().unwrap();
         let err = SkillsShProvider
-            .install(dir.path(), "evil; rm -rf /", &[])
+            .install(dir.path(), "evil; rm -rf /", None, &[])
             .unwrap_err();
         assert!(matches!(err, CoreError::InvalidSkillRef(_)));
+    }
+
+    #[test]
+    fn install_rejects_bad_slug_before_spawning() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = SkillsShProvider
+            .install(dir.path(), "owner/repo", Some("--copy"), &[])
+            .unwrap_err();
+        assert!(matches!(err, CoreError::InvalidSkillRef(_)));
+    }
+
+    #[test]
+    fn extract_framed_recovers_path_amid_chatter() {
+        // rc files can print a banner before/after our framed PATH.
+        let raw = "welcome!\n__M__/opt/homebrew/bin:/usr/bin__M__\nbye";
+        assert_eq!(
+            extract_framed(raw, "__M__").as_deref(),
+            Some("/opt/homebrew/bin:/usr/bin")
+        );
+        assert_eq!(extract_framed("no markers here", "__M__"), None);
+        assert_eq!(extract_framed("__M__only-one-side", "__M__"), None);
+    }
+
+    #[test]
+    fn path_shells_prefers_user_shell_then_falls_back() {
+        // Pure ordering check; uses whatever $SHELL the test env carries.
+        let shells = path_shells();
+        assert!(shells.iter().any(|s| s == "/bin/sh"));
+        // No duplicate fallbacks even if $SHELL is one of them.
+        let bash = shells.iter().filter(|s| *s == "/bin/bash").count();
+        assert!(bash <= 1);
     }
 
     #[test]

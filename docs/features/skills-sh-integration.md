@@ -20,8 +20,10 @@ Three surfaces:
    uses the keyless public index.
 2. **Skills page** (a header tab shown only when the source is enabled) — search
    skills.sh, open a result on GitHub / skills.sh, and star/unstar favorites.
-3. **Workspace → Install skill…** — pick a starred skill and target tools, then
-   install it into the active project via the source CLI.
+3. **Workspace → Install skills** — a floating action button opens a dedicated
+   **install window** with a skill × tool matrix; tick the tools for one or more
+   starred skills and install them into the active project via the source CLI,
+   watching the CLI output stream live with a **Cancel** control.
 
 ## Why local "stars"
 
@@ -51,8 +53,12 @@ record of what is installed; the source CLI's own lock file
   sends no CORS header. No API key anywhere.
 - **Installs run in Rust** via a controlled subprocess (`npx skills add …`), with
   a validated `owner/repo` ref and the workspace dir as cwd. No
-  `tauri-plugin-shell`; the WebView stays untrusted and calls a typed
-  `cmd_install_skill`.
+  `tauri-plugin-shell`; the WebView stays untrusted.
+- **Install has its own window.** Rather than a blocking dialog, the FAB opens a
+  separate `install` window (like the command palette) that streams the CLI's
+  stdout/stderr line-by-line over a Tauri `Channel` and can **Cancel** the running
+  process. Installs run sequentially; one failure never aborts the rest. See
+  [skill-sources](../tech/modules/skill-sources.md#the-install-window).
 
 ## User flow
 
@@ -60,9 +66,13 @@ record of what is installed; the source CLI's own lock file
    `npx`/Node for installs). No key needed for search.
 2. Open the **Skills** tab, type to search (debounced), and **star** the skills
    you want.
-3. Switch the Manager to **Workspace** scope, pick a project, click **Install
-   skill…**, choose a favorite + target tools, **Install**.
-4. The matrix re-scans and shows the new skill under each tool that has it.
+3. In the Manager, pick a project in the left rail, click the floating **+**
+   action, tick the target tools for one or more starred skills in the matrix,
+   **Install**.
+4. The install window streams each CLI run live; skills install in turn (one
+   failure never aborts the rest) and **Cancel** stops the in-flight run. When it
+   finishes, the main window re-scans and shows the new skills under each tool
+   that has them.
 
 ## Limitations / follow-ups
 

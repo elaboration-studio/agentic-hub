@@ -33,6 +33,11 @@ pub enum CoreError {
     #[error("unknown skill source provider: {0}")]
     UnknownProvider(String),
 
+    #[error(
+        "npx (Node.js) was not found on PATH. Install Node 20+ and make sure it loads in your shell startup file (e.g. nvm/Homebrew in ~/.zshrc), then retry. Config → skills.sh → Check CLI verifies this."
+    )]
+    SkillCliMissing,
+
     #[error("skills.sh search failed: {0}")]
     SkillSearch(String),
 

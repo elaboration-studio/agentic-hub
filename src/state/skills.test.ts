@@ -5,7 +5,6 @@ vi.mock("@/ipc", () => ({
   listSkillFavorites: vi.fn(),
   addSkillFavorite: vi.fn(),
   removeSkillFavorite: vi.fn(),
-  installSkill: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -13,7 +12,6 @@ vi.mock("sonner", () => ({
 
 import {
   addSkillFavorite,
-  installSkill,
   listSkillFavorites,
   removeSkillFavorite,
   searchSkills,
@@ -27,7 +25,6 @@ const mocked = {
   listSkillFavorites: vi.mocked(listSkillFavorites),
   addSkillFavorite: vi.mocked(addSkillFavorite),
   removeSkillFavorite: vi.mocked(removeSkillFavorite),
-  installSkill: vi.mocked(installSkill),
 };
 
 function makeResult(slug: string): SkillSearchHit {
@@ -137,48 +134,5 @@ describe("skills store — favorites", () => {
 
     expect(mocked.removeSkillFavorite).toHaveBeenCalledWith(SKILLS_SH_PROVIDER, "a");
     expect(useSkillsStore.getState().favorites.map((f) => f.id)).toEqual(["b"]);
-  });
-});
-
-describe("skills store — install", () => {
-  it("installs via IPC and reports success", async () => {
-    mocked.installSkill.mockResolvedValue({ ok: true, log: "done" });
-
-    const result = await useSkillsStore
-      .getState()
-      .install(makeFavorite("a"), "ws-1", ["claude", "cursor"]);
-
-    expect(mocked.installSkill).toHaveBeenCalledWith({
-      provider: SKILLS_SH_PROVIDER,
-      installRef: "vercel-labs/agent-skills",
-      workspaceId: "ws-1",
-      toolIds: ["claude", "cursor"],
-    });
-    expect(result?.ok).toBe(true);
-    expect(toast.success).toHaveBeenCalled();
-    expect(useSkillsStore.getState().installing).toBe(false);
-  });
-
-  it("reports a failed install without throwing", async () => {
-    mocked.installSkill.mockResolvedValue({ ok: false, log: "npx not found" });
-
-    const result = await useSkillsStore
-      .getState()
-      .install(makeFavorite("a"), "ws-1", []);
-
-    expect(result?.ok).toBe(false);
-    expect(toast.error).toHaveBeenCalled();
-  });
-
-  it("toasts and returns null when the IPC call throws", async () => {
-    mocked.installSkill.mockRejectedValue(new Error("workspace gone"));
-
-    const result = await useSkillsStore
-      .getState()
-      .install(makeFavorite("a"), "ws-1", []);
-
-    expect(result).toBeNull();
-    expect(toast.error).toHaveBeenCalledWith("workspace gone");
-    expect(useSkillsStore.getState().installing).toBe(false);
   });
 });

@@ -13,13 +13,11 @@ import { useWorkspaceStore } from "./state/workspace";
 import { WORKSPACE_ID_PREFIX, type Route } from "./shared";
 import { Header } from "./components/layout/Header";
 import { ActionBar } from "./components/layout/ActionBar";
-import { Matrix } from "./components/manager/Matrix";
-import { EmptyState } from "./components/manager/EmptyState";
+import { ManagerView } from "./components/manager/ManagerView";
 import { ConflictDialog } from "./components/manager/ConflictDialog";
 import { ConfigPage } from "./components/config/ConfigPage";
 import { SuitesPage } from "./components/suites/SuitesPage";
 import { SkillsPage } from "./components/skills/SkillsPage";
-import { WorkspaceView } from "./components/workspace/WorkspaceView";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -140,33 +138,7 @@ export function App() {
           {data && route === "config" && <ConfigPage />}
           {data && route === "suites" && <SuitesPage />}
           {data && route === "skills" && <SkillsPage />}
-          {data && route === "manager" && (
-            <>
-              {data.scanErrors.length > 0 && (
-                <details className="rounded-lg border bg-card px-3.5 py-2.5">
-                  <summary className="cursor-pointer font-semibold text-warning">
-                    {data.scanErrors.length} scan notice(s)
-                  </summary>
-                  <ul className="mt-2.5 list-disc pl-[18px] text-muted-foreground">
-                    {data.scanErrors.map((err, i) => (
-                      <li key={i}>
-                        <code className="font-mono">{err.path}</code> — {err.message}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {scope === "global" ? (
-                data.items.length === 0 ? (
-                  <EmptyState />
-                ) : (
-                  <Matrix />
-                )
-              ) : (
-                <WorkspaceView />
-              )}
-            </>
-          )}
+          {route === "manager" && <ManagerView />}
         </main>
         {route === "manager" && scope === "global" && pending > 0 && <ActionBar />}
         <ConflictDialog />

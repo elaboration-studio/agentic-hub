@@ -96,6 +96,19 @@ Denied / not granted:
 
 When the user picks a workspace directory via the dialog plugin, the Rust core stores that directory and exposes read-only commands scoped to it. The capability file does **not** statically grant access to `~/Code/**`. Workspace scope is read-only — `cmd_scan_workspace` only *reads* a project's own tool dirs and writes nothing — so there is no write-side boundary to enforce there. The scan resolves the target dir from the workspace target store and walks only the known per-tool subpaths under it.
 
+### `capabilities/palette.json` / `capabilities/install.json` — floating windows
+
+The `palette` and `install` windows are separate Tauri windows, so they need
+their own capability files (a capability applies only to the windows it lists).
+Each grants `core:default` plus the window controls it uses — show / hide /
+set-focus (and, for `install`, close + start-dragging) — and `core:event` so the
+window can listen for (and the palette can emit) cross-window events. Neither
+grants `dialog`, `store`, or `fs`. The custom `cmd_*` surface is cross-window and
+needs no plugin permission, so the streaming install commands
+(`cmd_install_skill_stream` et al.) work without being listed. The skill install
+itself still runs only in the Rust core via a fixed, validated `std::process::Command`
+argv — there is no `tauri-plugin-shell`.
+
 ### Static FS scope for tool homes
 
 Tool homes are predictable. They live under the user's home directory at well-known paths. The `agentic-core::adapter_registry` resolves these at runtime via `dirs::home_dir()`. The capability layer does not statically restrict tool-home access because the user may configure non-default `skillsPath` / `agentsPath` / etc. — and we want those to work.

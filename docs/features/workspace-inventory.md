@@ -24,8 +24,16 @@ audit**: pick a project, see exactly what each tool has, live-updated.
 
 ## What it does
 
-- **Left rail of remembered workspaces.** Add a project via the folder dialog;
-  it joins an LRU list (cap 12). Select one to make it active; remove when done.
+- **One unified rail (Global pinned + workspaces).** A single left rail drives
+  the whole Manager: **Global** sits pinned at the top (the "what does my machine
+  have?" view), with remembered workspaces listed below it. Add a project via the
+  folder dialog; it joins an LRU list (cap 12). Click an entry to switch scope —
+  Global or that workspace — and remove a workspace when done. This replaces the
+  old header scope `Select`; there is no separate switcher.
+- **Filters reset on scope switch.** Switching between Global and Workspace clears
+  the scope-specific filters (source, enabled-only, collapsed groups, locate
+  highlight) because a source id valid in one scope often doesn't exist in the
+  other; the universal `query` / `kind` / `view` are kept.
 - **Read-only inventory matrix.** The active workspace is scanned by walking each
   workspace tool's own directories. The result reuses the global manager's matrix
   render — rows are resources (skills, agents, rules, the tool instruction file),
@@ -67,14 +75,14 @@ audit**: pick a project, see exactly what each tool has, live-updated.
 
 ## User flow
 
-1. Toggle the header scope to **Workspace**.
-2. Click **Add workspace…**, pick a project directory.
-3. The project becomes active; the matrix renders its local resources merged
-   with the globally-applied ones, each tagged by source.
-4. Use the **source filter** to narrow to `Workspace` (local only) or to a single
+1. In the left rail, click **Add workspace…**, pick a project directory.
+2. The project becomes active (scope switches from Global to that workspace); the
+   matrix renders its local resources merged with the globally-applied ones, each
+   tagged by source. Click **Global** at the top of the rail anytime to switch back.
+3. Use the **source filter** to narrow to `Workspace` (local only) or to a single
    shared root.
-5. Edit the project's tool dirs in another tool — the matrix updates on save.
-6. Remove the workspace from the rail when finished; nothing is left behind.
+4. Edit the project's tool dirs in another tool — the matrix updates on save.
+5. Remove the workspace from the rail when finished; nothing is left behind.
 
 Alternatively, summon the command palette from anywhere, type a resource name,
 and pick a workspace hit — the Hub lands on this view with that row highlighted.

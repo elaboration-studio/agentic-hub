@@ -70,8 +70,12 @@ function ToggleGroupItem({
           size: context.size || size,
         }),
         "w-auto min-w-0 shrink-0 px-3 focus:z-10 focus-visible:z-10",
-        // Active selection reads as a clear indigo pill (DESIGN.md: nav/scope/view active = indigo).
-        "data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground",
+        // Inactive items read muted so the active one clearly stands apart; the
+        // active selection is a solid indigo pill with a white glyph and a small
+        // lift (DESIGN.md: nav/scope/view active = indigo). The `!` keeps it
+        // ahead of the base `data-[state=on]:bg-accent` no matter the CSS order.
+        "text-muted-foreground",
+        "data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground",
         "data-[spacing=0]:rounded-none data-[spacing=0]:shadow-none data-[spacing=0]:first:rounded-l-md data-[spacing=0]:last:rounded-r-md data-[spacing=0]:data-[variant=outline]:border-l-0 data-[spacing=0]:data-[variant=outline]:first:border-l",
         className
       )}

@@ -44,6 +44,7 @@ impl From<CoreError> for IpcError {
             CoreError::SuiteNameConflict(_) => "suite_name_conflict",
             CoreError::InvalidSkillRef(_) => "invalid_skill_ref",
             CoreError::UnknownProvider(_) => "unknown_provider",
+            CoreError::SkillCliMissing => "skill_cli_missing",
             CoreError::SkillSearch(_) => "skill_search",
             CoreError::Io(_) | CoreError::Json(_) => "internal",
         };

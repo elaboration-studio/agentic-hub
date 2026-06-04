@@ -10,10 +10,17 @@ import { openUrl } from "@/ipc";
 import { useManagerStore } from "@/state/manager";
 import { useSkillsStore, SKILLS_SH_PROVIDER } from "@/state/skills";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 const sectionTitle =
@@ -64,53 +71,59 @@ export function SkillsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-[18px]">
-      <Card className="p-4">
-        <CardHeader className="p-0">
-          <CardTitle className={sectionTitle}>Search skills.sh</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2.5 p-0">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              placeholder="Type to search skills.sh…"
-              className="pl-9"
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          {searching && (
-            <p className="text-xs text-muted-foreground">Searching…</p>
-          )}
-          <ul className="flex flex-col gap-1.5">
-            {results.map((r) => (
-              <SkillRow
-                key={r.id}
-                name={r.name}
-                source={r.source}
-                installs={r.installs}
-                githubUrl={r.githubUrl}
-                pageUrl={r.pageUrl}
-                starred={starredIds.has(r.id)}
-                onToggle={() =>
-                  starredIds.has(r.id)
-                    ? void unstar(SKILLS_SH_PROVIDER, r.id)
-                    : void star(r)
-                }
+    <div className="flex h-full flex-col gap-[18px]">
+      <div className="flex items-center justify-between">
+        <h2 className={sectionTitle}>Starred skills</h2>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Search className="size-4" />
+              Search skills.sh…
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Search skills.sh</DialogTitle>
+            </DialogHeader>
+            <div className="relative shrink-0">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                placeholder="Type to search skills.sh…"
+                className="pl-9"
+                onChange={(e) => setQuery(e.target.value)}
               />
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+            </div>
+            {searching && (
+              <p className="shrink-0 text-xs text-muted-foreground">Searching…</p>
+            )}
+            <ul className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
+              {results.map((r) => (
+                <SkillRow
+                  key={r.id}
+                  name={r.name}
+                  source={r.source}
+                  installs={r.installs}
+                  githubUrl={r.githubUrl}
+                  pageUrl={r.pageUrl}
+                  starred={starredIds.has(r.id)}
+                  onToggle={() =>
+                    starredIds.has(r.id)
+                      ? void unstar(SKILLS_SH_PROVIDER, r.id)
+                      : void star(r)
+                  }
+                />
+              ))}
+            </ul>
+          </DialogContent>
+        </Dialog>
+      </div>
 
-      <Card className="p-4">
-        <CardHeader className="p-0">
-          <CardTitle className={sectionTitle}>Starred skills</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 p-0">
+      <Card className="flex min-h-0 flex-1 flex-col p-4">
+        <CardContent className="flex min-h-0 flex-col gap-2 overflow-y-auto p-0">
           {favorites.length === 0 ? (
             <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-              No starred skills yet. Star a result above to reuse it across projects.
+              No starred skills yet. Search and star a result to reuse it across projects.
             </p>
           ) : (
             <ul className="flex flex-col gap-1.5">
