@@ -121,7 +121,7 @@ reconstructs URLs.
   the watcher and emits `workspace-changed` so the read-only inventory re-scans.
 
 Error codes: `invalid_skill_ref`, `unknown_provider`, `skill_search`,
-`install_failed`, `workspace_not_found`. See
+`skill_cli_missing`, `install_failed`, `workspace_not_found`. See
 [tauri-ipc-contract.md](./tauri-ipc-contract.md).
 
 ## Testing

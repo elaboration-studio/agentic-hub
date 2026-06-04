@@ -60,6 +60,7 @@ Common error codes:
 | `invalid_skill_ref` | A skill install reference failed `owner/repo` validation |
 | `unknown_provider` | A skill source provider id is not registered |
 | `skill_search` | A skill source search request failed (network / non-200 / malformed) |
+| `skill_cli_missing` | The provider CLI (`npx`/Node) was not found on the resolved `PATH` |
 | `install_failed` | A skill install subprocess could not be run |
 | `internal` | Catch-all unexpected error; surface for bug reports |
 
@@ -496,8 +497,8 @@ type InstallSkillInput = {
 type SkillInstallResult = { ok: boolean; log: string };
 ```
 
-Errors: `invalid_skill_ref`, `unknown_provider`, `install_failed`,
-`workspace_not_found`.
+Errors: `invalid_skill_ref`, `unknown_provider`, `skill_cli_missing`,
+`install_failed`, `workspace_not_found`.
 
 ## Scaffold command
 
