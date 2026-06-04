@@ -7,6 +7,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import {
   addSource,
+  openUrl,
   removeSource,
   rescanResync,
   saveSettings,
@@ -30,6 +31,11 @@ import {
 
 const sectionTitle = "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 const hint = "text-xs text-muted-foreground";
+
+// Anchor navigation is a no-op inside the WebView; open external links via Rust.
+function openExternal(url: string): void {
+  void openUrl(url).catch((e) => toast.error(messageOf(e)));
+}
 
 interface PanelProps {
   settings: Settings;
@@ -456,14 +462,13 @@ function SkillsSourcePanel({ settings, onChanged }: PanelProps) {
       <CardContent className="flex flex-col gap-3 p-0">
         <p className={hint}>
           Search public skills on{" "}
-          <a
+          <button
+            type="button"
             className="underline"
-            href="https://skills.sh"
-            target="_blank"
-            rel="noreferrer"
+            onClick={() => void openExternal("https://skills.sh")}
           >
             skills.sh
-          </a>
+          </button>
           , star favorites, and install them into a workspace from the Workspace
           scope. Search uses the public skills.sh index — no key needed. Node
           (npx) is required for installs.

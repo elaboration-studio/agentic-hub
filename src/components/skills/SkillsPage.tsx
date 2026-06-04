@@ -5,6 +5,8 @@
 
 import { useEffect, useMemo } from "react";
 import { ExternalLink, GitBranch, Search, Star } from "lucide-react";
+import { toast } from "sonner";
+import { openUrl } from "@/ipc";
 import { useManagerStore } from "@/state/manager";
 import { useSkillsStore, SKILLS_SH_PROVIDER } from "@/state/skills";
 import { Button } from "@/components/ui/button";
@@ -16,6 +18,13 @@ import { cn } from "@/lib/utils";
 
 const sectionTitle =
   "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
+
+// Anchor navigation is a no-op inside the WebView; open external links via Rust.
+function openExternal(url: string): void {
+  void openUrl(url).catch((e) =>
+    toast.error(e instanceof Error ? e.message : String(e)),
+  );
+}
 
 export function SkillsPage() {
   const skills = useManagerStore((s) => s.data?.settings.skills);
@@ -149,17 +158,25 @@ function SkillRow(props: SkillRowProps) {
         </Badge>
       )}
       {props.pageUrl && (
-        <Button variant="ghost" size="icon-sm" asChild title="Open on skills.sh">
-          <a href={props.pageUrl} target="_blank" rel="noreferrer" aria-label="Open on skills.sh">
-            <ExternalLink className="size-4" />
-          </a>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => void openExternal(props.pageUrl!)}
+          title="Open on skills.sh"
+          aria-label="Open on skills.sh"
+        >
+          <ExternalLink className="size-4" />
         </Button>
       )}
       {props.githubUrl && (
-        <Button variant="ghost" size="icon-sm" asChild title="Open on GitHub">
-          <a href={props.githubUrl} target="_blank" rel="noreferrer" aria-label="Open source repo">
-            <GitBranch className="size-4" />
-          </a>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => void openExternal(props.githubUrl!)}
+          title="Open on GitHub"
+          aria-label="Open source repo"
+        >
+          <GitBranch className="size-4" />
         </Button>
       )}
       <Button

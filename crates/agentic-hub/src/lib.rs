@@ -113,6 +113,7 @@ pub fn run() {
             commands::cmd_scaffold_demo,
             commands::cmd_open_path,
             commands::cmd_reveal_path,
+            commands::cmd_open_url,
             commands::cmd_add_source,
             commands::cmd_remove_source,
             commands::cmd_plan,

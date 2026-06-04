@@ -106,6 +106,11 @@ export const openPath = (path: string, openWith?: string): Promise<void> =>
 export const revealPath = (path: string): Promise<void> =>
   invoke("cmd_reveal_path", { input: { path } });
 
+/// Open an external http(s) URL in the default browser. Anchor navigation is a
+/// no-op inside the Tauri WebView, so external links route through Rust.
+export const openUrl = (url: string): Promise<void> =>
+  invoke("cmd_open_url", { input: { url } });
+
 export const inspect = (
   items: CapabilityItem[],
   tools: ToolsSettings,

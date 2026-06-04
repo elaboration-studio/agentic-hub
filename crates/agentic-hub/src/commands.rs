@@ -233,6 +233,29 @@ pub async fn cmd_reveal_path(app: AppHandle, input: RevealPathInput) -> IpcResul
 }
 
 #[derive(Debug, Deserialize)]
+pub struct OpenUrlInput {
+    pub url: String,
+}
+
+/// Open an external `http`/`https` URL in the user's default browser. Anchor
+/// navigation is a no-op inside the WebView, so the UI routes external links
+/// through here. The scheme is validated server-side — the WebView never holds
+/// opener scope directly.
+#[tauri::command]
+pub async fn cmd_open_url(app: AppHandle, input: OpenUrlInput) -> IpcResult<()> {
+    if !open_targets::is_safe_external_url(&input.url) {
+        return Err(IpcError::new(
+            "url_not_openable",
+            format!("Refusing to open a non-http(s) URL: {}", input.url),
+        ));
+    }
+    app.opener()
+        .open_url(input.url.trim().to_string(), None::<&str>)
+        .map_err(|e| IpcError::new("open_failed", e.to_string()))?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AddSourceInput {
     pub label: String,
     pub path: String,

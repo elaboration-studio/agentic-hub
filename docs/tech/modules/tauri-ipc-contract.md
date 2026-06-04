@@ -52,6 +52,7 @@ Common error codes:
 | `hook_target_broken_json` | A tool's hook config file is malformed and cannot be safely rewritten |
 | `source_path_invalid` | A configured source path failed canonicalization or is not a directory |
 | `path_not_openable` | A path passed to `cmd_open_path` / `cmd_reveal_path` resolved outside every known root |
+| `url_not_openable` | A URL passed to `cmd_open_url` was not an absolute `http`/`https` URL with a host |
 | `open_failed` | The opener plugin could not open the path |
 | `reveal_failed` | The opener plugin could not reveal the path |
 | `invalid_shortcut` | The palette accelerator string in settings is malformed |
@@ -536,6 +537,13 @@ Errors: `path_not_openable`, `open_failed`.
 ### `cmd_reveal_path(input: { path: string }) -> ()`
 
 Reveals `path` in Finder / Explorer. Errors: `path_not_openable`, `reveal_failed`.
+
+### `cmd_open_url(input: { url: string }) -> ()`
+
+Opens an external `http`/`https` URL in the default browser. Anchor navigation
+(`<a target="_blank">`) is a no-op inside the WebView, so external links route
+through Rust. The scheme/host is validated server-side
+(`open_targets::is_safe_external_url`). Errors: `url_not_openable`, `open_failed`.
 
 ## Events
 
