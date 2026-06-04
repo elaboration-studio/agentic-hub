@@ -23,7 +23,8 @@ without touching the command layer:
 pub trait SkillProvider {
     fn id(&self) -> &'static str;
     fn cli_check(&self) -> SkillCliStatus;
-    fn install(&self, workspace_dir: &Path, install_ref: &str, tools: &[ToolId])
+    fn install(&self, workspace_dir: &Path, install_ref: &str,
+               skill: Option<&str>, tools: &[ToolId])
         -> Result<SkillInstallResult>;
 }
 
@@ -44,11 +45,21 @@ Installs via `npx skills add <owner/repo>`. Pure, unit-tested bits:
   `owner/repo/skill`): `[A-Za-z0-9._-]` per component, ≥1 `/`, no empty / `.` /
   `..` components. This is the injection guard before the ref reaches a process
   arg — it can never carry shell metacharacters or path traversal.
-- `skills_npx_args(ref)` → `["--yes", "skills@latest", "add", ref]`.
-- `skills_install_command(ref)` → a ready-to-spawn `Command` (program `npx`, the
-  args above, login `PATH` applied, `DISABLE_TELEMETRY=1`). Pure assembly, no
-  spawn, so the exact program + argv is asserted in tests and the shell layer
-  owns IO (sets `cwd`, pipes stdio, spawns, streams).
+- `validate_skill_slug(slug)` — non-empty, only `[A-Za-z0-9._-]`, never leading
+  with `-` (so it can't be read as a flag); the slug guard before it becomes an arg.
+- `skills_npx_args(ref, skill, tools)` →
+  `["--yes", "skills@latest", "add", ref, "--skill", slug, "--agent", id, …, "--yes"]`.
+  The invocation is **fully non-interactive**: `--skill <slug>` pins the one
+  starred skill (a multi-skill repo otherwise opens an interactive picker that
+  hangs a headless run), one `--agent <id>` per selected tool targets exactly
+  those agents (else the CLI prompts for agents), and the trailing `--yes` skips
+  the skills CLI's own confirmation. Tools map to the CLI's agent ids — `claude`
+  → `claude-code`; `codex` / `cursor` / `openclaw` match. `--skill`/`--agent` are
+  omitted when unspecified (whole-repo, auto-detected agents).
+- `skills_install_command(ref, skill, tools)` → a ready-to-spawn `Command`
+  (program `npx`, the args above, login `PATH` applied, `DISABLE_TELEMETRY=1`).
+  Pure assembly, no spawn, so the exact program + argv is asserted in tests and
+  the shell layer owns IO (sets `cwd`, pipes stdio, spawns, streams).
 
 The spawn is thin: the ref is passed as an **argument vector element** (never
 interpolated into a shell string), with `cwd = workspace_dir` and
@@ -139,8 +150,9 @@ cancellable. The lifecycle (all in `crates/agentic-hub/src/install_window.rs`):
 - `cmd_take_install_context()` — the window reads its target on mount (re-read on
   the `install-context-changed` event if reopened for another workspace).
 - `cmd_install_skill_stream(input, Channel<SkillInstallEvent>)` — validates the
-  ref + resolves the workspace dir against the target store (installs only into a
-  remembered target), spawns `skills_install_command` with piped stdio, stores
+  ref + slug + resolves the workspace dir against the target store (installs only
+  into a remembered target; `input` carries the `slug` and selected `toolIds` so
+  the spawn is non-interactive), spawns `skills_install_command` with piped stdio, stores
   the `Child` in `InstallState`, and streams one `line` event per output line then
   a terminal `done { ok, cancelled }`. On success it `restart_if_running`s the
   watcher and emits `workspace-changed` so the read-only inventory re-scans.
@@ -167,7 +179,4 @@ enough. `SkillInstallEvent` is the streamed, ts-rs-exported event type.
 
 ## Follow-ups
 
-- Install the exact starred skill via `--skill <slug>` (the index returns
-  `skillId`; the CLI supports `-s, --skill`) instead of the whole repo.
-- Confirm exact `skills add` flags for explicit per-agent targeting.
 - Additional `SkillProvider` implementations for other registries.

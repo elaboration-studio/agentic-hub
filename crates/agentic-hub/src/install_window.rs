@@ -15,7 +15,8 @@ use std::sync::Mutex;
 use agentic_core::error::CoreError;
 use agentic_core::model::ToolId;
 use agentic_core::skill_source::{
-    provider_for, skills_install_command, validate_install_ref, SkillInstallEvent,
+    provider_for, skills_install_command, skills_npx_args, validate_install_ref,
+    validate_skill_slug, SkillInstallEvent,
 };
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
@@ -148,6 +149,10 @@ pub struct InstallSkillInput {
     pub provider: String,
     pub install_ref: String,
     pub workspace_id: String,
+    /// The one skill slug to install. Pins `--skill` so a multi-skill repo does
+    /// not open an interactive picker (which would hang this headless run).
+    #[serde(default)]
+    pub slug: Option<String>,
     #[serde(default)]
     pub tool_ids: Vec<ToolId>,
 }
@@ -176,6 +181,11 @@ pub async fn cmd_install_skill_stream(
             input.install_ref.clone(),
         )));
     }
+    if let Some(slug) = &input.slug {
+        if !validate_skill_slug(slug) {
+            return Err(IpcError::new("invalid_skill_slug", "Unsafe skill slug"));
+        }
+    }
     let target = WorkspaceTargetStore::new()
         .read()?
         .workspace_targets
@@ -186,21 +196,17 @@ pub async fn cmd_install_skill_stream(
         return Err(IpcError::from(CoreError::NotADirectory(target.dir.clone())));
     }
 
-    // Echo the resolved invocation so the console reads like a terminal. Target
-    // tools are advisory — the CLI auto-detects agents from the project.
-    let tools: Vec<&str> = input.tool_ids.iter().map(|t| t.as_str()).collect();
-    if !tools.is_empty() {
-        let _ = on_event.send(SkillInstallEvent::Line {
-            stream: "stdout".into(),
-            text: format!("target tools: {}", tools.join(", ")),
-        });
-    }
+    // Echo the resolved, non-interactive invocation so the console reads like a
+    // terminal. `--skill`/`--agent` are explicit (no picker prompts), so the
+    // command line itself shows exactly what runs.
+    let slug = input.slug.as_deref();
+    let args = skills_npx_args(&input.install_ref, slug, &input.tool_ids);
     let _ = on_event.send(SkillInstallEvent::Line {
         stream: "stdout".into(),
-        text: format!("$ npx --yes skills@latest add {}", input.install_ref),
+        text: format!("$ npx {}", args.join(" ")),
     });
 
-    let mut cmd = skills_install_command(&input.install_ref);
+    let mut cmd = skills_install_command(&input.install_ref, slug, &input.tool_ids);
     cmd.current_dir(&target.dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

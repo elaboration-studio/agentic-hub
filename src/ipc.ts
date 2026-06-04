@@ -268,6 +268,9 @@ export interface InstallSkillStreamPayload {
   provider: string;
   installRef: string;
   workspaceId: string;
+  /// The one skill slug to install — pins `--skill` so a multi-skill repo never
+  /// opens an interactive picker.
+  slug: string;
   toolIds: ToolId[];
 }
 

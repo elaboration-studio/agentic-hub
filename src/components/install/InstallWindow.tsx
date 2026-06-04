@@ -99,7 +99,13 @@ export function InstallWindow() {
   // Run one skill install, resolving when its stream ends. Lines stream into the
   // console; the terminal `done` carries the outcome.
   const runOne = useCallback(
-    (provider: string, installRef: string, workspaceId: string, toolIds: ToolId[]) =>
+    (
+      provider: string,
+      installRef: string,
+      slug: string,
+      workspaceId: string,
+      toolIds: ToolId[],
+    ) =>
       new Promise<{ ok: boolean; cancelled: boolean }>((resolve) => {
         let settled = false;
         const channel = new Channel<SkillInstallEvent>();
@@ -110,10 +116,12 @@ export function InstallWindow() {
             resolve({ ok: ev.ok, cancelled: ev.cancelled });
           }
         };
-        installSkillStream({ provider, installRef, workspaceId, toolIds }, channel).catch((e) => {
-          appendLine(messageOf(e));
-          if (!settled) resolve({ ok: false, cancelled: false });
-        });
+        installSkillStream({ provider, installRef, slug, workspaceId, toolIds }, channel).catch(
+          (e) => {
+            appendLine(messageOf(e));
+            if (!settled) resolve({ ok: false, cancelled: false });
+          },
+        );
       }),
     [appendLine],
   );
@@ -137,7 +145,13 @@ export function InstallWindow() {
           continue;
         }
         setStatus(fav.id, "running");
-        const res = await runOne(fav.provider, fav.installRef, context.workspaceId, toolIds);
+        const res = await runOne(
+          fav.provider,
+          fav.installRef,
+          fav.slug,
+          context.workspaceId,
+          toolIds,
+        );
         setStatus(fav.id, res.cancelled ? "cancelled" : res.ok ? "ok" : "failed");
         if (res.cancelled) cancelledRef.current = true;
       }
