@@ -12,6 +12,16 @@ Detailed documentation for Agentic Hub. Start with the root-level specs, then dr
 
 ## Buckets
 
+### `product/` — living product management
+
+The management layer over the static [PRODUCT.md](../PRODUCT.md) PRD: where the
+product is, where it's going, and why.
+
+- [roadmap.md](product/roadmap.md) — milestone tracker (M0–M4 retro + forward milestones, version map)
+- [backlog.md](product/backlog.md) — prioritized Now / Next / Later backlog + tech debt
+- [decisions.md](product/decisions.md) — decision log (why the big calls were made; open questions)
+- [features.md](product/features.md) — feature registry indexing every shipped/planned capability
+
 ### `features/` — current feature specs
 
 User-facing feature designs aligned with each milestone.
@@ -68,6 +78,7 @@ Time-boxed plans that coordinate multi-doc or multi-module change.
 | If you are… | Start with |
 |-------------|------------|
 | New to the product | `PRODUCT.md` → `ARCHITECTURE.md` |
+| Tracking status, priorities, or "why" | `product/roadmap.md` · `product/backlog.md` · `product/decisions.md` · `product/features.md` |
 | About to implement a feature | The matching `docs/features/*.md` → linked tech modules |
 | Touching the projection engine | `ARCHITECTURE.projection.md` → relevant `tech/modules/*.md` |
 | Adding a tool adapter | `tech/reference/tool-adapter-matrix.md` → `claude-flat-skill-layout.md` for the layout pattern |

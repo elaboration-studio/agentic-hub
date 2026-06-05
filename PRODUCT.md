@@ -316,6 +316,11 @@ Out of scope for now: teams, multi-machine sync, cloud profiles, organizational 
 
 ## Milestones
 
+> **This section is the original plan (2026-05-20).** For shipped status and
+> forward direction see the living [docs/product/roadmap.md](docs/product/roadmap.md).
+> Companion living docs: [backlog](docs/product/backlog.md),
+> [decisions](docs/product/decisions.md), [feature registry](docs/product/features.md).
+
 ### M0: Foundation (parity scaffolding)
 
 - Tauri 2.x project skeleton with React + Vite + TypeScript
