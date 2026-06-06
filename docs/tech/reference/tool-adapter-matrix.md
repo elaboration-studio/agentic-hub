@@ -89,6 +89,7 @@ Notes:
 
 - Global Codex / Claude / Cursor / OpenStandard: managed JSON entry in the tool's hooks file (`json_section`)
 - Global OpenClaw: not supported (no public hook spec)
+- **OpenStandard hooks are opt-in.** A hook's default target set is the trio `[Cursor, Claude, Codex]` (`HookManifest::effective_targets`), so OpenStandard receives a hook only when the hook's `hook.json` lists it explicitly (`"targets": ["openstandard"]`). Unlike skills/agents/rules — which project to OpenStandard by default — hooks do not, to keep the default `~/.agents/hooks.json` empty unless asked for.
 - Workspace Codex / Claude / Cursor: managed JSON entry in `<ws>/.codex/hooks.json` / `<ws>/.claude/settings.json` / `<ws>/.cursor/hooks.json`
 - Cursor uses a flat shape (camelCase events); Codex / Claude use a two-level shape (PascalCase events, marker on the matcher group). See [hook-projection-sync.md](../modules/hook-projection-sync.md).
 
