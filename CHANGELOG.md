@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [Unreleased]
+
+### Added
+
+- **OpenStandard tool.** A fifth tool adapter, `openstandard`, owns the
+  open-standard `~/.agents` root and projects skills, agents, rules, and hooks
+  there (`~/.agents/{skills,agents,rules}`, `~/.agents/AGENTS.md`,
+  `~/.agents/hooks.json`). Skills/agents symlink, rules write a managed block in
+  `~/.agents/AGENTS.md`, hooks use the JSON section. It is enabled by default and
+  global-only (like OpenClaw, it has no workspace-scope inventory). Configs
+  written before this tool existed load unchanged — the missing `openstandard`
+  block is injected via a serde default.
+
+### Changed
+
+- **Codex is now self-contained under `~/.codex`.** The Codex `skillsPath`
+  default moved from `~/.agents/skills` to `~/.codex/skills`; the open-standard
+  `~/.agents` root is now owned by the new OpenStandard tool. Existing configs
+  keep their persisted Codex `skillsPath` value (no destructive migration); only
+  fresh installs and configs that omit the field pick up the new default.
+
 ## [0.6.1] — 2026-06-04
 
 ### Added

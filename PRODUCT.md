@@ -18,7 +18,7 @@ Every feature in this document is a means to that end. If a feature does not hel
 
 ## Overview
 
-Agentic Hub is a Tauri 2.x desktop app that lets a power user manage shared agentic capabilities — `skills`, `agents`, and `rules` — across multiple AI coding tools (Codex, Claude Code, Cursor, OpenClaw) from one place. It scans a single shared root (`~/.agentic` by default), shows what is enabled per tool, lets the user stage and apply safe filesystem projection changes, and supports named suites and per-project workspace patches for one-click scenario switching.
+Agentic Hub is a Tauri 2.x desktop app that lets a power user manage shared agentic capabilities — `skills`, `agents`, and `rules` — across multiple AI coding tools (Codex, Claude Code, Cursor, OpenClaw, and the OpenStandard `~/.agents` root) from one place. It scans a single shared root (`~/.agentic` by default), shows what is enabled per tool, lets the user stage and apply safe filesystem projection changes, and supports named suites and per-project workspace patches for one-click scenario switching.
 
 This product is a migration of the Unified Agentic Capability Manager originally shipped as a VS Code extension feature inside `e-studio-copilot`. The product semantics, filesystem contracts, and projection rules are preserved 1:1. The host changes from a VS Code webview to a standalone Tauri 2.x desktop window with a Rust core for filesystem operations and a React + Vite + TypeScript UI.
 
@@ -49,13 +49,13 @@ Out of scope for now: teams, multi-machine sync, cloud profiles, organizational 
 
 - Tauri 2.x desktop app with a main window (Agentic Capability Manager) and a secondary window (Suite Manager)
 - Scan a configurable shared root (default `~/.agentic`) for `skills/`, `agents/`, `rules/`
-- Four tool adapters: Codex, Claude Code, Cursor, OpenClaw
+- Five tool adapters: Codex, Claude Code, Cursor, OpenClaw, and OpenStandard (the open-standard `~/.agents` root, global-only)
 - Per-tool projection of skills and agents using the existing layout strategies:
   - Claude Code: `flat` layout for **skills** (basename only at `~/.claude/skills/`; the skill loader is non-recursive). Claude **agents** are `nested` — the agent loader scans `~/.claude/agents/` recursively.
-  - Codex, Cursor, OpenClaw: `nested` layout (preserve category hierarchy)
+  - Codex, Cursor, OpenClaw, OpenStandard: `nested` layout (preserve category hierarchy)
 - Per-tool rule projection modes:
   - `link_sync` (Cursor → `~/.cursor/rules`)
-  - `markdown_section_sync` (Codex `~/.codex/AGENTS.md`, Claude `~/.claude/CLAUDE.md`, OpenClaw `~/.openclaw/workspace/SOUL.md`)
+  - `markdown_section_sync` (Codex `~/.codex/AGENTS.md`, Claude `~/.claude/CLAUDE.md`, OpenClaw `~/.openclaw/workspace/SOUL.md`, OpenStandard `~/.agents/AGENTS.md`)
   - `file_sync` (supported model, not a default in v1)
 - Stage-then-apply mutation model with a clear plan/result summary
 - Safe filesystem semantics:
@@ -125,7 +125,7 @@ Out of scope for now: teams, multi-machine sync, cloud profiles, organizational 
 **Acceptance Criteria:**
 - [ ] Window opens to the last-active tool tab and Global scope by default
 - [ ] Header displays the resolved absolute shared root path
-- [ ] Tool tabs include Codex, Claude Code, Cursor, OpenClaw (Global) or Codex, Claude Code, Cursor (Workspace)
+- [ ] Tool tabs include Codex, Claude Code, Cursor, OpenClaw, OpenStandard (Global) or Codex, Claude Code, Cursor (Workspace)
 - [ ] Capability list groups by kind and shows per-item state (`enabled`, `disabled`, `broken`, `stale`, `foreign_file`, `foreign_link`)
 - [ ] Search filters the visible list client-side without rescanning disk
 - [ ] Staging a toggle does not mutate disk
@@ -333,7 +333,7 @@ Estimated effort: 1 day human / ~30 min Arno-agentic-system
 ### M1: Core Loop (scan / inspect / stage / apply)
 
 - Scanner reads `~/.agentic/{skills,agents,rules}` and returns `CapabilityItem[]`
-- Tool adapter registry with four adapters (Codex, Claude, Cursor, OpenClaw)
+- Tool adapter registry with five adapters (Codex, Claude, Cursor, OpenClaw, OpenStandard)
 - Planner computes current state + desired-state diff
 - Applier executes safe filesystem mutations (symlinks, managed copies, rule sync)
 - Main window renders capability list, per-tool states, staging model, apply button
@@ -390,7 +390,7 @@ Estimated effort: 3 days human / ~1 hour Arno-agentic-system
 | Suite adoption | Leading | Apply-Suite event count > per-item-apply event count within 2 weeks of M2 ship | Self-reported usage log |
 | Conflict preservation | Guardrail | 100% of basename-collision and real-file conflicts surface as `skip_conflict` and never overwrite | Integration tests + dogfood QA |
 | App cold-start | Leading | < 1.5s on macOS to interactive main window | Manual timing during dogfood |
-| Cross-tool consistency | Leading | After "Apply Suite" to all four tools, a re-scan shows zero `foreign_*` states for any enabled capability | Manual QA on each milestone |
+| Cross-tool consistency | Leading | After "Apply Suite" to all enabled tools, a re-scan shows zero `foreign_*` states for any enabled capability | Manual QA on each milestone |
 
 ## Open Questions
 

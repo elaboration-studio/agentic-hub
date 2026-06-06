@@ -1,6 +1,6 @@
 # agentic-hub
 
-Tauri 2.x desktop app that manages shared agentic capabilities — skills, agents, rules — across Codex, Claude Code, Cursor, and OpenClaw from one window. Rust core (`agentic-core`) owns the projection engine; React + Vite + TypeScript UI is a thin view over typed Tauri IPC.
+Tauri 2.x desktop app that manages shared agentic capabilities — skills, agents, rules — across Codex, Claude Code, Cursor, OpenClaw, and the OpenStandard `~/.agents` root from one window. Rust core (`agentic-core`) owns the projection engine; React + Vite + TypeScript UI is a thin view over typed Tauri IPC.
 
 ## Directory map
 

@@ -150,7 +150,7 @@ pub struct ScanResult {
     pub errors: Vec<ScanError>,
 }
 
-/// The four supported AI tools.
+/// The five supported AI tools.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
@@ -163,14 +163,17 @@ pub enum ToolId {
     Claude,
     Cursor,
     Openclaw,
+    /// The open-standard `~/.agents` directory shared across tools.
+    Openstandard,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 4] = [
+    pub const ALL: [ToolId; 5] = [
         ToolId::Codex,
         ToolId::Claude,
         ToolId::Cursor,
         ToolId::Openclaw,
+        ToolId::Openstandard,
     ];
 
     /// Lowercase id, matching the serde wire representation.
@@ -180,6 +183,7 @@ impl ToolId {
             ToolId::Claude => "claude",
             ToolId::Cursor => "cursor",
             ToolId::Openclaw => "openclaw",
+            ToolId::Openstandard => "openstandard",
         }
     }
 }

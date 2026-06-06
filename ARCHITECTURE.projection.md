@@ -11,7 +11,7 @@ The root architecture establishes that the Rust core (`agentic-core`) owns all f
 The projection engine is the single largest piece of architecturally novel design in this app. It has:
 
 - four pipeline stages, each with its own data model and failure modes
-- four tool adapters with four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
+- five tool adapters with four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
 - two layout strategies (`flat`, `nested`) with explicit collision handling
 - a separate managed-copy lifecycle with stale detection for Cursor agents
 - a marker-delimited managed block contract for `markdown_section_sync` tools
@@ -39,7 +39,7 @@ Folding all of that into the root architecture would either bloat the root doc b
 In scope:
 - `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync` modules in `agentic-core`
 - Global-scope projections only (workspace scope is the sibling doc)
-- All four tools (Codex, Claude Code, Cursor, OpenClaw)
+- All five tools (Codex, Claude Code, Cursor, OpenClaw, OpenStandard)
 - All four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
 - All four capability kinds (`skill`, `agent`, `rule`, `hook`)
 - All four state classes (item state, link state, planned op, apply result)
@@ -398,7 +398,7 @@ Stale detection vs ForeignFile: managed-copy state is **Stale** only when a mani
 
 ## Marker-delimited managed-block contract
 
-For `markdown_section_sync` tools (Codex, Claude, OpenClaw), the rule sync module owns exactly one block in the instruction file:
+For `markdown_section_sync` tools (Codex, Claude, OpenClaw, OpenStandard), the rule sync module owns exactly one block in the instruction file:
 
 ```md
 <!-- agentic-hub:start -->

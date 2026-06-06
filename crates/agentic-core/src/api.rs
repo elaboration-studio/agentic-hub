@@ -851,7 +851,7 @@ mod tests {
         let result = inspect(&scanned.items, &settings);
 
         // One status per tool.
-        assert_eq!(result.adapter_statuses.len(), 4);
+        assert_eq!(result.adapter_statuses.len(), 5);
         let openclaw = result
             .adapter_statuses
             .iter()

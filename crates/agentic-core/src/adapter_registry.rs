@@ -44,6 +44,7 @@ fn tool_settings(settings: &Settings, tool: ToolId) -> &ToolSettings {
         ToolId::Claude => &settings.tools.claude,
         ToolId::Cursor => &settings.tools.cursor,
         ToolId::Openclaw => &settings.tools.openclaw,
+        ToolId::Openstandard => &settings.tools.openstandard,
     }
 }
 
@@ -62,17 +63,18 @@ pub fn resolve(settings: &Settings, tool: ToolId) -> ResolvedAdapter {
     }
 }
 
-/// Resolve all four tool adapters.
+/// Resolve all tool adapters.
 pub fn resolve_all(settings: &Settings) -> Vec<ResolvedAdapter> {
     ToolId::ALL.iter().map(|&t| resolve(settings, t)).collect()
 }
 
-/// Tools supported in workspace scope. OpenClaw is global-only.
+/// Tools supported in workspace scope. OpenClaw and OpenStandard are global-only.
 pub const WORKSPACE_TOOL_IDS: [ToolId; 3] = [ToolId::Codex, ToolId::Claude, ToolId::Cursor];
 
 /// Materialize a workspace-scoped adapter rooted at `ws`. Paths are hard-coded
-/// per tool (v1). OpenClaw is unsupported and returns a disabled adapter so
-/// callers reject it. Notes: Codex subagents live in `.codex/agents/*.toml`
+/// per tool (v1). OpenClaw and OpenStandard are unsupported and return a
+/// disabled adapter so callers reject them. Notes: Codex subagents live in
+/// `.codex/agents/*.toml`
 /// (not `.agents/`, which holds only skills); Cursor reads `AGENTS.md` and the
 /// shared `.agents/` dir in addition to its own `.cursor/` dirs. See
 /// `docs/tech/modules/workspace-inventory.md`.
@@ -118,6 +120,16 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             skills_path: j(".openclaw/skills"),
             agents_path: j(".openclaw/agents"),
             rules_path: j(".openclaw/agentic-rules"),
+            instructions_path: None,
+            hooks_enabled: false,
+            hooks_file: None,
+        },
+        ToolId::Openstandard => ResolvedAdapter {
+            tool_id: tool,
+            enabled: false,
+            skills_path: j(".agents/skills"),
+            agents_path: j(".agents/agents"),
+            rules_path: j(".agents/rules"),
             instructions_path: None,
             hooks_enabled: false,
             hooks_file: None,
@@ -331,6 +343,40 @@ mod tests {
         assert!(!oc.hooks_enabled);
         assert_eq!(oc.hooks_file, None);
         assert_eq!(oc.instructions_path, None);
+    }
+
+    #[test]
+    fn workspace_adapter_openstandard_is_disabled() {
+        let ws = Path::new("/ws");
+        let os = create_workspace_adapter(ToolId::Openstandard, ws);
+        assert!(!os.enabled, "OpenStandard is global-only");
+        assert!(!os.hooks_enabled);
+        assert_eq!(os.hooks_file, None);
+        assert_eq!(os.instructions_path, None);
+    }
+
+    #[test]
+    fn openstandard_global_adapter_owns_dot_agents() {
+        let s = Settings::default();
+        let os = resolve(&s, ToolId::Openstandard);
+        assert!(os.enabled);
+        assert!(os.skills_path.ends_with(".agents/skills"));
+        assert!(os.agents_path.ends_with(".agents/agents"));
+        assert!(os.rules_path.ends_with(".agents/rules"));
+        // Open-standard skills/agents are symlinked; rules go to the AGENTS.md
+        // managed block; hooks to the json section.
+        assert_eq!(
+            os.projection_mode_for(CapabilityKind::Skill),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            os.projection_mode_for(CapabilityKind::Rule),
+            Some(ProjectionMode::MarkdownSectionSync)
+        );
+        assert_eq!(
+            os.projection_mode_for(CapabilityKind::Hook),
+            Some(ProjectionMode::JsonSection)
+        );
     }
 
     #[test]

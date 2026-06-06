@@ -68,6 +68,7 @@ function makeSettings(): Settings {
       claude: toolSettings(true),
       cursor: toolSettings(true),
       openclaw: toolSettings(false),
+      openstandard: toolSettings(false),
     },
   };
 }

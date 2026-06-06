@@ -412,6 +412,10 @@ mod tests {
         let known: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
         let outcomes = reconcile_all(&scanned.items, &settings, &known);
         assert!(!outcomes.iter().any(|o| o.tool == ToolId::Openclaw));
-        assert_eq!(outcomes.len(), 3, "codex + claude + cursor");
+        assert_eq!(
+            outcomes.len(),
+            4,
+            "codex + claude + cursor + openstandard"
+        );
     }
 }
