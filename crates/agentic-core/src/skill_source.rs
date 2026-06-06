@@ -163,6 +163,9 @@ fn skills_agent_id(tool: ToolId) -> &'static str {
         ToolId::Claude => "claude-code",
         ToolId::Cursor => "cursor",
         ToolId::Openclaw => "openclaw",
+        // OpenStandard is global-only; skills.sh install is workspace-only, so
+        // this arm is effectively unreachable. It maps to its raw id.
+        ToolId::Openstandard => "openstandard",
     }
 }
 

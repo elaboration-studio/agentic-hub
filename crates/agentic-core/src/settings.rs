@@ -144,6 +144,14 @@ pub struct ToolsSettings {
     pub claude: ToolSettings,
     pub cursor: ToolSettings,
     pub openclaw: ToolSettings,
+    /// Injected for configs written before this tool existed, so legacy files
+    /// load instead of failing with a missing-field parse error.
+    #[serde(default = "default_openstandard")]
+    pub openstandard: ToolSettings,
+}
+
+fn default_openstandard() -> ToolSettings {
+    ToolSettings::defaults_for(ToolId::Openstandard)
 }
 
 /// Global settings persisted at `~/.agentic-hub/config.json`.
@@ -228,7 +236,7 @@ impl ToolSettings {
         match tool {
             ToolId::Codex => ToolSettings {
                 enabled: true,
-                skills_path: expand_tilde("~/.agents/skills"),
+                skills_path: expand_tilde("~/.codex/skills"),
                 agents_path: expand_tilde("~/.codex/agents"),
                 rules_path: expand_tilde("~/.codex/agentic-rules"),
                 instructions_path: Some(expand_tilde("~/.codex/AGENTS.md")),
@@ -263,6 +271,16 @@ impl ToolSettings {
                 hooks_enabled: false,
                 hooks_file: None,
             },
+            ToolId::Openstandard => ToolSettings {
+                // The open-standard `~/.agents` root, shared across tools.
+                enabled: true,
+                skills_path: expand_tilde("~/.agents/skills"),
+                agents_path: expand_tilde("~/.agents/agents"),
+                rules_path: expand_tilde("~/.agents/rules"),
+                instructions_path: Some(expand_tilde("~/.agents/AGENTS.md")),
+                hooks_enabled: true,
+                hooks_file: Some(expand_tilde("~/.agents/hooks.json")),
+            },
         }
     }
 }
@@ -274,6 +292,7 @@ impl Default for ToolsSettings {
             claude: ToolSettings::defaults_for(ToolId::Claude),
             cursor: ToolSettings::defaults_for(ToolId::Cursor),
             openclaw: ToolSettings::defaults_for(ToolId::Openclaw),
+            openstandard: ToolSettings::defaults_for(ToolId::Openstandard),
         }
     }
 }
@@ -442,6 +461,7 @@ impl Settings {
                 claude: tool("claude"),
                 cursor: tool("cursor"),
                 openclaw: tool("openclaw"),
+                openstandard: tool("openstandard"),
             },
         }
     }
@@ -454,12 +474,32 @@ mod tests {
     #[test]
     fn defaults_match_tool_adapter_matrix() {
         let s = Settings::default();
-        // Codex / Claude / Cursor ship enabled; OpenClaw is hidden by default.
+        // Codex / Claude / Cursor / OpenStandard ship enabled; OpenClaw is hidden.
         assert!(s.tools.codex.enabled);
         assert!(s.tools.claude.enabled);
         assert!(s.tools.cursor.enabled);
         assert!(!s.tools.openclaw.enabled);
-        assert!(s.tools.codex.skills_path.ends_with(".agents/skills"));
+        assert!(s.tools.openstandard.enabled);
+        // Codex is self-contained under `.codex`; the open-standard `.agents`
+        // root is owned by the OpenStandard tool.
+        assert!(s.tools.codex.skills_path.ends_with(".codex/skills"));
+        assert!(s.tools.openstandard.skills_path.ends_with(".agents/skills"));
+        assert!(s.tools.openstandard.agents_path.ends_with(".agents/agents"));
+        assert!(s.tools.openstandard.rules_path.ends_with(".agents/rules"));
+        assert!(s
+            .tools
+            .openstandard
+            .instructions_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".agents/AGENTS.md"));
+        assert!(s
+            .tools
+            .openstandard
+            .hooks_file
+            .as_ref()
+            .unwrap()
+            .ends_with(".agents/hooks.json"));
         // Codex subagents are TOML files under `.codex/agents` (the `.agents/`
         // dir holds only skills). Source: developers.openai.com/codex/subagents.
         assert!(s.tools.codex.agents_path.ends_with(".codex/agents"));
@@ -529,6 +569,14 @@ mod tests {
         .unwrap();
         let loaded = Settings::load_from(&path).unwrap();
         assert!(!loaded.skills.enabled, "absent block defaults to off");
+        // A config written before the openstandard tool existed has no
+        // `openstandard` key; the serde default injects it instead of failing.
+        assert!(loaded.tools.openstandard.enabled);
+        assert!(loaded
+            .tools
+            .openstandard
+            .skills_path
+            .ends_with(".agents/skills"));
     }
 
     #[test]

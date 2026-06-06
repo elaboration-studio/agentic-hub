@@ -52,6 +52,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
       claude: toolSettings(overrides.claude ?? true),
       cursor: toolSettings(overrides.cursor ?? true),
       openclaw: toolSettings(overrides.openclaw ?? false),
+      openstandard: toolSettings(overrides.openstandard ?? false),
     },
   };
 }

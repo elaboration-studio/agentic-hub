@@ -25,6 +25,7 @@ export const TOOL_LABELS: Record<ToolId, string> = {
   claude: "Claude",
   cursor: "Cursor",
   openclaw: "OpenClaw",
+  openstandard: "OpenStandard",
 };
 
 export const ALL_TOOLS: ToolDef[] = (Object.keys(TOOL_LABELS) as ToolId[]).map(

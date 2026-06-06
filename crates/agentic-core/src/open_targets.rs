@@ -27,6 +27,7 @@ pub fn is_openable(candidate: &Path, settings: &Settings, workspace_dirs: &[Path
         &settings.tools.claude,
         &settings.tools.cursor,
         &settings.tools.openclaw,
+        &settings.tools.openstandard,
     ] {
         collect_tool_targets(tool, &mut dir_roots, &mut exact_files);
     }

@@ -348,7 +348,8 @@ pub fn sync_json_hooks(
 
     // Removal: only when this is a hooks-only file with nothing foreign left.
     if hooks_empty {
-        let hooks_only_file = cursor_shape || tool == ToolId::Codex;
+        let hooks_only_file =
+            cursor_shape || matches!(tool, ToolId::Codex | ToolId::Openstandard);
         let no_foreign = root.keys().all(|k| k == "version");
         if existed && hooks_only_file && no_foreign {
             fs::remove_file(&target).map_err(|e| io_err(&target, &e))?;

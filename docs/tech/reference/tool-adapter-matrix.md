@@ -12,29 +12,29 @@ Single-page reference table for every tool adapter: target paths, projection mod
 
 ## Global scope (writes into tool home directories)
 
-| Aspect | Codex | Claude Code | Cursor | OpenClaw |
-|--------|-------|-------------|--------|----------|
-| Tool id | `codex` | `claude` | `cursor` | `openclaw` |
-| Default `enabled` | `true` | `true` | `true` | `true` |
-| `skillsPath` default | `~/.agents/skills` | `~/.claude/skills` | `~/.cursor/skills` | `~/.openclaw/skills` |
-| `agentsPath` default | `~/.codex/agents` | `~/.claude/agents` | `~/.cursor/agents` | `~/.openclaw/agents` |
-| `rulesPath` default | `~/.codex/agentic-rules` | `~/.claude/rules` | `~/.cursor/rules` | `~/.openclaw/agentic-rules` |
-| `instructionsPath` default | `~/.codex/AGENTS.md` | `~/.claude/CLAUDE.md` | _unused_ | `~/.openclaw/workspace/SOUL.md` |
-| `skillLayout` | `Nested` | `Flat` | `Nested` | `Nested` |
-| `agentLayout` | `Nested` | `Nested` | `Nested` | `Nested` |
-| Skill projection | symlink | **managed copy** (flat) | symlink | symlink |
-| Agent projection | symlink | symlink (nested) | **managed copy** | symlink |
-| Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `link_sync` | `markdown_section_sync` |
-| Rule target | `~/.codex/AGENTS.md` (managed block) | `~/.claude/CLAUDE.md` (managed block) | symlinks under `~/.cursor/rules/` | `~/.openclaw/workspace/SOUL.md` (managed block) |
-| Mirrored rule files | optional at `~/.codex/agentic-rules/` (annotated when present) | optional at `~/.claude/rules/` (rarely used) | n/a (rules are real files via symlink) | optional at `~/.openclaw/agentic-rules/` |
-| `hooks_enabled` default | `true` | `true` | `true` | `false` |
-| `hooks_file` default | `~/.codex/hooks.json` | `~/.claude/settings.json` | `~/.cursor/hooks.json` | _none_ |
-| Hook projection mode | `json_section` | `json_section` | `json_section` | not supported |
-| Hook JSON shape | two-level (PascalCase events) | two-level (PascalCase events) | flat (camelCase events) | n/a |
+| Aspect | Codex | Claude Code | Cursor | OpenClaw | OpenStandard |
+|--------|-------|-------------|--------|----------|--------------|
+| Tool id | `codex` | `claude` | `cursor` | `openclaw` | `openstandard` |
+| Default `enabled` | `true` | `true` | `true` | `true` | `true` |
+| `skillsPath` default | `~/.codex/skills` | `~/.claude/skills` | `~/.cursor/skills` | `~/.openclaw/skills` | `~/.agents/skills` |
+| `agentsPath` default | `~/.codex/agents` | `~/.claude/agents` | `~/.cursor/agents` | `~/.openclaw/agents` | `~/.agents/agents` |
+| `rulesPath` default | `~/.codex/agentic-rules` | `~/.claude/rules` | `~/.cursor/rules` | `~/.openclaw/agentic-rules` | `~/.agents/rules` |
+| `instructionsPath` default | `~/.codex/AGENTS.md` | `~/.claude/CLAUDE.md` | _unused_ | `~/.openclaw/workspace/SOUL.md` | `~/.agents/AGENTS.md` |
+| `skillLayout` | `Nested` | `Flat` | `Nested` | `Nested` | `Nested` |
+| `agentLayout` | `Nested` | `Nested` | `Nested` | `Nested` | `Nested` |
+| Skill projection | symlink | **managed copy** (flat) | symlink | symlink | symlink |
+| Agent projection | symlink | symlink (nested) | **managed copy** | symlink | symlink |
+| Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `link_sync` | `markdown_section_sync` | `markdown_section_sync` |
+| Rule target | `~/.codex/AGENTS.md` (managed block) | `~/.claude/CLAUDE.md` (managed block) | symlinks under `~/.cursor/rules/` | `~/.openclaw/workspace/SOUL.md` (managed block) | `~/.agents/AGENTS.md` (managed block) |
+| Mirrored rule files | optional at `~/.codex/agentic-rules/` (annotated when present) | optional at `~/.claude/rules/` (rarely used) | n/a (rules are real files via symlink) | optional at `~/.openclaw/agentic-rules/` | optional at `~/.agents/rules/` |
+| `hooks_enabled` default | `true` | `true` | `true` | `false` | `true` |
+| `hooks_file` default | `~/.codex/hooks.json` | `~/.claude/settings.json` | `~/.cursor/hooks.json` | _none_ | `~/.agents/hooks.json` |
+| Hook projection mode | `json_section` | `json_section` | `json_section` | not supported | `json_section` |
+| Hook JSON shape | two-level (PascalCase events) | two-level (PascalCase events) | flat (camelCase events) | n/a | two-level (PascalCase events) |
 
-### Why Codex skills use `~/.agents/` but agents use `~/.codex/agents`
+### Codex is self-contained under `~/.codex`; OpenStandard owns `~/.agents`
 
-OpenAI Codex's documented **skill** scan paths are `$CWD/.agents/skills` walking up to `$REPO_ROOT/.agents/skills`, and `$HOME/.agents/skills` for user scope ([Codex skills](https://developers.openai.com/codex/skills/)). The `.agents/` root holds **skills only**. Codex **subagents** are TOML files under `~/.codex/agents/` (user) and `.codex/agents/` (project), each with `name` / `description` / `developer_instructions` ([Codex subagents](https://developers.openai.com/codex/subagents)). Codex's `~/.codex/` dir is also where `AGENTS.md` instruction projection lands.
+The open-standard `~/.agents/` root (the convention OpenAI Codex documents for skills: `$HOME/.agents/skills`, walking up `$REPO_ROOT/.agents/skills`; see [Codex skills](https://developers.openai.com/codex/skills/)) is owned by its own first-class tool, **OpenStandard**, which projects skills, agents, rules, and hooks under `~/.agents/`. Codex's own tool entry is now fully self-contained under `~/.codex/` (skills, agents, rules, instructions, hooks), so the two columns are independent. Codex **subagents** remain TOML files under `~/.codex/agents/` (user) and `.codex/agents/` (project), each with `name` / `description` / `developer_instructions` ([Codex subagents](https://developers.openai.com/codex/subagents)). OpenStandard is **global-only** (like OpenClaw, but enabled by default).
 
 ### Why Cursor agents and Claude skills are managed copies
 
@@ -68,27 +68,28 @@ Notes:
 
 ### Skill
 
-- Global Codex / Cursor / OpenClaw: symlink (nested)
+- Global Codex / Cursor / OpenClaw / OpenStandard: symlink (nested)
 - Global Claude: managed copy (flat) — Claude's skill loader does not follow symlinks
 - Workspace: hard copy (nested)
 
 ### Agent
 
-- Global Codex / Claude / OpenClaw: symlink (nested for all — Claude scans `~/.claude/agents/` recursively)
+- Global Codex / Claude / OpenClaw / OpenStandard: symlink (nested for all — Claude scans `~/.claude/agents/` recursively)
 - Global Cursor: managed copy (per-root manifest)
 - Workspace: read-only inventory (Codex reads `.codex/agents/*.toml`; Claude/Cursor read `*.md`)
 
 ### Rule
 
 - Global Cursor: symlink under `~/.cursor/rules/`
-- Global Codex / Claude / OpenClaw: managed block in instruction file
+- Global Codex / Claude / OpenClaw / OpenStandard: managed block in instruction file
 - Workspace Cursor: hard copy under `<ws>/.cursor/rules/`
 - Workspace Codex / Claude: managed block in `<ws>/AGENTS.md` / `<ws>/CLAUDE.md`
 
 ### Hook
 
-- Global Codex / Claude / Cursor: managed JSON entry in the tool's hooks file (`json_section`)
+- Global Codex / Claude / Cursor / OpenStandard: managed JSON entry in the tool's hooks file (`json_section`)
 - Global OpenClaw: not supported (no public hook spec)
+- **OpenStandard hooks are opt-in.** A hook's default target set is the trio `[Cursor, Claude, Codex]` (`HookManifest::effective_targets`), so OpenStandard receives a hook only when the hook's `hook.json` lists it explicitly (`"targets": ["openstandard"]`). Unlike skills/agents/rules — which project to OpenStandard by default — hooks do not, to keep the default `~/.agents/hooks.json` empty unless asked for.
 - Workspace Codex / Claude / Cursor: managed JSON entry in `<ws>/.codex/hooks.json` / `<ws>/.claude/settings.json` / `<ws>/.cursor/hooks.json`
 - Cursor uses a flat shape (camelCase events); Codex / Claude use a two-level shape (PascalCase events, marker on the matcher group). See [hook-projection-sync.md](../modules/hook-projection-sync.md).
 
@@ -160,4 +161,4 @@ If a developer asks "where does enabling skill X for tool Y go?", the answer sho
 ## Open questions
 
 - Should we ever expose `skillLayout` and `agentLayout` as user-configurable settings? Decision: no in v1; layout is tool-intrinsic
-- Should we eventually support a fifth tool (Aider, Continue, etc.)? Adding one is mostly: pick a tool id, add settings defaults, declare layout + projection mode, regression-test the planner. Defer until a real demand surfaces.
+- Should we eventually support a sixth tool (Aider, Continue, etc.)? Adding one is mostly: pick a tool id, add settings defaults, declare layout + projection mode, regression-test the planner. The `OpenStandard` addition (the open-standard `~/.agents` root as its own column) is the worked example.
