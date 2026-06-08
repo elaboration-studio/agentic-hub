@@ -5,35 +5,36 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.6.2] — 2026-06-06
+## [0.7.0] — 2026-06-08
 
 ### Highlights
 
-- **New OpenStandard tool.** Agentic Hub now manages the open-standard
-  `~/.agents` directory as a first-class tool. Enable it (it's on by default)
-  and your skills, agents, and rules project into `~/.agents/{skills,agents,rules}`
-  — the shared convention other tools read — alongside Codex, Claude, Cursor,
-  and OpenClaw. It shows up as its own column in the manager.
-- **Codex is now self-contained under `~/.codex`.** Codex skills now live at
-  `~/.codex/skills` (previously `~/.agents/skills`), so Codex's own resources and
-  the shared open standard no longer overlap. The two are independent columns you
-  can manage separately.
+- **Commands — a fifth capability kind.** Keep your slash-command prompts (the
+  Cursor / Claude Code / Codex kind) in one place: `~/.agentic/commands/`, in
+  whatever folders you like. Enable them per tool from the Hub and they project
+  into each tool's commands directory — symlinked for Cursor (`~/.cursor/commands`),
+  Codex (`~/.codex/prompts`), and OpenStandard (`~/.agents/commands`), and copied
+  for Claude (`~/.claude/commands`, whose loader doesn't follow symlinks). They
+  show up as a "Commands" column in the manager and in the read-only workspace
+  inventory.
+- **Copy or edit from the palette.** Summon the palette, find a command, and press
+  **Enter to copy its body to the clipboard** — paste it anywhere, even into a tool
+  that has no command concept. **Alt+Enter opens the source file** for editing.
+- **A starter command in the demo.** First-run scaffold now seeds a couple of
+  nested example commands so there's something to try immediately.
 
 ### Changes
 
-- Added the `openstandard` tool adapter: skills and agents symlink into
-  `~/.agents/`, rules write a managed block in `~/.agents/AGENTS.md`, and hooks
-  (opt-in via a hook's explicit `targets`) write to `~/.agents/hooks.json`.
-  Global-only, like OpenClaw.
-- Changed the Codex default `skillsPath` from `~/.agents/skills` to
-  `~/.codex/skills`.
+- Added the `command` capability kind and per-tool `commandsPath`. OpenClaw has no
+  command concept and is unsupported for commands.
+- New `cmd_read_capability_body` IPC (allowlist-gated) and the
+  `tauri-plugin-clipboard-manager` plugin power the palette copy action.
 
 ### Migration
 
-- **None required.** Existing configs load unchanged — the new `openstandard`
-  block is injected automatically, and your saved Codex `skillsPath` is
-  preserved. Only fresh installs (or configs that never set Codex's `skillsPath`)
-  pick up the new `~/.codex/skills` default.
+- **None required.** Existing configs load unchanged — the new `commandsPath`
+  field is injected with the right per-tool default, so commands project without
+  re-saving settings.
 
 ### Known Issues
 

@@ -28,6 +28,7 @@ User-facing feature designs aligned with each milestone.
 
 - [mvp-unified-agentic-capability-manager.md](features/mvp-unified-agentic-capability-manager.md) — the core MVP feature: scan / inspect / stage / apply
 - [hooks-projection.md](features/hooks-projection.md) — the `hook` capability kind projected into each tool's hooks config via `json_section`
+- [commands.md](features/commands.md) — the `command` capability kind (slash-command prompts) projected into each tool's commands dir; palette copy / open
 - [suite-presets.md](features/suite-presets.md) — named capability presets with one-click full-reset apply
 - [workspace-inventory.md](features/workspace-inventory.md) — read-only per-workspace inventory of installed agentic resources
 - [skills-sh-integration.md](features/skills-sh-integration.md) — opt-in skills.sh source: search, star, and install skills into a workspace
