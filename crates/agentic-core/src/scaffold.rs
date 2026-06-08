@@ -157,10 +157,13 @@ mod tests {
         assert!(dir.path().join("skills").is_dir());
         assert!(dir.path().join("agents").is_dir());
         assert!(dir.path().join("rules").is_dir());
+        assert!(dir.path().join("commands").is_dir());
         assert!(dir
             .path()
             .join("skills/agentic-hub/agentic-hub-setup/SKILL.md")
             .is_file());
+        // A nested demo command seeds first-run usage of the commands kind.
+        assert!(dir.path().join("commands/review/code-review.md").is_file());
     }
 
     #[test]

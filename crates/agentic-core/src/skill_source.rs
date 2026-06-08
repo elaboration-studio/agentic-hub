@@ -402,8 +402,9 @@ impl SkillProvider for SkillsShProvider {
             Ok(_) | Err(_) => SkillCliStatus {
                 available: false,
                 version: None,
-                message: "npx (Node.js) was not found on PATH. Install Node 20+ to enable installs."
-                    .to_string(),
+                message:
+                    "npx (Node.js) was not found on PATH. Install Node 20+ to enable installs."
+                        .to_string(),
             },
         }
     }
@@ -470,7 +471,9 @@ mod tests {
     fn accepts_owner_repo_and_owner_repo_skill() {
         assert!(validate_install_ref("vercel-labs/agent-skills"));
         assert!(validate_install_ref("apollographql/skills"));
-        assert!(validate_install_ref("vercel-labs/agent-skills/next-js-development"));
+        assert!(validate_install_ref(
+            "vercel-labs/agent-skills/next-js-development"
+        ));
         assert!(validate_install_ref("a_b.c/d-e.f"));
     }
 

@@ -223,13 +223,14 @@ mod tests {
     }
 
     #[test]
-    fn scans_all_four_kinds_nested() {
+    fn scans_all_five_kinds_nested() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write(&root.join("skills/dev/repo-research/SKILL.md"), "# skill");
         write(&root.join("agents/coding/coding-agent.md"), "# agent");
         write(&root.join("rules/general/precise.mdc"), "> rule");
         write(&root.join("hooks/auto-format-after-edit/hook.json"), "{}");
+        write(&root.join("commands/review/code-review.md"), "# review");
 
         let result = scan(root);
         assert!(result.errors.is_empty(), "{:?}", result.errors);
@@ -239,6 +240,7 @@ mod tests {
         assert!(ids.contains(&"agent:coding/coding-agent.md"));
         assert!(ids.contains(&"rule:general/precise.mdc"));
         assert!(ids.contains(&"hook:auto-format-after-edit"));
+        assert!(ids.contains(&"command:review/code-review.md"));
 
         let skill = result
             .items
@@ -248,6 +250,16 @@ mod tests {
         assert_eq!(skill.kind, CapabilityKind::Skill);
         assert_eq!(skill.name, "repo-research");
         assert!(skill.source_path.ends_with("skills/dev/repo-research"));
+
+        // Commands are file-based, nested markdown — id keeps the relative path.
+        let cmd = result
+            .items
+            .iter()
+            .find(|i| i.id == "command:review/code-review.md")
+            .unwrap();
+        assert_eq!(cmd.kind, CapabilityKind::Command);
+        assert_eq!(cmd.relative_path, Path::new("review/code-review.md"));
+        assert!(cmd.source_path.ends_with("commands/review/code-review.md"));
     }
 
     #[test]

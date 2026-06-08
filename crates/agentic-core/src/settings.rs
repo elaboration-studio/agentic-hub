@@ -130,6 +130,11 @@ pub struct ToolSettings {
     pub instructions_path: Option<PathBuf>,
     pub hooks_enabled: bool,
     pub hooks_file: Option<PathBuf>,
+    /// Directory holding slash-command prompts (`commands`/`prompts`). `None`
+    /// when the tool has no command concept (OpenClaw). Injected for configs
+    /// written before this field existed, so legacy files load without failing.
+    #[serde(default)]
+    pub commands_path: Option<PathBuf>,
 }
 
 #[cfg_attr(
@@ -231,6 +236,20 @@ pub fn is_valid_shortcut(accelerator: &str) -> bool {
         .any(|p| !MODIFIERS.contains(&p.to_ascii_lowercase().as_str()))
 }
 
+/// Default slash-command directory per tool. `None` for OpenClaw (no command
+/// concept). Codex uses `~/.codex/prompts`; the others use a `commands` dir.
+/// Kept separate from [`ToolSettings::defaults_for`] so the adapter can fall
+/// back to it when a legacy config has no `commands_path`.
+pub fn default_commands_path(tool: ToolId) -> Option<PathBuf> {
+    match tool {
+        ToolId::Codex => Some(expand_tilde("~/.codex/prompts")),
+        ToolId::Claude => Some(expand_tilde("~/.claude/commands")),
+        ToolId::Cursor => Some(expand_tilde("~/.cursor/commands")),
+        ToolId::Openstandard => Some(expand_tilde("~/.agents/commands")),
+        ToolId::Openclaw => None,
+    }
+}
+
 impl ToolSettings {
     fn defaults_for(tool: ToolId) -> ToolSettings {
         match tool {
@@ -242,6 +261,7 @@ impl ToolSettings {
                 instructions_path: Some(expand_tilde("~/.codex/AGENTS.md")),
                 hooks_enabled: true,
                 hooks_file: Some(expand_tilde("~/.codex/hooks.json")),
+                commands_path: default_commands_path(ToolId::Codex),
             },
             ToolId::Claude => ToolSettings {
                 enabled: true,
@@ -251,6 +271,7 @@ impl ToolSettings {
                 instructions_path: Some(expand_tilde("~/.claude/CLAUDE.md")),
                 hooks_enabled: true,
                 hooks_file: Some(expand_tilde("~/.claude/settings.json")),
+                commands_path: default_commands_path(ToolId::Claude),
             },
             ToolId::Cursor => ToolSettings {
                 enabled: true,
@@ -260,6 +281,7 @@ impl ToolSettings {
                 instructions_path: None,
                 hooks_enabled: true,
                 hooks_file: Some(expand_tilde("~/.cursor/hooks.json")),
+                commands_path: default_commands_path(ToolId::Cursor),
             },
             ToolId::Openclaw => ToolSettings {
                 // Hidden by default; enable it in the Config page to project to it.
@@ -270,6 +292,7 @@ impl ToolSettings {
                 instructions_path: Some(expand_tilde("~/.openclaw/workspace/SOUL.md")),
                 hooks_enabled: false,
                 hooks_file: None,
+                commands_path: default_commands_path(ToolId::Openclaw),
             },
             ToolId::Openstandard => ToolSettings {
                 // The open-standard `~/.agents` root, shared across tools.
@@ -280,6 +303,7 @@ impl ToolSettings {
                 instructions_path: Some(expand_tilde("~/.agents/AGENTS.md")),
                 hooks_enabled: true,
                 hooks_file: Some(expand_tilde("~/.agents/hooks.json")),
+                commands_path: default_commands_path(ToolId::Openstandard),
             },
         }
     }
@@ -446,6 +470,7 @@ impl Settings {
                 instructions_path: Some(base.join("INSTRUCTIONS.md")),
                 hooks_enabled: true,
                 hooks_file: Some(base.join("hooks.json")),
+                commands_path: Some(base.join("commands")),
             }
         };
         Settings {
@@ -513,6 +538,37 @@ mod tests {
             .ends_with(".codex/AGENTS.md"));
         assert!(s.tools.claude.skills_path.ends_with(".claude/skills"));
         assert!(s.tools.cursor.instructions_path.is_none());
+        // Slash-command dirs: Codex uses `prompts`, the rest a `commands` dir;
+        // OpenClaw has none.
+        assert!(s
+            .tools
+            .codex
+            .commands_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".codex/prompts"));
+        assert!(s
+            .tools
+            .claude
+            .commands_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".claude/commands"));
+        assert!(s
+            .tools
+            .cursor
+            .commands_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".cursor/commands"));
+        assert!(s
+            .tools
+            .openstandard
+            .commands_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".agents/commands"));
+        assert!(s.tools.openclaw.commands_path.is_none());
         // Watcher ships on; the manual Rescan button is replaced by the toggle.
         assert!(s.watcher_enabled);
         assert!(s

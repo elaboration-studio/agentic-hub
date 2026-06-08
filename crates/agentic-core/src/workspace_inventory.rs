@@ -91,7 +91,13 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
             &["md"]
         };
         for dir in &agent_dirs {
-            collect_files(dir, CapabilityKind::Agent, agent_exts, &mut found, &mut errors);
+            collect_files(
+                dir,
+                CapabilityKind::Agent,
+                agent_exts,
+                &mut found,
+                &mut errors,
+            );
         }
         // Codex/Claude rules live in their managed instruction block, not a
         // rules dir; only Cursor keeps per-file rules under `.cursor/rules`.
@@ -100,6 +106,17 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
                 &adapter.rules_path,
                 CapabilityKind::Rule,
                 CapabilityKind::Rule.file_extensions(),
+                &mut found,
+                &mut errors,
+            );
+        }
+        // Slash-command prompts: nested `.md` under the tool's commands dir
+        // (`.cursor/commands`, `.claude/commands`, `.codex/prompts`). Read-only.
+        if let Some(commands) = adapter.commands_path.as_ref() {
+            collect_files(
+                commands,
+                CapabilityKind::Command,
+                CapabilityKind::Command.file_extensions(),
                 &mut found,
                 &mut errors,
             );
@@ -331,7 +348,10 @@ mod tests {
         assert!(ids.contains(&"skill:dev/tdd"));
         assert!(ids.contains(&"agent:coder.toml"));
         assert!(ids.contains(&"rule:precise.mdc"));
-        assert!(ids.contains(&"rule:AGENTS.md"), "instruction file row: {ids:?}");
+        assert!(
+            ids.contains(&"rule:AGENTS.md"),
+            "instruction file row: {ids:?}"
+        );
 
         // The Codex skill state targets the workspace .agents path.
         let skill_state = inv
@@ -350,7 +370,9 @@ mod tests {
             .find(|s| s.item_id == "agent:coder.toml")
             .unwrap();
         assert_eq!(agent_state.tool, ToolId::Codex);
-        assert!(agent_state.target_path.ends_with(".codex/agents/coder.toml"));
+        assert!(agent_state
+            .target_path
+            .ends_with(".codex/agents/coder.toml"));
     }
 
     #[test]
@@ -380,7 +402,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path();
         // A skill + a markdown agent dropped only in the shared `.agents/` dir.
-        write(&ws.join(".agents/skills/dev/web-design/adapt/SKILL.md"), "# adapt");
+        write(
+            &ws.join(".agents/skills/dev/web-design/adapt/SKILL.md"),
+            "# adapt",
+        );
         write(&ws.join(".agents/agents/coder.md"), "# coder");
 
         let inv = scan_workspace(ws, &WS_TOOLS);
@@ -460,7 +485,10 @@ mod tests {
         // Source: https://cursor.com/docs/rules (2026).
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path();
-        write(&ws.join(".cursor/rules/general/precise.mdc"), "---\n---\n> rule");
+        write(
+            &ws.join(".cursor/rules/general/precise.mdc"),
+            "---\n---\n> rule",
+        );
 
         let inv = scan_workspace(ws, &WS_TOOLS);
         let rule = inv
@@ -480,7 +508,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path();
         write(&ws.join(".agents/skills/dev/tdd/SKILL.md"), "# tdd");
-        write(&ws.join(".codex/agents/reviewer.toml"), "name = \"reviewer\"");
+        write(
+            &ws.join(".codex/agents/reviewer.toml"),
+            "name = \"reviewer\"",
+        );
         // A markdown file in `.agents/agents` is NOT a Codex subagent.
         write(&ws.join(".agents/agents/stray.md"), "# stray");
         write(&ws.join("AGENTS.md"), "# project");
@@ -543,6 +574,42 @@ mod tests {
     }
 
     #[test]
+    fn discovers_nested_commands_per_tool() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        // Cursor + Claude commands under their `commands` dirs; Codex under
+        // `prompts`. All nested markdown.
+        write(
+            &ws.join(".cursor/commands/review/code-review.md"),
+            "# review",
+        );
+        write(&ws.join(".claude/commands/git/commit.md"), "# commit");
+        write(&ws.join(".codex/prompts/plan.md"), "# plan");
+
+        let inv = scan_workspace(ws, &WS_TOOLS);
+        assert!(inv.errors.is_empty(), "{:?}", inv.errors);
+
+        let cursor_cmd = inv
+            .states
+            .iter()
+            .find(|s| s.item_id == "command:review/code-review.md")
+            .expect("cursor command discovered");
+        assert_eq!(cursor_cmd.tool, ToolId::Cursor);
+        assert!(cursor_cmd
+            .target_path
+            .ends_with(".cursor/commands/review/code-review.md"));
+
+        assert!(inv
+            .states
+            .iter()
+            .any(|s| s.item_id == "command:git/commit.md" && s.tool == ToolId::Claude));
+        assert!(inv
+            .states
+            .iter()
+            .any(|s| s.item_id == "command:plan.md" && s.tool == ToolId::Codex));
+    }
+
+    #[test]
     fn empty_workspace_yields_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let inv = scan_workspace(dir.path(), &WS_TOOLS);
@@ -556,7 +623,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path();
         write(&ws.join(".cursor/skills/live/SKILL.md"), "# live");
-        write(&ws.join(".cursor/skills/__archived__/old/SKILL.md"), "# old");
+        write(
+            &ws.join(".cursor/skills/__archived__/old/SKILL.md"),
+            "# old",
+        );
 
         let inv = scan_workspace(ws, &WS_TOOLS);
         let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();

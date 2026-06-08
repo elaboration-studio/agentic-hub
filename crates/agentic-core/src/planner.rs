@@ -517,6 +517,46 @@ mod tests {
     }
 
     #[test]
+    fn build_plan_command_symlinks_for_codex_copies_for_claude() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/review/code-review.md");
+        write(&source, "# review");
+
+        // Codex: commands symlink into ~/.codex/prompts (here, a temp dir).
+        let codex_dir = dir.path().join("codex-prompts");
+        let codex = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.commands_path = Some(codex_dir.clone());
+        });
+        let cmd = item(
+            CapabilityKind::Command,
+            "review/code-review.md",
+            source.clone(),
+        );
+        let mut desired = HashMap::new();
+        desired.insert(cmd.id.clone(), true);
+
+        let ops = build_plan(std::slice::from_ref(&cmd), &codex, &desired, false);
+        assert_eq!(ops.len(), 1);
+        assert_eq!(ops[0].kind, OperationKind::CreateLink);
+        assert!(ops[0]
+            .target_path
+            .ends_with(Path::new("codex-prompts/review/code-review.md")));
+        assert_eq!(ops[0].source_path.as_ref(), Some(&source));
+
+        // Claude: commands hard-copy (loader does not follow symlinks).
+        let claude_dir = dir.path().join("claude-commands");
+        let claude = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.commands_path = Some(claude_dir.clone());
+        });
+        let ops = build_plan(std::slice::from_ref(&cmd), &claude, &desired, false);
+        assert_eq!(ops.len(), 1);
+        assert_eq!(ops[0].kind, OperationKind::CreateManagedCopy);
+        assert!(ops[0]
+            .target_path
+            .ends_with(Path::new("claude-commands/review/code-review.md")));
+    }
+
+    #[test]
     fn foreign_file_link_takeover_only_with_force() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("src/foo.md");

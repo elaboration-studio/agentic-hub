@@ -233,6 +233,31 @@ pub async fn cmd_reveal_path(app: AppHandle, input: RevealPathInput) -> IpcResul
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadBodyInput {
+    pub path: String,
+}
+
+/// Read a capability file's text body for the palette's copy-to-clipboard
+/// action (commands). Gated by the same allowlist as [`cmd_open_path`] so the
+/// WebView can never read arbitrary files.
+#[tauri::command]
+pub async fn cmd_read_capability_body(input: ReadBodyInput) -> IpcResult<String> {
+    let path = expand_tilde(&input.path);
+    let settings = Settings::load()?;
+    if !open_targets::is_openable(&path, &settings, &workspace_dirs()) {
+        return Err(IpcError::new(
+            "path_not_openable",
+            format!(
+                "Refusing to read a path outside known roots: {}",
+                path.display()
+            ),
+        ));
+    }
+    std::fs::read_to_string(&path).map_err(|e| IpcError::new("read_failed", e.to_string()))
+}
+
+#[derive(Debug, Deserialize)]
 pub struct OpenUrlInput {
     pub url: String,
 }
