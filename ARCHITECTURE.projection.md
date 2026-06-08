@@ -41,7 +41,7 @@ In scope:
 - Global-scope projections only (workspace scope is the sibling doc)
 - All five tools (Codex, Claude Code, Cursor, OpenClaw, OpenStandard)
 - All four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
-- All four capability kinds (`skill`, `agent`, `rule`, `hook`)
+- All five capability kinds (`skill`, `agent`, `rule`, `hook`, `command`)
 - All four state classes (item state, link state, planned op, apply result)
 
 Out of scope:

@@ -1,6 +1,6 @@
 # agentic-hub
 
-Manage your agentic skills, agents, rules, hooks, and sub-agent specs in one place — and use them across tools, services, projects, and devices.
+Manage your agentic skills, agents, rules, hooks, commands, and sub-agent specs in one place — and use them across tools, services, projects, and devices.
 
 A Tauri 2.x desktop app that projects a single shared `~/.agentic/` capability tree into Codex, Claude Code, Cursor, and OpenClaw, with stage-then-apply safety, named suites, and per-project workspace patches.
 
