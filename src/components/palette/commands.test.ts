@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/ipc", () => ({
   openPath: vi.fn(),
   applySuite: vi.fn().mockResolvedValue(undefined),
+  readCapabilityBody: vi.fn().mockResolvedValue("command body text"),
+  copyText: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { applySuite, openPath } from "@/ipc";
+import { applySuite, copyText, openPath, readCapabilityBody } from "@/ipc";
 import type {
   CapabilityItem,
   Settings,
@@ -24,6 +26,8 @@ import {
 const mocked = {
   openPath: vi.mocked(openPath),
   applySuite: vi.mocked(applySuite),
+  readCapabilityBody: vi.mocked(readCapabilityBody),
+  copyText: vi.mocked(copyText),
 };
 
 function toolSettings(enabled: boolean): ToolSettings {
@@ -35,6 +39,7 @@ function toolSettings(enabled: boolean): ToolSettings {
     instructionsPath: null,
     hooksEnabled: false,
     hooksFile: null,
+    commandsPath: enabled ? "/commands" : null,
   };
 }
 
@@ -80,6 +85,21 @@ function makeItem(id: string, name: string): CapabilityItem {
     name,
     sourcePath: `/shared/skills/${name}`,
     relativePath: name,
+    sourceId: "default",
+    sourceLabel: "Default",
+    source: { relHome: "~/.agentic", folder: ".agentic" },
+    valid: true,
+    validationErrors: [],
+  };
+}
+
+function makeCommand(id: string, name: string, relativePath = name): CapabilityItem {
+  return {
+    id,
+    kind: "command",
+    name,
+    sourcePath: `/shared/commands/${relativePath}`,
+    relativePath,
     sourceId: "default",
     sourceLabel: "Default",
     source: { relHome: "~/.agentic", folder: ".agentic" },
@@ -144,6 +164,47 @@ describe("root providers", () => {
     expect(row.dismissOnRun).toBeUndefined();
     row.run();
     expect(mocked.openPath).toHaveBeenCalledWith("/shared/skills/tdd/SKILL.md", undefined);
+  });
+
+  it("resource search excludes commands (they have a dedicated provider)", () => {
+    const items = [
+      makeItem("skill:review", "review"),
+      makeCommand("command:review/code-review.md", "code-review", "review/code-review.md"),
+    ];
+    const results = computeResults(ctx({ items, query: "review" }));
+    expect(results.some((r) => r.id === "resource:command:review/code-review.md")).toBe(false);
+    expect(results.some((r) => r.id === "command:command:review/code-review.md")).toBe(true);
+  });
+});
+
+describe("command search provider", () => {
+  it("returns nothing on an empty query", () => {
+    const items = [makeCommand("command:git/commit.md", "commit", "git/commit.md")];
+    const rows = computeResults(ctx({ items })).filter((r) => r.group === "Command");
+    expect(rows).toEqual([]);
+  });
+
+  it("Enter copies the command body to the clipboard", async () => {
+    const items = [makeCommand("command:git/commit.md", "commit", "git/commit.md")];
+    const row = computeResults(ctx({ items, query: "commit" })).find(
+      (r) => r.group === "Command",
+    )!;
+
+    await row.run();
+    expect(mocked.readCapabilityBody).toHaveBeenCalledWith("/shared/commands/git/commit.md");
+    expect(mocked.copyText).toHaveBeenCalledWith("command body text");
+    expect(mocked.openPath).not.toHaveBeenCalled();
+  });
+
+  it("Alt+Enter opens the source file for editing", async () => {
+    const items = [makeCommand("command:git/commit.md", "commit", "git/commit.md")];
+    const row = computeResults(ctx({ items, query: "commit" })).find(
+      (r) => r.group === "Command",
+    )!;
+
+    await row.altRun!();
+    expect(mocked.openPath).toHaveBeenCalledWith("/shared/commands/git/commit.md", undefined);
+    expect(mocked.copyText).not.toHaveBeenCalled();
   });
 });
 

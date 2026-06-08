@@ -21,6 +21,7 @@ export function CommandPalette() {
   const move = usePaletteStore((s) => s.move);
   const setSelected = usePaletteStore((s) => s.setSelected);
   const runSelected = usePaletteStore((s) => s.runSelected);
+  const runSelectedAlt = usePaletteStore((s) => s.runSelectedAlt);
   const back = usePaletteStore((s) => s.back);
   const reset = usePaletteStore((s) => s.reset);
 
@@ -62,9 +63,10 @@ export function CommandPalette() {
   // Run the selected item; dismiss only when it is terminal. Drill-in rows
   // (a suite) set `dismissOnRun: false` so the palette stays open on the
   // suite-tools view.
-  const runAndHide = () => {
+  const runAndHide = (alt = false) => {
     const item = results[selectedIndex];
-    void runSelected().then(() => {
+    const action = alt ? runSelectedAlt() : runSelected();
+    void action.then(() => {
       if (!item || item.dismissOnRun !== false) hide();
     }, hide);
   };
@@ -81,7 +83,7 @@ export function CommandPalette() {
         break;
       case "Enter":
         e.preventDefault();
-        runAndHide();
+        runAndHide(e.altKey);
         break;
       case "Backspace":
         // Empty query in the suite-tools view steps back to the root instead

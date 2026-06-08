@@ -36,6 +36,8 @@
   --warning-foreground: #ffffff;
   --kind-agent: #9333ea;
   --kind-agent-foreground: #ffffff;
+  --kind-command: #0891b2;
+  --kind-command-foreground: #ffffff;
 }
 
 .dark {
@@ -69,6 +71,8 @@
   --warning-foreground: #1a1206;
   --kind-agent: #a855f7;
   --kind-agent-foreground: #1a0f24;
+  --kind-command: #22d3ee;
+  --kind-command-foreground: #06131a;
 }
 
 @theme inline {
@@ -103,6 +107,8 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-kind-agent: var(--kind-agent);
   --color-kind-agent-foreground: var(--kind-agent-foreground);
+  --color-kind-command: var(--kind-command);
+  --color-kind-command-foreground: var(--kind-command-foreground);
 
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }

@@ -65,6 +65,7 @@ function toolSettings(enabled: boolean): ToolSettings {
     instructionsPath: null,
     hooksEnabled: false,
     hooksFile: null,
+    commandsPath: enabled ? "/commands" : null,
   };
 }
 
