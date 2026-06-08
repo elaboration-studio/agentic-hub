@@ -36,6 +36,9 @@ pub struct ResolvedAdapter {
     pub instructions_path: Option<PathBuf>,
     pub hooks_enabled: bool,
     pub hooks_file: Option<PathBuf>,
+    /// Slash-command directory. `None` when the tool has no command concept
+    /// (OpenClaw).
+    pub commands_path: Option<PathBuf>,
 }
 
 fn tool_settings(settings: &Settings, tool: ToolId) -> &ToolSettings {
@@ -60,6 +63,12 @@ pub fn resolve(settings: &Settings, tool: ToolId) -> ResolvedAdapter {
         instructions_path: ts.instructions_path.clone(),
         hooks_enabled: ts.hooks_enabled,
         hooks_file: ts.hooks_file.clone(),
+        // Fall back to the per-tool default so configs written before
+        // `commands_path` existed still project commands (OpenClaw stays None).
+        commands_path: ts
+            .commands_path
+            .clone()
+            .or_else(|| crate::settings::default_commands_path(tool)),
     }
 }
 
@@ -90,6 +99,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: Some(j("AGENTS.md")),
             hooks_enabled: true,
             hooks_file: Some(j(".codex/hooks.json")),
+            commands_path: Some(j(".codex/prompts")),
         },
         ToolId::Claude => ResolvedAdapter {
             tool_id: tool,
@@ -100,6 +110,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: Some(j("CLAUDE.md")),
             hooks_enabled: true,
             hooks_file: Some(j(".claude/settings.json")),
+            commands_path: Some(j(".claude/commands")),
         },
         ToolId::Cursor => ResolvedAdapter {
             tool_id: tool,
@@ -113,6 +124,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: Some(j("AGENTS.md")),
             hooks_enabled: true,
             hooks_file: Some(j(".cursor/hooks.json")),
+            commands_path: Some(j(".cursor/commands")),
         },
         ToolId::Openclaw => ResolvedAdapter {
             tool_id: tool,
@@ -123,6 +135,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: None,
             hooks_enabled: false,
             hooks_file: None,
+            commands_path: None,
         },
         ToolId::Openstandard => ResolvedAdapter {
             tool_id: tool,
@@ -133,6 +146,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: None,
             hooks_enabled: false,
             hooks_file: None,
+            commands_path: None,
         },
     }
 }
@@ -154,15 +168,16 @@ impl ResolvedAdapter {
     /// Projection mode for a `(tool, kind)` in global scope. `None` means the
     /// combination is unsupported (OpenClaw hooks).
     pub fn projection_mode_for(&self, kind: CapabilityKind) -> Option<ProjectionMode> {
-        use CapabilityKind::{Agent, Hook, Rule, Skill};
+        use CapabilityKind::{Agent, Command, Hook, Rule, Skill};
         use ProjectionMode::{FileSync, JsonSection, LinkSync, MarkdownSectionSync};
         match (self.tool_id, kind) {
-            (ToolId::Openclaw, Hook) => None,
+            (ToolId::Openclaw, Hook | Command) => None,
             (_, Hook) => Some(JsonSection),
             (ToolId::Cursor, Agent) => Some(FileSync),
-            // Claude's skill loader does not follow symlinks, so skills are
-            // hard-copied (managed) rather than linked.
-            (ToolId::Claude, Skill) => Some(FileSync),
+            // Claude's skill and command loaders do not follow symlinks, so they
+            // are hard-copied (managed) rather than linked.
+            (ToolId::Claude, Skill | Command) => Some(FileSync),
+            (_, Command) => Some(LinkSync),
             (_, Skill | Agent) => Some(LinkSync),
             (ToolId::Cursor, Rule) => Some(LinkSync),
             (_, Rule) => Some(MarkdownSectionSync),
@@ -176,6 +191,7 @@ impl ResolvedAdapter {
             CapabilityKind::Skill => Some(&self.skills_path),
             CapabilityKind::Agent => Some(&self.agents_path),
             CapabilityKind::Rule => Some(&self.rules_path),
+            CapabilityKind::Command => self.commands_path.as_ref(),
             CapabilityKind::Hook => None,
         }
     }
@@ -195,6 +211,7 @@ impl ResolvedAdapter {
             CapabilityKind::Skill => &self.skills_path,
             CapabilityKind::Agent => &self.agents_path,
             CapabilityKind::Rule => &self.rules_path,
+            CapabilityKind::Command => self.commands_path.as_ref()?,
             CapabilityKind::Hook => return None,
         };
         let rel = match self.layout_for(item.kind) {
@@ -400,6 +417,97 @@ mod tests {
         assert!(
             target.ends_with("agents/team/reviewer.md"),
             "claude preserves agent nesting: {target:?}"
+        );
+    }
+
+    #[test]
+    fn command_targets_and_modes_per_tool() {
+        let s = Settings::default();
+        let cursor = resolve(&s, ToolId::Cursor);
+        let codex = resolve(&s, ToolId::Codex);
+        let claude = resolve(&s, ToolId::Claude);
+        let os = resolve(&s, ToolId::Openstandard);
+        let openclaw = resolve(&s, ToolId::Openclaw);
+
+        // Commands are always nested.
+        assert_eq!(cursor.layout_for(CapabilityKind::Command), Layout::Nested);
+
+        // Cursor/Codex/OpenStandard symlink; Claude hard-copies; OpenClaw none.
+        assert_eq!(
+            cursor.projection_mode_for(CapabilityKind::Command),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            codex.projection_mode_for(CapabilityKind::Command),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            os.projection_mode_for(CapabilityKind::Command),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            claude.projection_mode_for(CapabilityKind::Command),
+            Some(ProjectionMode::FileSync)
+        );
+        assert_eq!(openclaw.projection_mode_for(CapabilityKind::Command), None);
+        assert!(claude.uses_managed_copy(CapabilityKind::Command));
+
+        // Targets route to the per-tool commands dir, nested.
+        let cmd = item(CapabilityKind::Command, "review/code-review.md");
+        let cursor_target = cursor.target_path_for(&cmd).unwrap();
+        assert!(
+            cursor_target.ends_with(Path::new(".cursor/commands/review/code-review.md")),
+            "{cursor_target:?}"
+        );
+        let codex_target = codex.target_path_for(&cmd).unwrap();
+        assert!(
+            codex_target.ends_with(Path::new(".codex/prompts/review/code-review.md")),
+            "{codex_target:?}"
+        );
+        let claude_target = claude.target_path_for(&cmd).unwrap();
+        assert!(
+            claude_target.ends_with(Path::new(".claude/commands/review/code-review.md")),
+            "{claude_target:?}"
+        );
+
+        // OpenClaw has no commands dir, so no target.
+        assert_eq!(openclaw.target_path_for(&cmd), None);
+        assert_eq!(openclaw.base_path_for(CapabilityKind::Command), None);
+    }
+
+    #[test]
+    fn legacy_config_without_commands_path_falls_back_to_default() {
+        // A config written before `commands_path` existed loads with `None`;
+        // the adapter must still resolve the per-tool default so commands
+        // project for existing users.
+        let mut s = Settings::default();
+        s.tools.cursor.commands_path = None;
+        let cursor = resolve(&s, ToolId::Cursor);
+        assert!(cursor
+            .commands_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".cursor/commands"));
+    }
+
+    #[test]
+    fn workspace_adapter_has_command_dirs() {
+        let ws = Path::new("/ws");
+        assert_eq!(
+            create_workspace_adapter(ToolId::Codex, ws).commands_path,
+            Some(ws.join(".codex/prompts"))
+        );
+        assert_eq!(
+            create_workspace_adapter(ToolId::Claude, ws).commands_path,
+            Some(ws.join(".claude/commands"))
+        );
+        assert_eq!(
+            create_workspace_adapter(ToolId::Cursor, ws).commands_path,
+            Some(ws.join(".cursor/commands"))
+        );
+        assert_eq!(
+            create_workspace_adapter(ToolId::Openclaw, ws).commands_path,
+            None
         );
     }
 }

@@ -87,6 +87,7 @@ const KIND_BADGE_COLOR: Record<CapabilityKind, string> = {
   agent: "text-kind-agent",
   rule: "text-success",
   hook: "text-warning",
+  command: "text-kind-command",
 };
 
 export function Matrix() {
@@ -248,6 +249,7 @@ export function Matrix() {
             <SelectItem value="agent">Agents</SelectItem>
             <SelectItem value="rule">Rules</SelectItem>
             <SelectItem value="hook">Hooks</SelectItem>
+            <SelectItem value="command">Commands</SelectItem>
           </SelectContent>
         </Select>
         {sources.length > 1 && (

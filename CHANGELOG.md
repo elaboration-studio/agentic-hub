@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.7.0] — 2026-06-08
+
+### Added
+
+- **Commands — a fifth capability kind.** Slash-command prompts (Cursor / Claude
+  Code / Codex style) now live as file-based, nested markdown under
+  `<root>/commands/**/*.md` and flow through the same scan → inspect → plan →
+  apply pipeline. They project into each tool's commands directory — symlink for
+  **Cursor** (`~/.cursor/commands`), **Codex** (`~/.codex/prompts`), and
+  **OpenStandard** (`~/.agents/commands`); a managed copy for **Claude**
+  (`~/.claude/commands`, whose loader does not follow symlinks). OpenClaw is
+  unsupported. Workspace scope reports commands a project already has (read-only).
+- **Palette copy / edit for commands.** The command palette gains a dedicated
+  command provider: **Enter copies the command body to the clipboard** (for
+  standalone paste), **Alt+Enter opens the source file** for editing. Reads go
+  through the allowlist-gated `cmd_read_capability_body`; clipboard writes use
+  `tauri-plugin-clipboard-manager`.
+- **Demo scaffold seeds commands.** First-run scaffold now ships
+  `commands/review/code-review.md` and `commands/git/commit.md`.
+
+### Notes
+
+- Configs written before this release load unchanged — the new `commandsPath`
+  field defaults via serde, and the adapter falls back to the per-tool default so
+  commands project for existing users without re-saving settings.
+
 ## [0.6.2] — 2026-06-06
 
 ### Added

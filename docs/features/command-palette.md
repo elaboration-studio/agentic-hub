@@ -31,6 +31,12 @@ type to find a capability, and press Enter to open its original file in my edito
 - Flat resource search: match by name, relative path, or source; Enter opens the
   original file (skill/hook marker file, or the agent/rule file itself) in the
   configured editor — reusing the same opener path as the manager row menu.
+  Commands are excluded here — they have their own provider (below).
+- Command search: match slash-command prompts by name/path/source. **Enter copies
+  the command body to the clipboard** (for standalone paste into any tool);
+  **Alt+Enter opens the source file** for editing. The body is read through
+  `cmd_read_capability_body` (allowlist-gated, same as the opener) and written via
+  the clipboard-manager plugin. See [commands.md](./commands.md).
 - Workspace search: match inventory items across every remembered workspace (see
   [workspace-inventory.md](./workspace-inventory.md)); Enter *locates* the item —
   it focuses the Hub on Manager + Workspace scope, activates the owning workspace,
@@ -62,6 +68,7 @@ flowchart LR
   toggle --> ui["CommandPalette (palette window)"]
   ui --> store["usePaletteStore -> computeResults(providers)"]
   store --> resource["resource -> cmd_open_path(original, editor)"]
+  store --> command["command -> Enter: cmd_read_capability_body + clipboard; Alt+Enter: cmd_open_path"]
   store --> workspace["workspace row -> emit hub-locate + cmd_show_main"]
   store --> nav["nav -> emit hub-navigate + cmd_show_main"]
   store --> suite["suite row -> enterSuite (suite-tools view)"]
@@ -108,7 +115,9 @@ flowchart LR
 ## Security
 
 - The WebView holds no FS or opener scope. Resource opens go through the existing
-  `cmd_open_path`, gated by `agentic_core::open_targets::is_openable`.
+  `cmd_open_path`, gated by `agentic_core::open_targets::is_openable`. Reading a
+  command body for the clipboard uses `cmd_read_capability_body`, gated by the same
+  allowlist, so the WebView can never read an arbitrary file.
 - The global shortcut is registered from Rust; the palette capability grants only
   `core:default` plus its own window show/hide/focus and event emit/listen.
 - `tauri-plugin-shell` is still never added.

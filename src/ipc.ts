@@ -3,6 +3,7 @@
 // names. See docs/tech/modules/tauri-ipc-contract.md.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ApplyProgressEvent,
@@ -106,6 +107,15 @@ export const openPath = (path: string, openWith?: string): Promise<void> =>
 /// Reveal a file in the system file explorer (Finder / Explorer).
 export const revealPath = (path: string): Promise<void> =>
   invoke("cmd_reveal_path", { input: { path } });
+
+/// Read a capability file's text body (validated server-side against known
+/// roots). Used by the palette to copy a command prompt to the clipboard.
+export const readCapabilityBody = (path: string): Promise<string> =>
+  invoke("cmd_read_capability_body", { input: { path } });
+
+/// Write text to the system clipboard via the clipboard-manager plugin.
+export const copyText = (text: string): Promise<void> =>
+  writeText(text);
 
 /// Open an external http(s) URL in the default browser. Anchor navigation is a
 /// no-op inside the Tauri WebView, so external links route through Rust.

@@ -3,4 +3,10 @@
 /**
  * Per-tool target paths and toggles. Mirrors the IPC `ToolSettings` shape.
  */
-export type ToolSettings = { enabled: boolean, skillsPath: string, agentsPath: string, rulesPath: string, instructionsPath: string | null, hooksEnabled: boolean, hooksFile: string | null, };
+export type ToolSettings = { enabled: boolean, skillsPath: string, agentsPath: string, rulesPath: string, instructionsPath: string | null, hooksEnabled: boolean, hooksFile: string | null, 
+/**
+ * Directory holding slash-command prompts (`commands`/`prompts`). `None`
+ * when the tool has no command concept (OpenClaw). Injected for configs
+ * written before this field existed, so legacy files load without failing.
+ */
+commandsPath: string | null, };

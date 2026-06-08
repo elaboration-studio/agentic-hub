@@ -52,6 +52,7 @@ interface PaletteState {
   move: (delta: number) => void;
   setSelected: (index: number) => void;
   runSelected: () => Promise<void>;
+  runSelectedAlt: () => Promise<void>;
   enterSuite: (suiteId: string, suiteName: string) => void;
   back: () => void;
   reset: () => void;
@@ -189,6 +190,15 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
       const item = results[selectedIndex];
       if (!item) return;
       await item.run();
+    },
+
+    // Alt+Enter: run the item's alternate action when it has one (commands open
+    // their source file). Falls back to the primary action otherwise.
+    runSelectedAlt: async () => {
+      const { results, selectedIndex } = get();
+      const item = results[selectedIndex];
+      if (!item) return;
+      await (item.altRun ?? item.run)();
     },
 
     enterSuite,

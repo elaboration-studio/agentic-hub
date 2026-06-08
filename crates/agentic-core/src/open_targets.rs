@@ -73,6 +73,9 @@ fn collect_tool_targets(tool: &ToolSettings, dirs: &mut Vec<PathBuf>, files: &mu
     dirs.push(tool.skills_path.clone());
     dirs.push(tool.agents_path.clone());
     dirs.push(tool.rules_path.clone());
+    if let Some(p) = &tool.commands_path {
+        dirs.push(p.clone());
+    }
     if let Some(p) = &tool.instructions_path {
         files.push(p.clone());
     }
@@ -108,6 +111,24 @@ mod tests {
         let projected = settings.tools.codex.skills_path.join("a");
         fs::create_dir_all(&projected).unwrap();
         assert!(is_openable(&projected, &settings, &[]));
+    }
+
+    #[test]
+    fn allows_projected_command_file() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        let settings = Settings::sandboxed(root.path(), tools.path());
+
+        let cmd = settings
+            .tools
+            .codex
+            .commands_path
+            .clone()
+            .unwrap()
+            .join("review/code-review.md");
+        fs::create_dir_all(cmd.parent().unwrap()).unwrap();
+        fs::write(&cmd, "# review").unwrap();
+        assert!(is_openable(&cmd, &settings, &[]));
     }
 
     #[test]
@@ -157,7 +178,9 @@ mod tests {
 
     #[test]
     fn accepts_http_and_https_urls_with_a_host() {
-        assert!(is_safe_external_url("https://skills.sh/skills/openhands/skills"));
+        assert!(is_safe_external_url(
+            "https://skills.sh/skills/openhands/skills"
+        ));
         assert!(is_safe_external_url("http://github.com/owner/repo"));
         assert!(is_safe_external_url("  https://skills.sh  "));
     }

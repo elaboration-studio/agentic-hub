@@ -35,6 +35,7 @@ pub fn run() {
     with_macos_panel(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         // Global summon accelerator for the command palette. The handler fires
         // for any registered shortcut; we only ever register the palette one.
@@ -125,6 +126,7 @@ pub fn run() {
             commands::cmd_scaffold_demo,
             commands::cmd_open_path,
             commands::cmd_reveal_path,
+            commands::cmd_read_capability_body,
             commands::cmd_open_url,
             commands::cmd_add_source,
             commands::cmd_remove_source,

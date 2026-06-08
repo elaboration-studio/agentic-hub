@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// The four capability kinds the scanner walks under each source root.
+/// The five capability kinds the scanner walks under each source root.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
@@ -15,15 +15,17 @@ pub enum CapabilityKind {
     Agent,
     Rule,
     Hook,
+    Command,
 }
 
 impl CapabilityKind {
     /// Every kind, in display / scan order.
-    pub const ALL: [CapabilityKind; 4] = [
+    pub const ALL: [CapabilityKind; 5] = [
         CapabilityKind::Skill,
         CapabilityKind::Agent,
         CapabilityKind::Rule,
         CapabilityKind::Hook,
+        CapabilityKind::Command,
     ];
 
     /// Top-level directory under a source root that holds this kind.
@@ -33,6 +35,7 @@ impl CapabilityKind {
             CapabilityKind::Agent => "agents",
             CapabilityKind::Rule => "rules",
             CapabilityKind::Hook => "hooks",
+            CapabilityKind::Command => "commands",
         }
     }
 
@@ -43,16 +46,17 @@ impl CapabilityKind {
             CapabilityKind::Agent => "agent",
             CapabilityKind::Rule => "rule",
             CapabilityKind::Hook => "hook",
+            CapabilityKind::Command => "command",
         }
     }
 
     /// For directory-marker kinds, the file whose presence marks a capability.
-    /// File-based kinds (agent, rule) return `None`.
+    /// File-based kinds (agent, rule, command) return `None`.
     pub fn marker_file(self) -> Option<&'static str> {
         match self {
             CapabilityKind::Skill => Some("SKILL.md"),
             CapabilityKind::Hook => Some("hook.json"),
-            CapabilityKind::Agent | CapabilityKind::Rule => None,
+            CapabilityKind::Agent | CapabilityKind::Rule | CapabilityKind::Command => None,
         }
     }
 
@@ -61,6 +65,7 @@ impl CapabilityKind {
         match self {
             CapabilityKind::Agent => &["md"],
             CapabilityKind::Rule => &["md", "mdc"],
+            CapabilityKind::Command => &["md"],
             CapabilityKind::Skill | CapabilityKind::Hook => &[],
         }
     }

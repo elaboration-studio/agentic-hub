@@ -19,6 +19,7 @@ Single-page reference table for every tool adapter: target paths, projection mod
 | `skillsPath` default | `~/.codex/skills` | `~/.claude/skills` | `~/.cursor/skills` | `~/.openclaw/skills` | `~/.agents/skills` |
 | `agentsPath` default | `~/.codex/agents` | `~/.claude/agents` | `~/.cursor/agents` | `~/.openclaw/agents` | `~/.agents/agents` |
 | `rulesPath` default | `~/.codex/agentic-rules` | `~/.claude/rules` | `~/.cursor/rules` | `~/.openclaw/agentic-rules` | `~/.agents/rules` |
+| `commandsPath` default | `~/.codex/prompts` | `~/.claude/commands` | `~/.cursor/commands` | _none_ | `~/.agents/commands` |
 | `instructionsPath` default | `~/.codex/AGENTS.md` | `~/.claude/CLAUDE.md` | _unused_ | `~/.openclaw/workspace/SOUL.md` | `~/.agents/AGENTS.md` |
 | `skillLayout` | `Nested` | `Flat` | `Nested` | `Nested` | `Nested` |
 | `agentLayout` | `Nested` | `Nested` | `Nested` | `Nested` | `Nested` |
@@ -27,6 +28,9 @@ Single-page reference table for every tool adapter: target paths, projection mod
 | Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `link_sync` | `markdown_section_sync` | `markdown_section_sync` |
 | Rule target | `~/.codex/AGENTS.md` (managed block) | `~/.claude/CLAUDE.md` (managed block) | symlinks under `~/.cursor/rules/` | `~/.openclaw/workspace/SOUL.md` (managed block) | `~/.agents/AGENTS.md` (managed block) |
 | Mirrored rule files | optional at `~/.codex/agentic-rules/` (annotated when present) | optional at `~/.claude/rules/` (rarely used) | n/a (rules are real files via symlink) | optional at `~/.openclaw/agentic-rules/` | optional at `~/.agents/rules/` |
+| `commandLayout` | `Nested` | `Nested` | `Nested` | n/a | `Nested` |
+| Command projection | symlink | **managed copy** (nested) | symlink | not supported | symlink |
+| Command target | `~/.codex/prompts/` | `~/.claude/commands/` | `~/.cursor/commands/` | n/a | `~/.agents/commands/` |
 | `hooks_enabled` default | `true` | `true` | `true` | `false` | `true` |
 | `hooks_file` default | `~/.codex/hooks.json` | `~/.claude/settings.json` | `~/.cursor/hooks.json` | _none_ | `~/.agents/hooks.json` |
 | Hook projection mode | `json_section` | `json_section` | `json_section` | not supported | `json_section` |
@@ -34,11 +38,15 @@ Single-page reference table for every tool adapter: target paths, projection mod
 
 ### Codex is self-contained under `~/.codex`; OpenStandard owns `~/.agents`
 
-The open-standard `~/.agents/` root (the convention OpenAI Codex documents for skills: `$HOME/.agents/skills`, walking up `$REPO_ROOT/.agents/skills`; see [Codex skills](https://developers.openai.com/codex/skills/)) is owned by its own first-class tool, **OpenStandard**, which projects skills, agents, rules, and hooks under `~/.agents/`. Codex's own tool entry is now fully self-contained under `~/.codex/` (skills, agents, rules, instructions, hooks), so the two columns are independent. Codex **subagents** remain TOML files under `~/.codex/agents/` (user) and `.codex/agents/` (project), each with `name` / `description` / `developer_instructions` ([Codex subagents](https://developers.openai.com/codex/subagents)). OpenStandard is **global-only** (like OpenClaw, but enabled by default).
+The open-standard `~/.agents/` root (the convention OpenAI Codex documents for skills: `$HOME/.agents/skills`, walking up `$REPO_ROOT/.agents/skills`; see [Codex skills](https://developers.openai.com/codex/skills/)) is owned by its own first-class tool, **OpenStandard**, which projects skills, agents, rules, hooks, and commands under `~/.agents/`. Codex's own tool entry is now fully self-contained under `~/.codex/` (skills, agents, rules, instructions, hooks), so the two columns are independent. Codex **subagents** remain TOML files under `~/.codex/agents/` (user) and `.codex/agents/` (project), each with `name` / `description` / `developer_instructions` ([Codex subagents](https://developers.openai.com/codex/subagents)). OpenStandard is **global-only** (like OpenClaw, but enabled by default).
 
 ### Why Cursor agents and Claude skills are managed copies
 
 Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
+
+### Why Claude commands are managed copies (and the others symlink)
+
+Commands are file-based, nested markdown (`<root>/commands/**/*.md`), projected into each tool's slash-command directory. Cursor (`~/.cursor/commands`), Codex (`~/.codex/prompts`), and OpenStandard (`~/.agents/commands`) follow symlinks, so commands symlink there like skills/agents. Claude's command loader, like its skill loader, does **not** follow symlinks, so Claude commands are managed copies (`~/.claude/commands`). OpenClaw has no command concept and is unsupported. Commands always keep their nested path (no flat collapse).
 
 ### Why only Claude *skills* are flat
 
@@ -55,6 +63,7 @@ Workspace scope is **read-only inventory** (`workspace_inventory`): it scans the
 | Skills scan source | `<ws>/.agents/skills` | `<ws>/.claude/skills` | `<ws>/.cursor/skills` + `<ws>/.agents/skills` |
 | Agents scan source | `<ws>/.codex/agents/*.toml` | `<ws>/.claude/agents/*.md` | `<ws>/.cursor/agents` + `<ws>/.agents/agents` |
 | Rules scan source | (in `AGENTS.md`) | (in `CLAUDE.md`) | `<ws>/.cursor/rules/*.mdc` |
+| Commands scan source | `<ws>/.codex/prompts/**/*.md` | `<ws>/.claude/commands/**/*.md` | `<ws>/.cursor/commands/**/*.md` |
 | Instructions scan source | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | `<ws>/AGENTS.md` |
 | Skill nesting | nested | nested | nested (recursive) |
 
@@ -84,6 +93,13 @@ Notes:
 - Global Codex / Claude / OpenClaw / OpenStandard: managed block in instruction file
 - Workspace Cursor: hard copy under `<ws>/.cursor/rules/`
 - Workspace Codex / Claude: managed block in `<ws>/AGENTS.md` / `<ws>/CLAUDE.md`
+
+### Command
+
+- Global Codex / Cursor / OpenStandard: symlink (nested) into `~/.codex/prompts`, `~/.cursor/commands`, `~/.agents/commands`
+- Global Claude: managed copy (nested) into `~/.claude/commands` — Claude's loader does not follow symlinks
+- Global OpenClaw: not supported (no command concept)
+- Workspace: read-only inventory (nested `*.md` under each tool's commands dir; Codex uses `prompts`)
 
 ### Hook
 
@@ -121,6 +137,11 @@ fn projection_mode(tool: ToolId, kind: CapabilityKind, scope: SyncScope) -> Proj
         // Hooks (OpenClaw has no hook support in any scope)
         (OpenClaw, Hook, _)          => Err(HookUnsupportedForTool),
         (_,        Hook, _)          => JsonSection,
+
+        // Commands (OpenClaw has no command concept)
+        (OpenClaw, Command, _)       => Err(CommandUnsupportedForTool),
+        (Claude,   Command, _)       => ManagedCopy,  // loader does not follow symlinks
+        (_,        Command, _)       => LinkSync,
 
         // Global scope
         (Cursor,   Agent, Global)    => ManagedCopy,

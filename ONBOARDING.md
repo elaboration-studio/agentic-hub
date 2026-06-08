@@ -3,7 +3,7 @@
 ## What Is This?
 
 Agentic Hub is a Tauri 2.x desktop app that manages one shared tree of
-agentic capabilities — skills, agents, rules, and hooks — and projects it into
+agentic capabilities — skills, agents, rules, hooks, and commands — and projects it into
 the tools you actually use: Codex, Claude Code, Cursor, and OpenClaw. You keep
 a single source of truth under `~/.agentic/`, then turn each capability on or
 off per tool from one window instead of hand-copying files into four different
@@ -26,7 +26,7 @@ JSON entry — for each tool and capability kind.
 ## How It's Used
 
 Agentic Hub is an end-user desktop product. You launch the window and see a
-matrix: capability rows (grouped into Skills, Agents, Rules, Hooks) against
+matrix: capability rows (grouped into Skills, Agents, Rules, Hooks, Commands) against
 tool columns (Codex, Claude, Cursor, OpenClaw). Each cell is a toggle showing
 whether that capability is currently projected into that tool.
 
@@ -141,7 +141,7 @@ re-scanning disk is always the way to learn current state.
 
 | Concept | What it means in this codebase |
 |---------|--------------------------------|
-| Capability | A unit you project: a `skill`, `agent`, `rule`, or `hook` (`CapabilityKind`) |
+| Capability | A unit you project: a `skill`, `agent`, `rule`, `hook`, or `command` (`CapabilityKind`) |
 | Shared root | The source tree (default `~/.agentic/`) scanned for capabilities |
 | Source forest | Multiple prioritized roots; first source wins on collisions |
 | Adapter | Per-tool config mapping a kind to a target path + projection mode |

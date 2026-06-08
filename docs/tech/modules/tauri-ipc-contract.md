@@ -146,7 +146,7 @@ type ScanResult = {
 
 type CapabilityItem = {
   id: string;                  // e.g. "skill:dev/repo-research" (source-free)
-  kind: 'skill' | 'agent' | 'rule' | 'hook';
+  kind: 'skill' | 'agent' | 'rule' | 'hook' | 'command';
   name: string;
   sourcePath: string;          // absolute (for hooks: the hook folder = ${HOOK_DIR})
   relativePath: string;        // relative to <source>/<kind>/

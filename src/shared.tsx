@@ -50,12 +50,19 @@ export function enabledTools(settings: Settings): ToolDef[] {
   return ALL_TOOLS.filter((t) => settings.tools[t.id].enabled);
 }
 
-export const KIND_ORDER: CapabilityKind[] = ["skill", "agent", "rule", "hook"];
+export const KIND_ORDER: CapabilityKind[] = [
+  "skill",
+  "agent",
+  "rule",
+  "hook",
+  "command",
+];
 export const KIND_LABEL: Record<CapabilityKind, string> = {
   skill: "Skills",
   agent: "Agents",
   rule: "Rules",
   hook: "Hooks",
+  command: "Commands",
 };
 
 // Current states that are "abnormal" — surfaced as a dot on the toggle.

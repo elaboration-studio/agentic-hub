@@ -16,7 +16,7 @@ import type {
   WorkspaceTarget,
 } from "@/types";
 import { editorApp, enabledTools, originalFile } from "@/shared";
-import { applySuite, openPath, type NavRoute } from "@/ipc";
+import { applySuite, copyText, openPath, readCapabilityBody, type NavRoute } from "@/ipc";
 
 /// A single actionable row in the palette.
 export interface PaletteItem {
@@ -26,6 +26,9 @@ export interface PaletteItem {
   /// Group label shown as a badge (e.g. "Skill", "Suite", "Apply").
   group: string;
   run: () => Promise<void> | void;
+  /// Optional alternate action (Alt+Enter). Commands use it to open the source
+  /// file for editing, while plain Enter copies the body to the clipboard.
+  altRun?: () => Promise<void> | void;
   /// Whether running the item dismisses the palette. Defaults to true.
   /// Navigation/drill-in rows (e.g. a suite) set this to false to stay open.
   dismissOnRun?: boolean;
@@ -63,16 +66,19 @@ const GROUP_BY_KIND: Record<CapabilityItem["kind"], string> = {
   agent: "Agent",
   rule: "Rule",
   hook: "Hook",
+  command: "Command",
 };
 
 // Flat resource search — the default feature. Enter opens the original file in
 // the configured editor. Returns nothing on an empty query so the panel does
-// not dump the whole tree.
+// not dump the whole tree. Commands are excluded here — they have their own
+// provider with copy/open semantics.
 const resourceSearchProvider: CommandProvider = ({ items, settings, query }) => {
   const q = query.trim();
   if (!q) return [];
   const app = editorApp(settings);
   return items
+    .filter((it) => it.kind !== "command")
     .filter((it) => matches(`${it.name} ${it.relativePath} ${it.sourceLabel}`, q))
     .map((it) => ({
       id: `resource:${it.id}`,
@@ -81,6 +87,32 @@ const resourceSearchProvider: CommandProvider = ({ items, settings, query }) => 
       group: GROUP_BY_KIND[it.kind],
       run: () => openPath(originalFile(it), app),
     }));
+};
+
+// Command search — slash-command prompts. Enter copies the command body to the
+// clipboard (standalone use); Alt+Enter opens the source file for editing.
+// Returns nothing on an empty query, like resource search.
+const commandSearchProvider: CommandProvider = ({ items, settings, query }) => {
+  const q = query.trim();
+  if (!q) return [];
+  const app = editorApp(settings);
+  return items
+    .filter((it) => it.kind === "command")
+    .filter((it) => matches(`${it.name} ${it.relativePath} ${it.sourceLabel}`, q))
+    .map((it) => {
+      const file = originalFile(it);
+      return {
+        id: `command:${it.id}`,
+        title: it.name,
+        subtitle: `${it.relativePath} · Enter to copy, Alt+Enter to edit`,
+        group: GROUP_BY_KIND.command,
+        run: async () => {
+          const body = await readCapabilityBody(file);
+          await copyText(body);
+        },
+        altRun: () => openPath(file, app),
+      };
+    });
 };
 
 // Workspace search — match inventory items across every remembered workspace.
@@ -143,6 +175,7 @@ const navProvider: CommandProvider = ({ query, navigate }) => {
 /// is a resource (the primary "search and open" flow); suites then navigation.
 export const PROVIDERS: CommandProvider[] = [
   resourceSearchProvider,
+  commandSearchProvider,
   workspaceSearchProvider,
   suiteApplyProvider,
   navProvider,

@@ -306,10 +306,10 @@ No writes occur. The watcher re-subscribes to the active workspace's tool dirs a
 ### CapabilityItem
 
 ```rust
-pub enum CapabilityKind { Skill, Agent, Rule }
+pub enum CapabilityKind { Skill, Agent, Rule, Hook, Command }
 
 pub struct CapabilityItem {
-    pub id: String,                  // e.g. "skill:dev/repo-research"
+    pub id: String,                  // e.g. "skill:dev/repo-research", "command:review/code-review.md"
     pub kind: CapabilityKind,
     pub name: String,                // basename or skill folder name
     pub source_path: PathBuf,        // absolute path under shared root
@@ -318,6 +318,8 @@ pub struct CapabilityItem {
     pub validation_errors: Vec<String>,
 }
 ```
+
+Commands are the fifth kind: file-based, nested markdown under `<root>/commands/` (the same shape as agents/rules, not folder-with-marker like skills). They project into each tool's slash-command directory (symlink for Cursor/Codex/OpenStandard, managed copy for Claude; OpenClaw unsupported) and are searchable in the palette — Enter copies the body to the clipboard, Alt+Enter opens the source file.
 
 ### ToolAdapter
 
@@ -328,6 +330,7 @@ pub struct ToolAdapter {
     pub skills_path: PathBuf,
     pub agents_path: PathBuf,
     pub rules_path: PathBuf,
+    pub commands_path: Option<PathBuf>,      // slash-command dir (None for OpenClaw)
     pub instructions_path: Option<PathBuf>,  // for markdown_section_sync tools
     pub skill_layout: Layout,                // Flat | Nested
     pub agent_layout: Layout,

@@ -1,7 +1,7 @@
 {
   "name": "agentic-hub",
   "private": true,
-  "version": "0.6.2",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,6 +15,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-store": "^2.2.0",
     "class-variance-authority": "^0.7.1",

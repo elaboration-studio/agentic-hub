@@ -24,9 +24,10 @@ User-configurable via `settings.sources` (`~/.agentic-hub/config.json`) — an o
   agents/
   rules/
   hooks/
+  commands/
 ```
 
-Only these four top-level directories are walked by the scanner. Other top-level entries (READMEs, scripts, lock files) are ignored. Any directory named `__archived__` is skipped at every depth (see [What is intentionally ignored](#what-is-intentionally-ignored)).
+Only these five top-level directories are walked by the scanner. Other top-level entries (READMEs, scripts, lock files) are ignored. Any directory named `__archived__` is skipped at every depth (see [What is intentionally ignored](#what-is-intentionally-ignored)).
 
 A populated example:
 
@@ -109,6 +110,19 @@ A **hook** is a directory under `<sharedRoot>/hooks/` containing a `hook.json` m
 
 The `relative_path` is the directory path under `<sharedRoot>/hooks/`. The `source_path` is the absolute directory path — this is what `${HOOK_DIR}` resolves to at projection time. The scanner parses `hook.json` to validate it (see [hook-projection-sync.md](../modules/hook-projection-sync.md) for the schema and validation rules).
 
+### Commands
+
+A **command** is a `.md` file under `<sharedRoot>/commands/`.
+
+| Path | Valid? |
+|------|--------|
+| `~/.agentic/commands/review/code-review.md` | yes |
+| `~/.agentic/commands/git/commit.md` | yes |
+| `~/.agentic/commands/foo/` (directory) | no |
+| `~/.agentic/commands/foo.txt` | no |
+
+The `relative_path` is the file path under `<sharedRoot>/commands/`, including extension. The `source_path` is the absolute file path. See [commands.md](../../features/commands.md) for projection behavior.
+
 ## Capability IDs
 
 Stable identifiers used everywhere (state inspection, suites, manifests):
@@ -119,6 +133,7 @@ Stable identifiers used everywhere (state inspection, suites, manifests):
 | Agent | `agent:<relative_path>` | `agent:coding/coding-agent.md` |
 | Rule | `rule:<relative_path>` | `rule:general/precise.mdc` |
 | Hook | `hook:<relative_path>` | `hook:auto-format-after-edit` |
+| Command | `command:<relative_path>` | `command:review/code-review.md` |
 
 IDs are stable as long as the source location does not change. Renaming a skill changes its ID; suites referencing the old ID treat it as stale.
 
@@ -151,7 +166,7 @@ Skills' `SKILL.md` files also commonly have YAML frontmatter (per the convention
 ## What is intentionally ignored
 
 - Top-level files (`README.md`, `ONBOARD.md`, etc.) — informational only
-- Directories outside `skills/`, `agents/`, `rules/`, `hooks/` — e.g. `scripts/`, `node_modules/`
+- Directories outside `skills/`, `agents/`, `rules/`, `hooks/`, `commands/` — e.g. `scripts/`, `node_modules/`
 - Any directory named `__archived__`, at any depth — reserved for old versions of files per the workspace convention; never scanned
 - Hidden files (anything starting with `.`) — convention only; `.skill-lock.json` is ignored not because of the dot but because it lives in the top level
 - Files that don't match the allowed extensions per kind

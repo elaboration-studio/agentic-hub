@@ -41,7 +41,7 @@ In scope:
 - Global-scope projections only (workspace scope is the sibling doc)
 - All five tools (Codex, Claude Code, Cursor, OpenClaw, OpenStandard)
 - All four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
-- All four capability kinds (`skill`, `agent`, `rule`, `hook`)
+- All five capability kinds (`skill`, `agent`, `rule`, `hook`, `command`)
 - All four state classes (item state, link state, planned op, apply result)
 
 Out of scope:
@@ -96,6 +96,7 @@ Walk strategy (per source):
 <shared_root>/agents/**/*.{md}              -> CapabilityKind::Agent
 <shared_root>/rules/**/*.{md,mdc}           -> CapabilityKind::Rule
 <shared_root>/hooks/**/hook.json           -> CapabilityKind::Hook
+<shared_root>/commands/**/*.{md}            -> CapabilityKind::Command
 ```
 
 Any directory named `__archived__` is skipped at every depth. Per the workspace
@@ -107,6 +108,7 @@ Validation per kind:
 - **Skill**: parent directory of `SKILL.md` exists; `SKILL.md` is a regular file (after symlink resolution). The capability's `source_path` is the parent directory.
 - **Agent**: file matches `*.md`. The capability's `source_path` is the file.
 - **Rule**: file matches `*.md` or `*.mdc`. The capability's `source_path` is the file.
+- **Command**: file matches `*.md`. The capability's `source_path` is the file (file-based, nested — same shape as agents).
 
 The `relative_path` is the path under `<shared_root>/<kind-dir>/`. Examples:
 
@@ -117,6 +119,7 @@ The `relative_path` is the path under `<shared_root>/<kind-dir>/`. Examples:
 | `~/.agentic/agents/foo.md` | Agent | `foo.md` |
 | `~/.agentic/agents/group/bar.md` | Agent | `group/bar.md` |
 | `~/.agentic/rules/general/precise.mdc` | Rule | `general/precise.mdc` |
+| `~/.agentic/commands/review/code-review.md` | Command | `review/code-review.md` |
 
 The `id` is `<kind>:<relative_path_without_extension_for_skills>`. Stable as long as the source location does not change.
 
@@ -453,7 +456,7 @@ The full schema, event mapping, and CRUD algorithm live in [docs/tech/modules/ho
 
 | Component | Owns |
 |-----------|------|
-| `scanner` | Shared-root walk (skills/agents/rules/hooks, `__archived__` skipped), validation per kind, `CapabilityItem` construction |
+| `scanner` | Shared-root walk (skills/agents/rules/hooks/commands, `__archived__` skipped), validation per kind, `CapabilityItem` construction |
 | `adapter_registry` | Per-tool target path resolution, layout strategy, projection kind, hooks file resolution |
 | `planner::inspect` | Current per-tool state per item |
 | `planner::build_plan` | Diff desired vs current; emit operations; projection-target collision pass; Not-Targeted hook sanitizer |
