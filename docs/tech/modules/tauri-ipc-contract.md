@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-05-20
+Last Updated: 2026-06-10
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.permissions.md](../../../ARCHITECTURE.permissions.md)
 Related Docs: [docs/tech/modules/rule-projection-sync.md](./rule-projection-sync.md), [docs/tech/modules/suite-presets.md](./suite-presets.md), [docs/tech/modules/workspace-inventory.md](./workspace-inventory.md)
 
@@ -630,11 +630,17 @@ Emitted by the palette window (payload: a route string `'manager' | 'suites' | '
 
 ### `hub-locate`
 
-Emitted by the palette window when a workspace search result is chosen. The main window switches to Manager + Workspace scope, activates the owning workspace (loading its inventory), and flags the matching matrix row so the `Matrix` expands its folders, scrolls to it, and highlights it briefly. The palette then surfaces the main window via `cmd_show_main`.
+Emitted by the palette window when a go-to (locate) result is chosen. The main window routes to Manager, switches to the requested scope — for `workspace` it activates the owning workspace (loading its inventory) and namespaces the row id with `ws::`; for `global` it uses the raw id — and flags the matching matrix row so the `Matrix` expands its folders, scrolls to it, and highlights it briefly. The palette then surfaces the main window via `cmd_show_main`.
 
 ```typescript
-type LocateRequest = { workspaceId: string; itemId: string };  // raw (non-namespaced) item id
+type LocateRequest =
+  | { scope: 'workspace'; workspaceId: string; itemId: string }  // raw (non-namespaced) item id
+  | { scope: 'global'; itemId: string };
 ```
+
+### `hub-watcher-changed`
+
+Emitted by the palette window after its "Pause/Resume watching" action persists the new state via `cmd_set_watcher_enabled` (payload: the new boolean). The main window's manager store updates its `watching` flag so the header toggle stays in sync without a re-fetch.
 
 ### `install-context-changed`
 

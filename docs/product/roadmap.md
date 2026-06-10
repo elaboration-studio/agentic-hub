@@ -9,7 +9,7 @@
 rules, hooks — across every AI tool from one place. A milestone earns its place
 only if it moves a user closer to owning the AI world they build.
 
-**Current release:** `0.6.1` · **Status legend:** ✅ shipped · 🔶 partial · 🔭 planned · ❓ undecided
+**Current release:** `0.8.0` · **Status legend:** ✅ shipped · 🔶 partial · 🔭 planned · ❓ undecided
 
 ---
 
@@ -56,7 +56,9 @@ Tauri 2.x + React/Vite/TS skeleton, `agentic-core` crate, settings at
 
 ### M+ — Command palette ✅ `0.3.0` (post-PRD)
 Alfred-style floating window, global shortcut, command-provider registry, native
-macOS menus. Extended by palette suite apply (`0.4.0`) and workspace locate (`0.5.0`).
+macOS menus. Extended by palette suite apply (`0.4.0`), workspace locate (`0.5.0`),
+command copy/edit (`0.7.0`), and the layered hub — sectioned first-class commands,
+per-kind search modes, global locate, watching toggle (`0.8.0`).
 
 ### M+ — Resource sources ✅ `0.6.0`–`0.6.1` (post-PRD)
 - skills.sh as the first pluggable public source behind a `SkillProvider` seam:

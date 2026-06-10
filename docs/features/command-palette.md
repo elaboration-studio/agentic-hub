@@ -3,7 +3,7 @@
 Status: Implemented
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-06-03
+Last Updated: 2026-06-10
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [ARCHITECTURE.permissions.md](../../ARCHITECTURE.permissions.md)
 Related Docs: [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md), [docs/features/open-files.md](./open-files.md), [docs/tech/modules/suite-bindings.md](../tech/modules/suite-bindings.md)
 
@@ -16,9 +16,11 @@ anywhere, plus the native macOS menu surface the app was missing.
 
 ## User story
 
-As a user, I want to summon a search panel from any app with a global shortcut,
-type to find a capability, and press Enter to open its original file in my editor
-— without first surfacing and navigating the Hub window.
+As a user, I want to summon a panel from any app with a global shortcut and land
+on a layered hub of first-class commands — pick a search mode (skills, agents,
+rules, commands, suites, or everything), a go-to mode (locate in global or
+workspace scope), a navigation target, or an action — so I search exactly the
+slice of resources I mean instead of getting one global mixed result list.
 
 ## Scope
 
@@ -28,21 +30,41 @@ type to find a capability, and press Enter to open its original file in my edito
   centered, hidden until summoned, dismissed on blur or Esc. On macOS it is a
   non-activating `NSPanel` so it floats over other apps' full-screen Spaces.
 - A configurable global accelerator (default `Cmd+Alt+A`) that toggles it.
-- Flat resource search: match by name, relative path, or source; Enter opens the
-  original file (skill/hook marker file, or the agent/rule file itself) in the
-  configured editor — reusing the same opener path as the manager row menu.
-  Commands are excluded here — they have their own provider (below).
-- Command search: match slash-command prompts by name/path/source. **Enter copies
-  the command body to the clipboard** (for standalone paste into any tool);
-  **Alt+Enter opens the source file** for editing. The body is read through
-  `cmd_read_capability_body` (allowlist-gated, same as the opener) and written via
-  the clipboard-manager plugin. See [commands.md](./commands.md).
-- Workspace search: match inventory items across every remembered workspace (see
-  [workspace-inventory.md](./workspace-inventory.md)); Enter *locates* the item —
-  it focuses the Hub on Manager + Workspace scope, activates the owning workspace,
-  and scrolls/highlights that row in the matrix (it does not open a file).
-- An extensible command-provider registry. Root providers ship resource
-  search, suite apply, and navigation (Open Manager / Suites / Config).
+- **Layered root hub.** Summoning lands on a categorized list of first-class
+  commands grouped into sections — no resource results at the root:
+
+  | Section | Rows | Behavior |
+  |---------|------|----------|
+  | Search | Search all resources · skills · agents · rules · hooks · commands · suites | Drill into a single-kind search view |
+  | Go to | Go to global · Go to workspace | Drill into a locate view (surfaces a matrix row, never opens a file) |
+  | Navigate | Open Manager · Open Suites · Open Config | Route the main window and surface it |
+  | Actions | Apply suite… · Pause/Resume watching | Apply drills into suite search; watching toggles immediately |
+
+  Typing at the root filters **hub rows only** (strict mode-only — no resource,
+  workspace, or suite results until a mode is entered). Global search across
+  every resource happens only through the explicit "Search all resources" mode.
+- **Search modes** (one drill-in view per kind, breadcrumb `‹ Search skills`,
+  Backspace on an empty query steps back):
+  - `all` / `skill` / `agent` / `rule` / `hook` — match by name, relative path,
+    or source; Enter opens the original file in the configured editor — reusing
+    the same opener path as the manager row menu.
+  - `command` — slash-command prompts. **Enter copies the command body to the
+    clipboard** (for standalone paste into any tool); **Alt+Enter opens the
+    source file** for editing. The body is read through
+    `cmd_read_capability_body` (allowlist-gated, same as the opener) and written
+    via the clipboard-manager plugin. See [commands.md](./commands.md).
+  - `suite` — match suites by name/description; Enter drills into the existing
+    suite-tools view (below).
+- **Go-to modes** (locate, never open):
+  - `workspace` — match inventory items across every remembered workspace (see
+    [workspace-inventory.md](./workspace-inventory.md)); Enter *locates* the
+    item — Manager + Workspace scope, activates the owning workspace, and
+    scrolls/highlights that row in the matrix.
+  - `global` — match global (shared-source) resources; Enter locates the item in
+    Manager + Global scope and highlights its matrix row.
+- **Toggle watching** action: flips `settings.watcherEnabled` through
+  `cmd_set_watcher_enabled` and emits `hub-watcher-changed` so the main window's
+  header toggle stays in sync without surfacing it.
 - A two-level suite-apply flow: search a suite by name, drill into it, then
   pick one tool to apply the suite to as a full reset (clean + replace every
   resource for that tool). The applied tool is bound to the suite so a later
@@ -56,22 +78,25 @@ type to find a capability, and press Enter to open its original file in my edito
 - Install-a-skill-from-vendor — left as a provider stub for later.
 - Multi-tool apply in one step — the suite-tools view applies to one tool per
   Enter (the binding still re-syncs every bound tool on a capability edit).
-- Fuzzy ranking / recency — v1 uses case-insensitive substring matching.
+- Fuzzy ranking / recency — substring matching, per the v1 contract.
+- Root prefix directives (e.g. `> skills`).
 - Per-window themes — the palette reuses the app's dark tokens.
 
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
   shortcut["Global shortcut"] --> handler["Rust shortcut handler"]
   handler --> toggle["toggle_palette: show/focus or hide"]
-  toggle --> ui["CommandPalette (palette window)"]
-  ui --> store["usePaletteStore -> computeResults(providers)"]
-  store --> resource["resource -> cmd_open_path(original, editor)"]
-  store --> command["command -> Enter: cmd_read_capability_body + clipboard; Alt+Enter: cmd_open_path"]
-  store --> workspace["workspace row -> emit hub-locate + cmd_show_main"]
-  store --> nav["nav -> emit hub-navigate + cmd_show_main"]
-  store --> suite["suite row -> enterSuite (suite-tools view)"]
+  toggle --> hub["Root hub: computeHubResults (sections)"]
+  hub --> searchMode["Search mode -> computeSearchResults(kind)"]
+  hub --> gotoMode["Go-to mode -> locate rows"]
+  hub --> nav["nav -> emit hub-navigate + cmd_show_main"]
+  hub --> watch["toggle watching -> cmd_set_watcher_enabled + hub-watcher-changed"]
+  searchMode --> resource["resource -> cmd_open_path(original, editor)"]
+  searchMode --> command["command -> Enter: copy body; Alt+Enter: cmd_open_path"]
+  searchMode --> suite["suite row -> enterSuite (suite-tools view)"]
+  gotoMode --> locateRow["locate row -> emit hub-locate + cmd_show_main"]
   suite --> applyRow["tool row -> cmd_apply_suite(tool, suite) + record binding"]
   blur["blur / Esc"] --> hide["hide palette"]
 ```
@@ -99,18 +124,28 @@ flowchart LR
   window label is `palette`, else `<App/>`. `usePaletteStore` loads settings +
   scans + lists suites + scans every remembered workspace inventory on summon
   (`Promise.allSettled`, so one unreadable project never breaks summon), holds the
-  query/selection and a `view` (`root` or `suite-tools`), and derives results from
-  the registry in `components/palette/commands.ts`. Navigation commands emit
-  `hub-navigate`; the main window listens and switches route. A suite row sets
-  `dismissOnRun: false` and calls `enterSuite`, switching to the suite-tools
-  view (a `‹ <suite>` breadcrumb, Backspace-on-empty steps back); each tool row
-  there runs `applySuite(tool, suiteId)` and dismisses.
-- **Workspace locate.** A workspace search row emits `hub-locate`
-  (`{ workspaceId, itemId }`) then `cmd_show_main`. The main window's `App`
-  listener switches the manager scope to `workspace`, routes to Manager, activates
-  the owning workspace, and sets a transient `locateId` (the namespaced row id) in
-  the matrix-filters store. The `Matrix` expands the row's ancestor folders,
-  scrolls it into view, highlights it for ~2s, then clears the flag.
+  query/selection and a `view` (`root`, `search` with a mode, or `suite-tools`),
+  and derives results from the registry in `components/palette/commands.ts`:
+  `computeHubResults` (root sections), `computeSearchResults` (one mode), and
+  `computeSuiteToolResults`. Hub rows carry a `section` label rendered as muted
+  group headers; search-mode rows also show `⌃1`…`⌃7` shortcut hints and accept
+  Ctrl+1…Ctrl+7 from any palette view to jump between modes. Drill-in rows set
+  `dismissOnRun: false` and call `enterMode` /
+  `enterSuite`; every non-root view shows a `‹ <view name>` breadcrumb and
+  Backspace-on-empty steps back (suite-tools entered from suite search returns
+  to that search). Navigation commands emit `hub-navigate`; the main window
+  listens and switches route. Each suite-tools row runs
+  `applySuite(tool, suiteId)` and dismisses.
+- **Locate (workspace + global).** A locate row emits `hub-locate` — either
+  `{ scope: "workspace", workspaceId, itemId }` or `{ scope: "global", itemId }` —
+  then `cmd_show_main`. The main window's `App` listener routes to Manager, sets
+  the matching scope (activating the owning workspace and namespacing the row id
+  with `ws::` for workspace locates), and sets a transient `locateId` in the
+  matrix-filters store. The `Matrix` expands the row's ancestor folders, scrolls
+  it into view, highlights it for ~2s, then clears the flag.
+- **Watching toggle.** The hub action calls `cmd_set_watcher_enabled` with the
+  flipped value and emits `hub-watcher-changed` (payload: the new boolean); the
+  main window's manager store updates its `watching` flag without re-fetching.
 
 ## Security
 
@@ -125,12 +160,19 @@ flowchart LR
 ## Acceptance criteria
 
 - [ ] The configured shortcut (default `Cmd+Alt+A`) toggles the palette from any app.
-- [ ] Typing filters resources by name/path/source; Enter opens the original file
-      in the configured editor; the palette then hides.
-- [ ] Typing also surfaces matching items from every remembered workspace; Enter on
-      one focuses the Hub on Manager + Workspace scope, activates its workspace, and
-      highlights that row in the matrix.
-- [ ] Up/Down move the selection (wrapping); Esc and blur dismiss the palette.
+- [ ] Summoning lands on the categorized hub (Search / Go to / Navigate / Actions);
+      typing at the root filters hub rows only — no resource results.
+- [ ] Entering a search mode scopes results to that kind; Enter opens the original
+      file in the configured editor (commands copy; Alt+Enter edits); the palette
+      then hides. "Search all resources" is the only cross-kind search.
+- [ ] Go to workspace locates an inventory item in Manager + Workspace scope;
+      Go to global locates a shared resource in Manager + Global scope — both
+      highlight the row in the matrix without opening a file.
+- [ ] Toggle watching flips the watcher and the main window's header reflects it.
+- [ ] Up/Down move the selection (wrapping); Esc and blur dismiss the palette;
+      Backspace on an empty query steps back one level.
+- [ ] Ctrl+1…Ctrl+7 switch into the matching search mode (all, skills, agents,
+      rules, hooks, commands, suites) from any palette view.
 - [ ] Navigation commands surface and focus the main window on the chosen route.
 - [ ] `Cmd+,` opens Config; the app menu exposes Quit (hard exit) and Command Palette.
 - [ ] Editing the shortcut in Config re-registers it; a malformed value is rejected
@@ -142,6 +184,6 @@ flowchart LR
   feature + `macOSPrivateApi: true` for transparency.
 - New `Settings.paletteShortcut` + `agentic_core::settings::is_valid_shortcut`.
 - New IPC commands `cmd_toggle_palette` / `cmd_show_main`; events `menu-open-config`
-  / `hub-navigate`.
+  / `hub-navigate` / `hub-locate` (scoped) / `hub-watcher-changed`.
 - New `palette` window + `capabilities/palette.json`.
 - `src/components/palette/*`, `src/state/palette.ts`, shared `originalFile`/`editorApp`.

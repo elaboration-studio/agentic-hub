@@ -85,6 +85,9 @@ interface ManagerState {
   loadWorkspace: (id: string) => Promise<void>;
   setScope: (scope: Scope) => void;
   toggleWatching: (next: boolean) => Promise<void>;
+  /// Sync the watching flag from an external change (palette toggle) — the
+  /// state is already persisted, so no IPC round-trip here.
+  setWatching: (watching: boolean) => void;
   toggle: (tool: ToolId, itemId: string) => void;
   toggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
   resetDesired: () => void;
@@ -284,6 +287,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       toast.error(messageOf(e));
     }
   },
+
+  setWatching: (watching) => set({ watching }),
 
   toggle: (tool, itemId) => {
     const { currentMap, desired, ownership, readOnly } = get();

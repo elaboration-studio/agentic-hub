@@ -1,14 +1,39 @@
 // The floating command palette UI. Renders into the dedicated `palette` window
 // (see main.tsx). Thin view over usePaletteStore: search input, keyboard nav,
-// and a result list. Esc or losing focus dismisses the window.
+// and a result list. The root is a sectioned hub of first-class commands;
+// drill-in views (search modes, suite-tools) show a breadcrumb and step back
+// on Backspace-with-empty-query. Esc or losing focus dismisses the window.
 
 import { useEffect, useRef } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { ChevronLeft, Search } from "lucide-react";
-import { usePaletteStore } from "@/state/palette";
+import { usePaletteStore, type PaletteView } from "@/state/palette";
+import { MODE_DEFS, searchModeFromShortcut } from "./commands";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PALETTE_WIDTH, paletteWindowHeight } from "./layout";
+
+/// Breadcrumb label for a drill-in view; null at the root (no breadcrumb).
+function breadcrumbLabel(view: PaletteView): string | null {
+  if (view.kind === "search") return MODE_DEFS[view.mode].title;
+  if (view.kind === "suite-tools") return view.suiteName;
+  return null;
+}
+
+function placeholderFor(view: PaletteView): string {
+  if (view.kind === "search") return MODE_DEFS[view.mode].placeholder;
+  if (view.kind === "suite-tools") return `Apply “${view.suiteName}” to a tool…`;
+  return "Search commands or pick an action…";
+}
+
+/// Empty-list message per view. Inside a drill-in mode an empty query is a
+/// prompt, not a failure; at the root every row matches the empty query, so an
+/// empty list always means the filter excluded everything.
+function emptyMessage(view: PaletteView, query: string): string {
+  if (view.kind === "root") return "No matching commands.";
+  if (!query.trim()) return "Type to search.";
+  return "No matches.";
+}
 
 export function CommandPalette() {
   const status = usePaletteStore((s) => s.status);
@@ -23,11 +48,12 @@ export function CommandPalette() {
   const runSelected = usePaletteStore((s) => s.runSelected);
   const runSelectedAlt = usePaletteStore((s) => s.runSelectedAlt);
   const back = usePaletteStore((s) => s.back);
+  const enterMode = usePaletteStore((s) => s.enterMode);
   const reset = usePaletteStore((s) => s.reset);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const inSuiteTools = view.kind === "suite-tools";
+  const breadcrumb = breadcrumbLabel(view);
 
   // Fit the transparent window to the panel so no dead space below the card
   // reveals the main window behind it (the "stacked layers" look). The panel's
@@ -72,6 +98,19 @@ export function CommandPalette() {
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Ctrl+1…7 jump into the matching search mode from any palette view.
+    if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      const digit = Number(e.key);
+      if (digit >= 1 && digit <= 7) {
+        const mode = searchModeFromShortcut(digit);
+        if (mode) {
+          e.preventDefault();
+          enterMode(mode);
+          return;
+        }
+      }
+    }
+
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -86,9 +125,9 @@ export function CommandPalette() {
         runAndHide(e.altKey);
         break;
       case "Backspace":
-        // Empty query in the suite-tools view steps back to the root instead
-        // of deleting nothing.
-        if (inSuiteTools && query === "") {
+        // Empty query in a drill-in view steps back one level instead of
+        // deleting nothing.
+        if (breadcrumb !== null && query === "") {
           e.preventDefault();
           back();
         }
@@ -109,14 +148,14 @@ export function CommandPalette() {
         className="flex w-full flex-col overflow-hidden rounded-xl border border-border bg-popover/95 text-popover-foreground shadow-2xl backdrop-blur-xl"
       >
         <div className="flex items-center gap-3 px-4 py-3.5">
-          {inSuiteTools ? (
+          {breadcrumb !== null ? (
             <button
               type="button"
               onClick={() => back()}
               className="flex shrink-0 items-center gap-1 rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-accent"
             >
               <ChevronLeft className="size-3.5" aria-hidden />
-              {view.suiteName}
+              {breadcrumb}
             </button>
           ) : (
             <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -125,9 +164,7 @@ export function CommandPalette() {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={
-              inSuiteTools ? `Apply “${view.suiteName}” to a tool…` : "Search resources or type a command…"
-            }
+            placeholder={placeholderFor(view)}
             className="w-full bg-transparent text-[15px] leading-none outline-none placeholder:text-muted-foreground"
             spellCheck={false}
             autoFocus
@@ -137,6 +174,11 @@ export function CommandPalette() {
           <ul className="max-h-[360px] overflow-auto border-t border-border p-1.5">
             {results.map((item, i) => (
               <li key={item.id}>
+                {item.section && item.section !== results[i - 1]?.section && (
+                  <p className="px-3 pb-1 pt-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {item.section}
+                  </p>
+                )}
                 <button
                   type="button"
                   className={cn(
@@ -157,6 +199,11 @@ export function CommandPalette() {
                       </span>
                     )}
                   </span>
+                  {item.shortcut && (
+                    <kbd className="shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+                      {item.shortcut}
+                    </kbd>
+                  )}
                   <Badge variant="outline" className="shrink-0 text-[10px] tracking-wide uppercase">
                     {item.group}
                   </Badge>
@@ -166,11 +213,7 @@ export function CommandPalette() {
           </ul>
         ) : (
           <p className="border-t border-border px-4 py-6 text-center text-muted-foreground">
-            {status === "error"
-              ? "Failed to load resources."
-              : query.trim()
-                ? "No matches."
-                : "Type to search resources."}
+            {status === "error" ? "Failed to load resources." : emptyMessage(view, query)}
           </p>
         )}
       </div>

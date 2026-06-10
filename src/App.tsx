@@ -3,6 +3,7 @@ import {
   onApplyProgress,
   onHubLocate,
   onHubNavigate,
+  onHubWatcherChanged,
   onMenuOpenConfig,
   onSourcesChanged,
   onWorkspaceChanged,
@@ -75,19 +76,34 @@ export function App() {
     };
   }, []);
 
-  // Palette workspace locate: switch to Manager + Workspace scope, activate the
-  // owning workspace (loads its inventory), and flag the row so the Matrix
-  // surfaces it. The item id is namespaced to match the workspace matrix rows.
+  // Palette locate: route to Manager in the requested scope and flag the row so
+  // the Matrix surfaces it. Workspace locates activate the owning workspace
+  // (loading its inventory) and namespace the item id to match its matrix rows;
+  // global locates use the raw id against the editable matrix.
   useEffect(() => {
-    const unlisten = onHubLocate(({ workspaceId, itemId }) => {
+    const unlisten = onHubLocate((req) => {
       void (async () => {
         const manager = useManagerStore.getState();
-        manager.setScope("workspace");
         navigate("manager");
-        await useWorkspaceStore.getState().activate(workspaceId);
-        useManagerFiltersStore.getState().setLocate(WORKSPACE_ID_PREFIX + itemId);
+        if (req.scope === "global") {
+          manager.setScope("global");
+          useManagerFiltersStore.getState().setLocate(req.itemId);
+          return;
+        }
+        manager.setScope("workspace");
+        await useWorkspaceStore.getState().activate(req.workspaceId);
+        useManagerFiltersStore.getState().setLocate(WORKSPACE_ID_PREFIX + req.itemId);
       })();
     });
+    return () => void unlisten.then((fn) => fn());
+  }, []);
+
+  // Palette watching toggle: the new state is already persisted by the palette
+  // window; just sync the header flag.
+  useEffect(() => {
+    const unlisten = onHubWatcherChanged((enabled) =>
+      useManagerStore.getState().setWatching(enabled),
+    );
     return () => void unlisten.then((fn) => fn());
   }, []);
 
