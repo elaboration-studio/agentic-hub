@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.8.0] — 2026-06-10
+
+### Added
+
+- **Layered command palette.** The palette root is now a sectioned hub of
+  first-class commands — Search (all / skills / agents / rules / hooks /
+  commands / suites), Go to (global / workspace), Navigate (Manager / Suites /
+  Config), and Actions (Apply suite…, Pause/Resume watching). Typing at the
+  root filters the hub rows only; resource results live inside their drilled-in
+  mode, so a query targets exactly one slice. Cross-kind search is the explicit
+  "Search all resources" mode.
+- **Go to global.** A locate mode for shared resources: Enter surfaces the row
+  in the Manager matrix (global scope) with the same scroll-and-highlight the
+  workspace locate uses. The `hub-locate` payload is now scope-tagged.
+- **Watching toggle in the palette.** Pause/Resume watching persists through
+  `cmd_set_watcher_enabled` and syncs the main window's header via the new
+  `hub-watcher-changed` event — without surfacing the main window.
+
+### Changed
+
+- Every palette drill-in view (search modes, suite-tools) shows a breadcrumb;
+  Backspace on an empty query steps back one level, and suite-tools returns to
+  the suite search mode it was entered from.
+
 ## [0.7.0] — 2026-06-08
 
 ### Added

@@ -5,36 +5,36 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.7.0] — 2026-06-08
+## [0.8.0] — 2026-06-10
 
 ### Highlights
 
-- **Commands — a fifth capability kind.** Keep your slash-command prompts (the
-  Cursor / Claude Code / Codex kind) in one place: `~/.agentic/commands/`, in
-  whatever folders you like. Enable them per tool from the Hub and they project
-  into each tool's commands directory — symlinked for Cursor (`~/.cursor/commands`),
-  Codex (`~/.codex/prompts`), and OpenStandard (`~/.agents/commands`), and copied
-  for Claude (`~/.claude/commands`, whose loader doesn't follow symlinks). They
-  show up as a "Commands" column in the manager and in the read-only workspace
-  inventory.
-- **Copy or edit from the palette.** Summon the palette, find a command, and press
-  **Enter to copy its body to the clipboard** — paste it anywhere, even into a tool
-  that has no command concept. **Alt+Enter opens the source file** for editing.
-- **A starter command in the demo.** First-run scaffold now seeds a couple of
-  nested example commands so there's something to try immediately.
+- **A layered command palette.** Summoning the palette now lands on a hub of
+  first-class commands grouped into sections — **Search** (all resources,
+  skills, agents, rules, hooks, commands, suites), **Go to** (global,
+  workspace), **Navigate** (Manager, Suites, Config), and **Actions** (apply a
+  suite, pause/resume watching). Pick a mode first, then type: a query targets
+  exactly the slice of resources you mean, instead of one global mixed result
+  list. Cross-kind search is still one drill-in away via "Search all resources".
+- **Go to global.** Locate any shared resource in the Manager matrix — same
+  scroll-and-highlight affordance the workspace locate already had, now for the
+  global scope too.
+- **Toggle watching from anywhere.** The palette's Pause/Resume watching action
+  flips the source watcher without surfacing the main window; the header toggle
+  stays in sync.
 
 ### Changes
 
-- Added the `command` capability kind and per-tool `commandsPath`. OpenClaw has no
-  command concept and is unsupported for commands.
-- New `cmd_read_capability_body` IPC (allowlist-gated) and the
-  `tauri-plugin-clipboard-manager` plugin power the palette copy action.
+- Typing at the palette root filters the hub commands only — resource,
+  workspace, and suite results appear inside their dedicated modes.
+- Every drill-in view shows a breadcrumb; Backspace on an empty query steps back
+  one level (suite-tools returns to the suite search, then the root).
+- The `hub-locate` event payload is now scope-tagged (`global` or `workspace`);
+  a new `hub-watcher-changed` event syncs the watcher toggle across windows.
 
 ### Migration
 
-- **None required.** Existing configs load unchanged — the new `commandsPath`
-  field is injected with the right per-tool default, so commands project without
-  re-saving settings.
+- **None required.** No settings or on-disk format changed.
 
 ### Known Issues
 
