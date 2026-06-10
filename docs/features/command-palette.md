@@ -128,7 +128,9 @@ flowchart TD
   and derives results from the registry in `components/palette/commands.ts`:
   `computeHubResults` (root sections), `computeSearchResults` (one mode), and
   `computeSuiteToolResults`. Hub rows carry a `section` label rendered as muted
-  group headers. Drill-in rows set `dismissOnRun: false` and call `enterMode` /
+  group headers; search-mode rows also show `⌃1`…`⌃7` shortcut hints and accept
+  Ctrl+1…Ctrl+7 from any palette view to jump between modes. Drill-in rows set
+  `dismissOnRun: false` and call `enterMode` /
   `enterSuite`; every non-root view shows a `‹ <view name>` breadcrumb and
   Backspace-on-empty steps back (suite-tools entered from suite search returns
   to that search). Navigation commands emit `hub-navigate`; the main window

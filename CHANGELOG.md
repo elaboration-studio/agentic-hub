@@ -23,6 +23,9 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 - **Watching toggle in the palette.** Pause/Resume watching persists through
   `cmd_set_watcher_enabled` and syncs the main window's header via the new
   `hub-watcher-changed` event — without surfacing the main window.
+- **Search-mode keyboard shortcuts.** Press Ctrl+1…Ctrl+7 while the palette is
+  open to jump straight into each search mode (all resources, skills, agents,
+  rules, hooks, commands, suites). Hub rows show matching `⌃1`…`⌃7` hints.
 
 ### Changed
 

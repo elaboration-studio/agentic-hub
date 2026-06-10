@@ -22,6 +22,9 @@ file verbatim as the GitHub Release body. For the full version history see
 - **Toggle watching from anywhere.** The palette's Pause/Resume watching action
   flips the source watcher without surfacing the main window; the header toggle
   stays in sync.
+- **Jump between search modes with Ctrl+number.** Ctrl+1…Ctrl+7 switch into
+  each search slice from any palette view; the hub labels each row with `⌃1`…`⌃7`
+  so the shortcuts are discoverable.
 
 ### Changes
 
