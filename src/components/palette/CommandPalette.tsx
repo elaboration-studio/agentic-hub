@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { ChevronLeft, Search } from "lucide-react";
 import { usePaletteStore, type PaletteView } from "@/state/palette";
-import { MODE_DEFS } from "./commands";
+import { MODE_DEFS, searchModeFromShortcut } from "./commands";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PALETTE_WIDTH, paletteWindowHeight } from "./layout";
@@ -48,6 +48,7 @@ export function CommandPalette() {
   const runSelected = usePaletteStore((s) => s.runSelected);
   const runSelectedAlt = usePaletteStore((s) => s.runSelectedAlt);
   const back = usePaletteStore((s) => s.back);
+  const enterMode = usePaletteStore((s) => s.enterMode);
   const reset = usePaletteStore((s) => s.reset);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,6 +98,19 @@ export function CommandPalette() {
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Ctrl+1…7 jump into the matching search mode from any palette view.
+    if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      const digit = Number(e.key);
+      if (digit >= 1 && digit <= 7) {
+        const mode = searchModeFromShortcut(digit);
+        if (mode) {
+          e.preventDefault();
+          enterMode(mode);
+          return;
+        }
+      }
+    }
+
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -185,6 +199,11 @@ export function CommandPalette() {
                       </span>
                     )}
                   </span>
+                  {item.shortcut && (
+                    <kbd className="shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+                      {item.shortcut}
+                    </kbd>
+                  )}
                   <Badge variant="outline" className="shrink-0 text-[10px] tracking-wide uppercase">
                     {item.group}
                   </Badge>

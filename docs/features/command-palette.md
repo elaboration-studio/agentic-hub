@@ -79,8 +79,7 @@ slice of resources I mean instead of getting one global mixed result list.
 - Multi-tool apply in one step — the suite-tools view applies to one tool per
   Enter (the binding still re-syncs every bound tool on a capability edit).
 - Fuzzy ranking / recency — substring matching, per the v1 contract.
-- Root prefix directives (e.g. `> skills`) — drill-in rows are the only mode
-  switch for now.
+- Root prefix directives (e.g. `> skills`).
 - Per-window themes — the palette reuses the app's dark tokens.
 
 ## How it works
@@ -170,6 +169,8 @@ flowchart TD
 - [ ] Toggle watching flips the watcher and the main window's header reflects it.
 - [ ] Up/Down move the selection (wrapping); Esc and blur dismiss the palette;
       Backspace on an empty query steps back one level.
+- [ ] Ctrl+1…Ctrl+7 switch into the matching search mode (all, skills, agents,
+      rules, hooks, commands, suites) from any palette view.
 - [ ] Navigation commands surface and focus the main window on the chosen route.
 - [ ] `Cmd+,` opens Config; the app menu exposes Quit (hard exit) and Command Palette.
 - [ ] Editing the shortcut in Config re-registers it; a malformed value is rejected

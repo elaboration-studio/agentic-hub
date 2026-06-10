@@ -208,6 +208,18 @@ describe("palette store — layered navigation", () => {
     expect(s.results).toEqual([]);
   });
 
+  it("enterMode switches between search modes and clears the query", async () => {
+    await loadReady();
+    usePaletteStore.getState().enterMode("skill");
+    usePaletteStore.getState().setQuery("foo");
+
+    usePaletteStore.getState().enterMode("agent");
+    const s = usePaletteStore.getState();
+    expect(s.view).toEqual({ kind: "search", mode: "agent" });
+    expect(s.query).toBe("");
+    expect(s.results).toEqual([]);
+  });
+
   it("back pops a search mode to the root hub", async () => {
     await loadReady();
     usePaletteStore.getState().enterMode("skill");

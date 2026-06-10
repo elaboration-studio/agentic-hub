@@ -43,6 +43,8 @@ export interface PaletteItem {
   /// Whether running the item dismisses the palette. Defaults to true.
   /// Navigation/drill-in rows (e.g. a search mode) set this to false to stay open.
   dismissOnRun?: boolean;
+  /// Keyboard hint beside the row (e.g. "⌃1" for Ctrl+1).
+  shortcut?: string;
 }
 
 /// One drillable palette mode: a kind-scoped search, the explicit cross-kind
@@ -149,7 +151,25 @@ export const MODE_DEFS: Record<SearchMode, ModeDef> = {
   },
 };
 
-const SEARCH_MODES: SearchMode[] = ["all", "skill", "agent", "rule", "hook", "command", "suite"];
+/// Search modes in hub order; Ctrl+1…Ctrl+7 jump directly into each mode.
+export const SEARCH_MODES: SearchMode[] = [
+  "all",
+  "skill",
+  "agent",
+  "rule",
+  "hook",
+  "command",
+  "suite",
+];
+
+export function searchModeFromShortcut(digit: number): SearchMode | null {
+  const mode = SEARCH_MODES[digit - 1];
+  return mode ?? null;
+}
+
+export function searchModeShortcutLabel(digit: number): string {
+  return `⌃${digit}`;
+}
 const GOTO_MODES: SearchMode[] = ["global", "workspace"];
 
 const NAV_TARGETS: { route: NavRoute; title: string; subtitle: string }[] = [
@@ -158,7 +178,12 @@ const NAV_TARGETS: { route: NavRoute; title: string; subtitle: string }[] = [
   { route: "config", title: "Open Config", subtitle: "Settings & shortcut" },
 ];
 
-function modeRow(mode: SearchMode, section: string, enterMode: (m: SearchMode) => void): PaletteItem {
+function modeRow(
+  mode: SearchMode,
+  section: string,
+  enterMode: (m: SearchMode) => void,
+  shortcutDigit?: number,
+): PaletteItem {
   const def = MODE_DEFS[mode];
   return {
     id: `mode:${mode}`,
@@ -167,6 +192,7 @@ function modeRow(mode: SearchMode, section: string, enterMode: (m: SearchMode) =
     group: section,
     section,
     dismissOnRun: false,
+    shortcut: shortcutDigit ? searchModeShortcutLabel(shortcutDigit) : undefined,
     run: () => enterMode(mode),
   };
 }
@@ -196,7 +222,7 @@ function watchingRow(settings: Settings): PaletteItem {
 export function computeHubResults(ctx: ProviderContext): PaletteItem[] {
   const q = ctx.query.trim();
   const rows: PaletteItem[] = [
-    ...SEARCH_MODES.map((m) => modeRow(m, "Search", ctx.enterMode)),
+    ...SEARCH_MODES.map((m, i) => modeRow(m, "Search", ctx.enterMode, i + 1)),
     ...GOTO_MODES.map((m) => modeRow(m, "Go to", ctx.enterMode)),
     ...NAV_TARGETS.map((n) => ({
       id: `nav:${n.route}`,

@@ -26,9 +26,11 @@ import type {
   WorkspaceTarget,
 } from "@/types";
 import {
+  SEARCH_MODES,
   computeHubResults,
   computeSearchResults,
   computeSuiteToolResults,
+  searchModeFromShortcut,
   type ProviderContext,
   type WorkspaceInventoryEntry,
 } from "./commands";
@@ -148,7 +150,40 @@ function ctx(overrides: Partial<ProviderContext> = {}): ProviderContext {
 
 beforeEach(() => vi.clearAllMocks());
 
+describe("searchModeFromShortcut", () => {
+  it("maps Ctrl+1…7 to the hub search modes in order", () => {
+    expect(SEARCH_MODES).toEqual([
+      "all",
+      "skill",
+      "agent",
+      "rule",
+      "hook",
+      "command",
+      "suite",
+    ]);
+    expect(searchModeFromShortcut(1)).toBe("all");
+    expect(searchModeFromShortcut(2)).toBe("skill");
+    expect(searchModeFromShortcut(7)).toBe("suite");
+    expect(searchModeFromShortcut(0)).toBeNull();
+    expect(searchModeFromShortcut(8)).toBeNull();
+  });
+});
+
 describe("root hub", () => {
+  it("labels search-mode hub rows with Ctrl+1…7 shortcuts", () => {
+    const rows = computeHubResults(ctx());
+    const searchRows = rows.filter((r) => r.section === "Search");
+    expect(searchRows.map((r) => r.shortcut)).toEqual([
+      "⌃1",
+      "⌃2",
+      "⌃3",
+      "⌃4",
+      "⌃5",
+      "⌃6",
+      "⌃7",
+    ]);
+  });
+
   it("lists the categorized first-class commands on an empty query — no resources", () => {
     const items = [makeItem("skill:tdd", "tdd"), makeCommand("command:commit", "commit")];
     const rows = computeHubResults(ctx({ items, suites: [makeSuite()] }));
