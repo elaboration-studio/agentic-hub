@@ -5,9 +5,18 @@ vi.mock("@/ipc", () => ({
   applySuite: vi.fn().mockResolvedValue(undefined),
   readCapabilityBody: vi.fn().mockResolvedValue("command body text"),
   copyText: vi.fn().mockResolvedValue(undefined),
+  setWatcherEnabled: vi.fn().mockResolvedValue(undefined),
+  emitHubWatcherChanged: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { applySuite, copyText, openPath, readCapabilityBody } from "@/ipc";
+import {
+  applySuite,
+  copyText,
+  emitHubWatcherChanged,
+  openPath,
+  readCapabilityBody,
+  setWatcherEnabled,
+} from "@/ipc";
 import type {
   CapabilityItem,
   Settings,
@@ -17,7 +26,8 @@ import type {
   WorkspaceTarget,
 } from "@/types";
 import {
-  computeResults,
+  computeHubResults,
+  computeSearchResults,
   computeSuiteToolResults,
   type ProviderContext,
   type WorkspaceInventoryEntry,
@@ -28,6 +38,8 @@ const mocked = {
   applySuite: vi.mocked(applySuite),
   readCapabilityBody: vi.mocked(readCapabilityBody),
   copyText: vi.mocked(copyText),
+  setWatcherEnabled: vi.mocked(setWatcherEnabled),
+  emitHubWatcherChanged: vi.mocked(emitHubWatcherChanged),
 };
 
 function toolSettings(enabled: boolean): ToolSettings {
@@ -78,12 +90,12 @@ function makeSuite(overrides: Partial<SuiteDefinition> = {}): SuiteDefinition {
   };
 }
 
-function makeItem(id: string, name: string): CapabilityItem {
+function makeItem(id: string, name: string, kind: CapabilityItem["kind"] = "skill"): CapabilityItem {
   return {
     id,
-    kind: "skill",
+    kind,
     name,
-    sourcePath: `/shared/skills/${name}`,
+    sourcePath: `/shared/${kind}s/${name}`,
     relativePath: name,
     sourceId: "default",
     sourceLabel: "Default",
@@ -127,6 +139,7 @@ function ctx(overrides: Partial<ProviderContext> = {}): ProviderContext {
     workspaces: [],
     query: "",
     navigate: vi.fn(),
+    enterMode: vi.fn(),
     enterSuite: vi.fn(),
     locate: vi.fn(),
     ...overrides,
@@ -135,60 +148,125 @@ function ctx(overrides: Partial<ProviderContext> = {}): ProviderContext {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe("root providers", () => {
-  it("suite provider lists every suite on an empty query, filters by name otherwise", () => {
-    const suites = [makeSuite({ id: "a", name: "Backend" }), makeSuite({ id: "b", name: "Frontend" })];
+describe("root hub", () => {
+  it("lists the categorized first-class commands on an empty query — no resources", () => {
+    const items = [makeItem("skill:tdd", "tdd"), makeCommand("command:commit", "commit")];
+    const rows = computeHubResults(ctx({ items, suites: [makeSuite()] }));
 
-    const all = computeResults(ctx({ suites }));
-    expect(all.filter((r) => r.group === "Suite").map((r) => r.title)).toEqual(["Backend", "Frontend"]);
-
-    const filtered = computeResults(ctx({ suites, query: "front" }));
-    expect(filtered.filter((r) => r.group === "Suite").map((r) => r.title)).toEqual(["Frontend"]);
+    expect(rows.map((r) => r.title)).toEqual([
+      "Search all resources",
+      "Search skills",
+      "Search agents",
+      "Search rules",
+      "Search hooks",
+      "Search commands",
+      "Search suites",
+      "Go to global",
+      "Go to workspace",
+      "Open Manager",
+      "Open Suites",
+      "Open Config",
+      "Apply suite…",
+      "Pause watching",
+    ]);
+    // No resource, suite, or workspace rows leak into the hub.
+    expect(rows.every((r) => r.section !== undefined)).toBe(true);
   });
 
-  it("a suite row drills in (does not dismiss or execute) and calls enterSuite", () => {
-    const enterSuite = vi.fn();
-    const results = computeResults(ctx({ suites: [makeSuite({ id: "s1", name: "Backend" })], enterSuite }));
-    const suiteRow = results.find((r) => r.group === "Suite")!;
-
-    expect(suiteRow.dismissOnRun).toBe(false);
-    suiteRow.run();
-    expect(enterSuite).toHaveBeenCalledWith("s1", "Backend");
-  });
-
-  it("resource search opens the original file and is terminal", () => {
+  it("typing at the root filters hub rows only — never surfaces resources", () => {
     const items = [makeItem("skill:tdd", "tdd")];
-    const results = computeResults(ctx({ items, query: "tdd" }));
-    const row = results.find((r) => r.id === "resource:skill:tdd")!;
+    const rows = computeHubResults(ctx({ items, query: "tdd" }));
+    expect(rows).toEqual([]);
+
+    // "skills" matches the skill mode row and the all-resources subtitle.
+    const skillRows = computeHubResults(ctx({ items, query: "skills" }));
+    expect(skillRows.map((r) => r.title)).toEqual(["Search all resources", "Search skills"]);
+  });
+
+  it("a search-mode row drills in (does not dismiss) and calls enterMode", () => {
+    const enterMode = vi.fn();
+    const row = computeHubResults(ctx({ enterMode })).find((r) => r.title === "Search skills")!;
+
+    expect(row.dismissOnRun).toBe(false);
+    row.run();
+    expect(enterMode).toHaveBeenCalledWith("skill");
+  });
+
+  it("Apply suite… drills into the suite search mode", () => {
+    const enterMode = vi.fn();
+    const row = computeHubResults(ctx({ enterMode })).find((r) => r.title === "Apply suite…")!;
+
+    expect(row.dismissOnRun).toBe(false);
+    row.run();
+    expect(enterMode).toHaveBeenCalledWith("suite");
+  });
+
+  it("a navigation row routes the main window", () => {
+    const navigate = vi.fn();
+    const row = computeHubResults(ctx({ navigate })).find((r) => r.title === "Open Suites")!;
 
     expect(row.dismissOnRun).toBeUndefined();
     row.run();
-    expect(mocked.openPath).toHaveBeenCalledWith("/shared/skills/tdd/SKILL.md", undefined);
+    expect(navigate).toHaveBeenCalledWith("suites");
   });
 
-  it("resource search excludes commands (they have a dedicated provider)", () => {
-    const items = [
-      makeItem("skill:review", "review"),
-      makeCommand("command:review/code-review.md", "code-review", "review/code-review.md"),
-    ];
-    const results = computeResults(ctx({ items, query: "review" }));
-    expect(results.some((r) => r.id === "resource:command:review/code-review.md")).toBe(false);
-    expect(results.some((r) => r.id === "command:command:review/code-review.md")).toBe(true);
+  it("the watching action flips the persisted state and notifies the main window", async () => {
+    const row = computeHubResults(ctx()).find((r) => r.id === "action:toggle-watching")!;
+    expect(row.title).toBe("Pause watching");
+
+    await row.run();
+    expect(mocked.setWatcherEnabled).toHaveBeenCalledWith(false);
+    expect(mocked.emitHubWatcherChanged).toHaveBeenCalledWith(false);
+  });
+
+  it("the watching action reads the current state for its label and direction", async () => {
+    const settings = { ...makeSettings(), watcherEnabled: false };
+    const row = computeHubResults(ctx({ settings })).find(
+      (r) => r.id === "action:toggle-watching",
+    )!;
+    expect(row.title).toBe("Resume watching");
+
+    await row.run();
+    expect(mocked.setWatcherEnabled).toHaveBeenCalledWith(true);
+    expect(mocked.emitHubWatcherChanged).toHaveBeenCalledWith(true);
   });
 });
 
-describe("command search provider", () => {
-  it("returns nothing on an empty query", () => {
-    const items = [makeCommand("command:git/commit.md", "commit", "git/commit.md")];
-    const rows = computeResults(ctx({ items })).filter((r) => r.group === "Command");
-    expect(rows).toEqual([]);
+describe("search modes — resources", () => {
+  it("a kind mode returns only that kind and opens the original file", () => {
+    const items = [
+      makeItem("skill:review", "review"),
+      makeItem("agent:review-bot", "review-bot", "agent"),
+    ];
+    const rows = computeSearchResults(ctx({ items, query: "review" }), "skill");
+
+    expect(rows.map((r) => r.id)).toEqual(["resource:skill:review"]);
+    rows[0].run();
+    expect(mocked.openPath).toHaveBeenCalledWith("/shared/skills/review/SKILL.md", undefined);
   });
 
+  it("the all mode searches every non-command kind", () => {
+    const items = [
+      makeItem("skill:review", "review"),
+      makeItem("agent:review-bot", "review-bot", "agent"),
+      makeCommand("command:review/code-review.md", "code-review", "review/code-review.md"),
+    ];
+    const rows = computeSearchResults(ctx({ items, query: "review" }), "all");
+
+    expect(rows.map((r) => r.id)).toEqual(["resource:skill:review", "resource:agent:review-bot"]);
+  });
+
+  it("returns nothing on an empty query (does not dump the tree)", () => {
+    const items = [makeItem("skill:tdd", "tdd")];
+    expect(computeSearchResults(ctx({ items }), "all")).toEqual([]);
+    expect(computeSearchResults(ctx({ items }), "skill")).toEqual([]);
+  });
+});
+
+describe("search modes — commands", () => {
   it("Enter copies the command body to the clipboard", async () => {
     const items = [makeCommand("command:git/commit.md", "commit", "git/commit.md")];
-    const row = computeResults(ctx({ items, query: "commit" })).find(
-      (r) => r.group === "Command",
-    )!;
+    const row = computeSearchResults(ctx({ items, query: "commit" }), "command")[0];
 
     await row.run();
     expect(mocked.readCapabilityBody).toHaveBeenCalledWith("/shared/commands/git/commit.md");
@@ -198,9 +276,7 @@ describe("command search provider", () => {
 
   it("Alt+Enter opens the source file for editing", async () => {
     const items = [makeCommand("command:git/commit.md", "commit", "git/commit.md")];
-    const row = computeResults(ctx({ items, query: "commit" })).find(
-      (r) => r.group === "Command",
-    )!;
+    const row = computeSearchResults(ctx({ items, query: "commit" }), "command")[0];
 
     await row.altRun!();
     expect(mocked.openPath).toHaveBeenCalledWith("/shared/commands/git/commit.md", undefined);
@@ -208,55 +284,71 @@ describe("command search provider", () => {
   });
 });
 
-describe("workspace search provider", () => {
-  it("returns nothing on an empty query (does not dump every project)", () => {
-    const workspaces = [makeWorkspace(makeTarget(), [makeItem("skill:qa", "qa")])];
-    const rows = computeResults(ctx({ workspaces }));
-    expect(rows.filter((r) => r.group === "Workspace")).toEqual([]);
+describe("search modes — suites", () => {
+  it("lists every suite on an empty query, filters by name otherwise", () => {
+    const suites = [makeSuite({ id: "a", name: "Backend" }), makeSuite({ id: "b", name: "Frontend" })];
+
+    const all = computeSearchResults(ctx({ suites }), "suite");
+    expect(all.map((r) => r.title)).toEqual(["Backend", "Frontend"]);
+
+    const filtered = computeSearchResults(ctx({ suites, query: "front" }), "suite");
+    expect(filtered.map((r) => r.title)).toEqual(["Frontend"]);
   });
 
-  it("filters inventory items by name/path across remembered workspaces", () => {
-    const workspaces = [
-      makeWorkspace(makeTarget({ id: "w1", label: "alpha" }), [
-        makeItem("skill:qa", "qa"),
-        makeItem("skill:tdd", "tdd"),
-      ]),
-      makeWorkspace(makeTarget({ id: "w2", label: "beta" }), [makeItem("agent:qa-bot", "qa")]),
-    ];
-
-    const rows = computeResults(ctx({ workspaces, query: "qa" })).filter(
-      (r) => r.group === "Workspace",
+  it("a suite row drills in (does not dismiss or execute) and calls enterSuite", () => {
+    const enterSuite = vi.fn();
+    const rows = computeSearchResults(
+      ctx({ suites: [makeSuite({ id: "s1", name: "Backend" })], enterSuite }),
+      "suite",
     );
-    expect(rows.map((r) => r.subtitle)).toEqual(["alpha · qa", "beta · qa"]);
+
+    expect(rows[0].dismissOnRun).toBe(false);
+    rows[0].run();
+    expect(enterSuite).toHaveBeenCalledWith("s1", "Backend");
+  });
+});
+
+describe("go-to modes", () => {
+  it("global locate matches shared resources and locates without opening", () => {
+    const locate = vi.fn();
+    const items = [makeItem("skill:qa", "qa"), makeItem("skill:tdd", "tdd")];
+    const rows = computeSearchResults(ctx({ items, query: "qa", locate }), "global");
+
+    expect(rows.map((r) => r.id)).toEqual(["global:skill:qa"]);
+    rows[0].run();
+    expect(locate).toHaveBeenCalledWith({ scope: "global", itemId: "skill:qa" });
+    expect(mocked.openPath).not.toHaveBeenCalled();
   });
 
-  it("matches the workspace name so searching a project surfaces all its items", () => {
+  it("workspace locate matches across remembered workspaces (including labels)", () => {
     const workspaces = [
       makeWorkspace(makeTarget({ id: "w1", label: "portfolio" }), [
-        makeItem("rule:overview", "01-project-overview"),
-        makeItem("rule:i18n", "07-i18n"),
+        makeItem("rule:overview", "01-project-overview", "rule"),
+        makeItem("rule:i18n", "07-i18n", "rule"),
       ]),
-      makeWorkspace(makeTarget({ id: "w2", label: "aicw" }), [makeItem("rule:styling", "04-styling")]),
+      makeWorkspace(makeTarget({ id: "w2", label: "aicw" }), [
+        makeItem("rule:styling", "04-styling", "rule"),
+      ]),
     ];
+    const rows = computeSearchResults(ctx({ workspaces, query: "portfolio" }), "workspace");
 
-    const rows = computeResults(ctx({ workspaces, query: "portfolio" })).filter(
-      (r) => r.group === "Workspace",
-    );
     expect(rows.map((r) => r.title)).toEqual(["01-project-overview", "07-i18n"]);
   });
 
-  it("running a workspace row locates the item (workspaceId + raw item id)", () => {
+  it("running a workspace row locates with the scoped payload", () => {
     const locate = vi.fn();
-    const workspaces = [
-      makeWorkspace(makeTarget({ id: "w1" }), [makeItem("skill:qa", "qa")]),
-    ];
-    const row = computeResults(ctx({ workspaces, query: "qa", locate })).find(
-      (r) => r.group === "Workspace",
-    )!;
+    const workspaces = [makeWorkspace(makeTarget({ id: "w1" }), [makeItem("skill:qa", "qa")])];
+    const rows = computeSearchResults(ctx({ workspaces, query: "qa", locate }), "workspace");
 
-    expect(row.dismissOnRun).toBeUndefined();
-    row.run();
-    expect(locate).toHaveBeenCalledWith("w1", "skill:qa");
+    expect(rows[0].dismissOnRun).toBeUndefined();
+    rows[0].run();
+    expect(locate).toHaveBeenCalledWith({ scope: "workspace", workspaceId: "w1", itemId: "skill:qa" });
+  });
+
+  it("returns nothing on an empty query (does not dump every project)", () => {
+    const workspaces = [makeWorkspace(makeTarget(), [makeItem("skill:qa", "qa")])];
+    expect(computeSearchResults(ctx({ workspaces }), "workspace")).toEqual([]);
+    expect(computeSearchResults(ctx({ items: [makeItem("skill:qa", "qa")] }), "global")).toEqual([]);
   });
 });
 

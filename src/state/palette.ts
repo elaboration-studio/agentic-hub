@@ -1,9 +1,10 @@
 // Command-palette state: load resources + suites + settings once per summon,
 // hold the query and selection, and derive the visible result list. The
-// palette is two-level: a `root` view (search resources/suites/nav) and a
-// `suite-tools` view reached by drilling into a suite (pick a tool to apply
-// it to). Logic lives in the store (not the component) so the matching,
-// navigation, and selection are unit-testable without a DOM.
+// palette is layered: a `root` hub of first-class commands, a `search` view
+// per drilled-in mode (kind search or locate scope), and a `suite-tools` view
+// reached through the suite mode (pick a tool to apply it to). Logic lives in
+// the store (not the component) so the matching, navigation, and selection are
+// unit-testable without a DOM.
 
 import { create } from "zustand";
 import {
@@ -15,14 +16,17 @@ import {
   scan,
   scanWorkspace,
   showMain,
+  type LocateRequest,
   type NavRoute,
 } from "../ipc";
 import type { CapabilityItem, Settings, SuiteDefinition } from "../types";
 import { messageOf } from "../shared";
 import {
-  computeResults,
+  computeHubResults,
+  computeSearchResults,
   computeSuiteToolResults,
   type PaletteItem,
+  type SearchMode,
   type WorkspaceInventoryEntry,
 } from "../components/palette/commands";
 
@@ -31,6 +35,7 @@ export type Status = "loading" | "ready" | "error";
 /// Which level of the palette is showing.
 export type PaletteView =
   | { kind: "root" }
+  | { kind: "search"; mode: SearchMode }
   | { kind: "suite-tools"; suiteId: string; suiteName: string };
 
 const ROOT_VIEW: PaletteView = { kind: "root" };
@@ -53,6 +58,7 @@ interface PaletteState {
   setSelected: (index: number) => void;
   runSelected: () => Promise<void>;
   runSelectedAlt: () => Promise<void>;
+  enterMode: (mode: SearchMode) => void;
   enterSuite: (suiteId: string, suiteName: string) => void;
   back: () => void;
   reset: () => void;
@@ -63,9 +69,9 @@ function navigate(route: NavRoute) {
   void emitHubNavigate(route).then(() => showMain());
 }
 
-// Ask the main window to locate a workspace item, then surface it.
-function locate(workspaceId: string, itemId: string) {
-  void emitHubLocate({ workspaceId, itemId }).then(() => showMain());
+// Ask the main window to locate an item (global or workspace), then surface it.
+function locate(req: LocateRequest) {
+  void emitHubLocate(req).then(() => showMain());
 }
 
 // Scan every remembered workspace's inventory so the palette can search across
@@ -88,22 +94,25 @@ function recompute(
   workspaces: WorkspaceInventoryEntry[],
   view: PaletteView,
   query: string,
+  enterMode: (mode: SearchMode) => void,
   enterSuite: (suiteId: string, suiteName: string) => void,
 ): PaletteItem[] {
   if (!settings) return [];
   if (view.kind === "suite-tools") {
     return computeSuiteToolResults(settings, query, view.suiteId, view.suiteName);
   }
-  return computeResults({
+  const ctx = {
     settings,
     items,
     suites,
     workspaces,
     query,
     navigate,
+    enterMode,
     enterSuite,
     locate,
-  });
+  };
+  return view.kind === "search" ? computeSearchResults(ctx, view.mode) : computeHubResults(ctx);
 }
 
 function clamp(index: number, length: number): number {
@@ -125,18 +134,22 @@ export const getInitialState = () => ({
 });
 
 export const usePaletteStore = create<PaletteState>((set, get) => {
-  // A stable enterSuite for the provider context: switch to the suite-tools
-  // view, clearing the query so the tool list shows in full.
-  const enterSuite = (suiteId: string, suiteName: string) => {
+  // Stable drill-in callbacks for the provider context: switch the view,
+  // clearing the query so the new level starts clean.
+  const enterView = (view: PaletteView) => {
     const { settings, items, suites, workspaces } = get();
-    const view: PaletteView = { kind: "suite-tools", suiteId, suiteName };
     set({
       view,
       query: "",
       selectedIndex: 0,
-      results: recompute(settings, items, suites, workspaces, view, "", enterSuite),
+      results: recompute(settings, items, suites, workspaces, view, "", enterMode, enterSuite),
     });
   };
+
+  const enterMode = (mode: SearchMode) => enterView({ kind: "search", mode });
+
+  const enterSuite = (suiteId: string, suiteName: string) =>
+    enterView({ kind: "suite-tools", suiteId, suiteName });
 
   const refreshResults = (overrides: Partial<PaletteState> = {}) => {
     const next = { ...get(), ...overrides };
@@ -150,6 +163,7 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
         next.workspaces,
         next.view,
         next.query,
+        enterMode,
         enterSuite,
       ),
     });
@@ -201,10 +215,18 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
       await (item.altRun ?? item.run)();
     },
 
+    enterMode,
+
     enterSuite,
 
-    // Return from the suite-tools view to the root, clearing the query.
-    back: () => refreshResults({ view: ROOT_VIEW, query: "" }),
+    // Pop one level: suite-tools returns to the suite search mode it was
+    // entered from; a search mode returns to the root hub.
+    back: () => {
+      const { view } = get();
+      const parent: PaletteView =
+        view.kind === "suite-tools" ? { kind: "search", mode: "suite" } : ROOT_VIEW;
+      refreshResults({ view: parent, query: "" });
+    },
 
     reset: () => refreshResults({ view: ROOT_VIEW, query: "" }),
   };

@@ -65,13 +65,12 @@ export const emitHubNavigate = (route: NavRoute): Promise<void> =>
 export const onHubNavigate = (cb: (route: NavRoute) => void): Promise<UnlistenFn> =>
   listen<NavRoute>("hub-navigate", (e) => cb(e.payload));
 
-/// A request to locate one workspace inventory item in the Hub. The main window
-/// switches to Manager + Workspace scope, activates the owning workspace, and
-/// highlights the matching matrix row.
-export interface LocateRequest {
-  workspaceId: string;
-  itemId: string;
-}
+/// A request to locate one item in the Hub's matrix. The main window routes to
+/// Manager, switches to the requested scope (activating the owning workspace
+/// for workspace locates), and highlights the matching matrix row.
+export type LocateRequest =
+  | { scope: "workspace"; workspaceId: string; itemId: string }
+  | { scope: "global"; itemId: string };
 
 /// Ask the main window to locate a workspace item (emitted from the palette).
 export const emitHubLocate = (payload: LocateRequest): Promise<void> =>
@@ -80,6 +79,15 @@ export const emitHubLocate = (payload: LocateRequest): Promise<void> =>
 /// Main window: react to a palette locate request.
 export const onHubLocate = (cb: (payload: LocateRequest) => void): Promise<UnlistenFn> =>
   listen<LocateRequest>("hub-locate", (e) => cb(e.payload));
+
+/// Palette: the watching toggle persisted a new watcher state (payload: the new
+/// enabled flag). The main window syncs its header toggle without a re-fetch.
+export const emitHubWatcherChanged = (enabled: boolean): Promise<void> =>
+  emit("hub-watcher-changed", enabled);
+
+/// Main window: react to a palette watcher toggle.
+export const onHubWatcherChanged = (cb: (enabled: boolean) => void): Promise<UnlistenFn> =>
+  listen<boolean>("hub-watcher-changed", (e) => cb(e.payload));
 
 /// Main window: the "Settings…" menu item (Cmd+,) was activated.
 export const onMenuOpenConfig = (cb: () => void): Promise<UnlistenFn> =>

@@ -9,6 +9,8 @@ vi.mock("@/ipc", () => ({
   applySuite: vi.fn().mockResolvedValue(undefined),
   emitHubNavigate: vi.fn().mockResolvedValue(undefined),
   emitHubLocate: vi.fn().mockResolvedValue(undefined),
+  setWatcherEnabled: vi.fn().mockResolvedValue(undefined),
+  emitHubWatcherChanged: vi.fn().mockResolvedValue(undefined),
   showMain: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -115,15 +117,17 @@ beforeEach(() => {
 });
 
 describe("palette store — loading", () => {
-  it("load fetches settings, scan, and suites and becomes ready at the root view", async () => {
+  it("load fetches settings, scan, and suites and becomes ready at the root hub", async () => {
     await loadReady();
     const s = usePaletteStore.getState();
 
     expect(s.status).toBe("ready");
     expect(s.view).toEqual({ kind: "root" });
     expect(s.suites).toHaveLength(1);
-    // Suites surface on an empty query.
-    expect(s.results.some((r) => r.group === "Suite")).toBe(true);
+    // The root is the sectioned hub — drill-in modes, no resource or suite rows.
+    expect(s.results.some((r) => r.title === "Search all resources")).toBe(true);
+    expect(s.results.some((r) => r.group === "Suite")).toBe(false);
+    expect(s.results.some((r) => r.id.startsWith("resource:"))).toBe(false);
   });
 
   it("load surfaces an error when IPC throws", async () => {
@@ -154,6 +158,11 @@ describe("palette store — workspace inventories", () => {
     await usePaletteStore.getState().load();
     expect(usePaletteStore.getState().workspaces).toHaveLength(2);
 
+    // Workspace results live behind the "Go to workspace" mode, not the root.
+    usePaletteStore.getState().setQuery("qa");
+    expect(usePaletteStore.getState().results).toEqual([]);
+
+    usePaletteStore.getState().enterMode("workspace");
     usePaletteStore.getState().setQuery("qa");
     const rows = usePaletteStore.getState().results.filter((r) => r.group === "Workspace");
     expect(rows.map((r) => r.subtitle)).toEqual(["alpha · qa-w1", "beta · qa-w2"]);
@@ -180,9 +189,40 @@ describe("palette store — workspace inventories", () => {
   });
 });
 
-describe("palette store — two-level suite flow", () => {
-  it("running a suite row enters the suite-tools view without executing", async () => {
+describe("palette store — layered navigation", () => {
+  it("running a hub mode row enters that search view with a clean query", async () => {
     await loadReady();
+    usePaletteStore.getState().setQuery("skills");
+    const idx = usePaletteStore
+      .getState()
+      .results.findIndex((r) => r.title === "Search skills");
+    expect(idx).toBeGreaterThanOrEqual(0);
+
+    usePaletteStore.getState().setSelected(idx);
+    await usePaletteStore.getState().runSelected();
+
+    const s = usePaletteStore.getState();
+    expect(s.view).toEqual({ kind: "search", mode: "skill" });
+    expect(s.query).toBe("");
+    // Empty query inside a search mode shows nothing until the user types.
+    expect(s.results).toEqual([]);
+  });
+
+  it("back pops a search mode to the root hub", async () => {
+    await loadReady();
+    usePaletteStore.getState().enterMode("skill");
+
+    usePaletteStore.getState().back();
+    const s = usePaletteStore.getState();
+    expect(s.view).toEqual({ kind: "root" });
+    expect(s.results.some((r) => r.title === "Search all resources")).toBe(true);
+  });
+});
+
+describe("palette store — suite flow (suite mode → suite-tools)", () => {
+  it("running a suite row in the suite mode enters suite-tools without executing", async () => {
+    await loadReady();
+    usePaletteStore.getState().enterMode("suite");
     const suiteRow = usePaletteStore.getState().results.find((r) => r.group === "Suite");
     expect(suiteRow).toBeDefined();
 
@@ -216,18 +256,22 @@ describe("palette store — two-level suite flow", () => {
     expect(mocked.applySuite).toHaveBeenCalledWith("cursor", "s1");
   });
 
-  it("back returns to the root view and restores root results", async () => {
+  it("back from suite-tools returns to the suite search mode, then the root", async () => {
     await loadReady();
+    usePaletteStore.getState().enterMode("suite");
     usePaletteStore.getState().enterSuite("s1", "Backend");
     expect(usePaletteStore.getState().view.kind).toBe("suite-tools");
 
     usePaletteStore.getState().back();
     const s = usePaletteStore.getState();
-    expect(s.view).toEqual({ kind: "root" });
+    expect(s.view).toEqual({ kind: "search", mode: "suite" });
     expect(s.results.some((r) => r.group === "Suite")).toBe(true);
+
+    usePaletteStore.getState().back();
+    expect(usePaletteStore.getState().view).toEqual({ kind: "root" });
   });
 
-  it("reset returns to the root view and clears the query", async () => {
+  it("reset returns straight to the root view and clears the query", async () => {
     await loadReady();
     usePaletteStore.getState().enterSuite("s1", "Backend");
     usePaletteStore.getState().setQuery("claude");
