@@ -36,6 +36,23 @@ export function favoriteFromResult(r: SkillSearchHit): SkillFavorite {
   };
 }
 
+/// Case-insensitive local filter over the starred list. Matches name, source,
+/// slug, and install ref so typing a skill name, repo, or owner all work.
+export function filterFavorites(
+  favorites: SkillFavorite[],
+  query: string,
+): SkillFavorite[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return favorites;
+  return favorites.filter(
+    (f) =>
+      f.name.toLowerCase().includes(q) ||
+      f.source.toLowerCase().includes(q) ||
+      f.slug.toLowerCase().includes(q) ||
+      f.installRef.toLowerCase().includes(q),
+  );
+}
+
 interface SkillsState {
   query: string;
   results: SkillSearchHit[];
