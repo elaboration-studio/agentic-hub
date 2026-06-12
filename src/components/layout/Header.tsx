@@ -1,14 +1,10 @@
 import logoUrl from "@/assets/logo.png";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Toggle } from "@/components/ui/toggle";
-import { cn } from "@/lib/utils";
 import { useManagerStore } from "@/state/manager";
 import type { Route } from "@/shared";
 
 export function Header(props: { route: Route; onNavigate: (route: Route) => void }) {
   const data = useManagerStore((s) => s.data);
-  const watching = useManagerStore((s) => s.watching);
-  const toggleWatching = useManagerStore((s) => s.toggleWatching);
 
   const count = data?.items.length ?? 0;
   const sources = data?.settings.sources.length ?? 0;
@@ -25,36 +21,14 @@ export function Header(props: { route: Route; onNavigate: (route: Route) => void
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-3">
-        <Tabs value={props.route} onValueChange={(v) => props.onNavigate(v as Route)}>
-          <TabsList>
-            <TabsTrigger value="manager">Manager</TabsTrigger>
-            <TabsTrigger value="suites">Suites</TabsTrigger>
-            {skillsEnabled && <TabsTrigger value="skills">Resources</TabsTrigger>}
-            <TabsTrigger value="config">Config</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <Toggle
-          pressed={watching}
-          onPressedChange={(v) => void toggleWatching(v)}
-          variant="outline"
-          aria-label={watching ? "Watching — click to pause" : "Paused — click to watch"}
-          title={
-            watching
-              ? "Watching source roots — changes sync automatically. Click to pause."
-              : "Watcher paused. Click to watch source roots and auto-sync changes."
-          }
-        >
-          <span
-            className={cn(
-              "size-2 rounded-full bg-muted-foreground transition-colors",
-              watching && "bg-success shadow-[0_0_0_3px_rgba(34,197,94,0.25)]",
-            )}
-            aria-hidden
-          />
-          {watching ? "Watching" : "Paused"}
-        </Toggle>
-      </div>
+      <Tabs value={props.route} onValueChange={(v) => props.onNavigate(v as Route)}>
+        <TabsList>
+          <TabsTrigger value="manager">Manager</TabsTrigger>
+          <TabsTrigger value="suites">Suites</TabsTrigger>
+          {skillsEnabled && <TabsTrigger value="skills">Resources</TabsTrigger>}
+          <TabsTrigger value="config">Config</TabsTrigger>
+        </TabsList>
+      </Tabs>
     </header>
   );
 }

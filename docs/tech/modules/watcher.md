@@ -63,7 +63,8 @@ running count as newcomers. The Config fallback passes the full current id set a
 start(app):
   load settings; subscribe a notify::recommended_watcher over each source root
   (recursive) AND the active workspace's existing tool dirs (.cursor, .claude,
-  .agents, .codex recursive; AGENTS.md / CLAUDE.md files). Seed prev = current
+  .agents, .codex recursive; AGENTS.md / CLAUDE.md files) AND the resolved suites
+  and skill-favorites files (single-file, NonRecursive). Seed prev = current
   scan ids. Spawn a worker thread.
 stop():        drop the watcher (ends OS events) + signal the worker to exit.
 set_enabled(): start or stop.
@@ -83,8 +84,14 @@ loop:
 ```
 
 `run_once`: load settings → `api::scan` → `reconcile::reconcile_all(prev)` →
-update `prev` to the new ids → `emit("sources-changed")` and
-`emit("workspace-changed")`.
+update `prev` to the new ids → `emit_refresh`. `emit_refresh` fans out
+`sources-changed`, `workspace-changed`, `suite-store-changed` (kind `external`),
+and `skills-favorites-changed`. The suite/favorites emits keep the Suites and
+Resources views fresh after a synced rewrite (a `git pull` on a custom path) so a
+later save never clobbers freshly-pulled content with a stale in-memory snapshot.
+The suites/favorites files are watched as single files (NonRecursive) precisely
+because they can live at a custom path inside a git repo — we must never watch the
+whole repo.
 
 `resync_now` (the fallback command) is the same minus auto-enable: it passes the
 full current id set as `prev`, so nothing is treated as a newcomer.
@@ -109,13 +116,21 @@ target, the system converges in one or two cycles rather than looping.
 ## IPC + settings deltas
 
 - `Settings.watcherEnabled: bool` (`#[serde(default = true)]`).
+- `Settings.watcherForceMigrated: bool` (`#[serde(default)]`) — one-time 0.8.1
+  marker; `setup()` calls `Settings::migrate_force_watcher_on()` which forces the
+  watcher on once for a paused config, then records the marker so future user
+  pauses are respected. The enable/pause switch lives in Config (an install-once
+  preference), not the header.
 - `cmd_set_watcher_enabled(enabled)` — persist + start/stop.
 - `cmd_rescan_resync()` — full rescan + resync fallback.
 - `cmd_save_settings` / `cmd_add_source` / `cmd_remove_source` call
-  `restart_if_running` so watched roots track configuration; the workspace
-  pick / activate / remove commands do the same for the active workspace dirs.
+  `restart_if_running` so watched roots (including a changed suites/favorites
+  path) track configuration; the workspace pick / activate / remove commands do
+  the same for the active workspace dirs.
 - Event `sources-changed` (no payload) drives the global UI refresh.
 - Event `workspace-changed` (no payload) drives the workspace inventory refresh.
+- Event `suite-store-changed` (kind `external`) reloads the Suites view.
+- Event `skills-favorites-changed` (no payload) reloads the Resources view.
 
 ## Tests
 

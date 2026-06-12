@@ -102,8 +102,16 @@ pub struct SkillFavoritesState { pub favorites: Vec<SkillFavorite> }
 ```
 
 API: `read` / `add` (upsert by `(provider, id)`, newest-first, stamps
-`starred_at`) / `remove`. Atomic tmp+rename write; missing file → empty;
-malformed JSON → `StateParse` (never silently overwrites the user's file).
+`starred_at`) / `remove`. Atomic tmp+rename write preceded by a one-level
+`<file>.bak` backup of the prior good (non-empty) file
+(`paths::back_up_dotfile`); missing file → empty; malformed JSON → `StateParse`
+(never silently overwrites the user's file).
+
+Because the favorites file is meant to be git-synced across devices (set a custom
+`favorites_path` inside a repo), it gets the same robustness as the suites file:
+the watcher subscribes to the resolved path and emits `skills-favorites-changed`
+on an external rewrite, so the Resources view reloads after a `git pull` instead
+of holding a stale list (see [watcher.md](./watcher.md)).
 
 ## Settings
 

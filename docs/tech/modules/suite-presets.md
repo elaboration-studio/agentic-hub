@@ -123,7 +123,7 @@ Suite files sync across machines. Without a source identity, a synced `skill:foo
 - **Match**: a qualified ref resolves only to a scanned item whose `source` matches (by home-relative path, then folder); an unqualified ref matches by bare id alone.
 - **Absent source**: a qualified ref whose source is not present on this machine is *skipped and preserved* — its projection cannot exist locally, so it is never deleted, and it never mis-resolves onto a same-named local capability. Counted as `skipped_absent_source`.
 - **Migration**: `SuiteCapabilityRef` deserializes tolerantly from a legacy bare string (`"skill:dev/tdd"` → `{ cap, source: None }`) and always serializes as an object, so suite files upgrade in place on the next write. Existing suites need no manual migration.
-- **Backfill**: on apply/update the store opportunistically qualifies unqualified refs whose bare id resolves to exactly one scanned item (`SuiteStore::backfill_sources`), then persists the upgrade.
+- **Backfill (in-memory only)**: on apply/update the store qualifies unqualified refs whose bare id resolves to exactly one scanned item (`SuiteStore::backfill_sources`) so matching is source-precise. This upgrade is **never persisted from apply/update** — qualification happens at user-save time in the UI (`src/state/suites.ts`). Persisting it from apply/edit made two synced machines rewrite the file with device-specific source qualifiers at different times; a later `git pull` then line-merged the divergent multi-line `capabilities` arrays into an empty set (suite name survived, resources went empty). As of v0.8.1 apply and palette "Apply suite…" are pure reads of the suites file.
 
 Adding or reordering sources never changes a suite's bare IDs. A present-source (or unqualified) ref that matches no scanned item is reported as stale (see stale reconciliation below).
 
@@ -165,7 +165,7 @@ Path: `~/.agentic-suites.json` (preserved from VS Code extension for parity)
 Conventions:
 - File created on first suite save if it does not exist
 - Reads tolerant of malformed JSON: surface error, return empty list, do not auto-overwrite
-- Writes atomic: `.tmp` then `rename`
+- Writes atomic: `.tmp` then `rename`, preceded by a one-level `<file>.bak` backup of the prior good (non-empty) file (`paths::back_up_dotfile`) so an accidental clobber is recoverable without `git checkout`
 - `version` field allows future migration
 - Suite name uniqueness enforced at create / rename time
 

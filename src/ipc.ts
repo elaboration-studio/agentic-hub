@@ -271,6 +271,11 @@ export const addSkillFavorite = (favorite: SkillFavorite): Promise<SkillFavorite
 export const removeSkillFavorite = (provider: string, id: string): Promise<void> =>
   invoke("cmd_remove_skill_favorite", { input: { provider, id } });
 
+/// Fired by the watcher when the favorites file changes on disk (e.g. a
+/// `git pull` on a synced custom path), so the starred list reloads live.
+export const onSkillsFavoritesChanged = (cb: () => void): Promise<UnlistenFn> =>
+  listen("skills-favorites-changed", () => cb());
+
 // ---- Skill install window (dedicated, live-streaming) ---------------------
 
 /// Open (or focus) the install window targeting a workspace. The window reads

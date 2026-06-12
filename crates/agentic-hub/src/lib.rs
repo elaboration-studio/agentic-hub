@@ -62,7 +62,13 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let settings = Settings::load().unwrap_or_default();
+            let mut settings = Settings::load().unwrap_or_default();
+            // 0.8.1 one-time migration: force the watcher on (flipping configs
+            // that had paused it) and persist the marker so future user pauses
+            // stick. Best-effort save — a failed write only defers the migration.
+            if settings.migrate_force_watcher_on() {
+                let _ = settings.save();
+            }
             // Start the source watcher on launch when enabled in settings.
             if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());

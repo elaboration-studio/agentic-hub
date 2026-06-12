@@ -111,6 +111,9 @@ impl SkillFavoritesStore {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
+        // One-level backup before overwriting, so an accidental clobber of the
+        // (optionally git-synced) favorites file is recoverable from `<file>.bak`.
+        crate::paths::back_up_dotfile(&self.path);
         let json = serde_json::to_string_pretty(state)?;
         let tmp = self.path.with_extension("json.tmp");
         fs::write(&tmp, json)?;
@@ -214,6 +217,22 @@ mod tests {
         // Removing an absent entry is a no-op.
         store.remove("skills.sh", "nope").unwrap();
         assert_eq!(store.read().unwrap().favorites.len(), 1);
+    }
+
+    #[test]
+    fn write_keeps_a_backup_of_the_prior_good_file() {
+        let (_d, store) = store();
+        store.add(fav("skills.sh", "a/b/one", "One")).unwrap();
+        let first = fs::read_to_string(&store.path).unwrap();
+
+        // A later write backs the prior content up to `<file>.bak`.
+        store.add(fav("skills.sh", "a/b/two", "Two")).unwrap();
+        let mut bak = store.path.as_os_str().to_os_string();
+        bak.push(".bak");
+        assert_eq!(
+            fs::read_to_string(std::path::PathBuf::from(bak)).unwrap(),
+            first
+        );
     }
 
     #[test]

@@ -6,7 +6,7 @@
 import { useEffect, useMemo } from "react";
 import { ExternalLink, GitBranch, Search, Star } from "lucide-react";
 import { toast } from "sonner";
-import { openUrl } from "@/ipc";
+import { openUrl, onSkillsFavoritesChanged } from "@/ipc";
 import { useManagerStore } from "@/state/manager";
 import { useSkillsStore, SKILLS_SH_PROVIDER } from "@/state/skills";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,13 @@ export function SkillsPage() {
 
   useEffect(() => {
     void loadFavorites();
+  }, [loadFavorites]);
+
+  // Reload when the favorites file changes on disk (e.g. a `git pull` on a
+  // synced custom path) so the starred list never shows a stale snapshot.
+  useEffect(() => {
+    const unlisten = onSkillsFavoritesChanged(() => void loadFavorites());
+    return () => void unlisten.then((fn) => fn());
   }, [loadFavorites]);
 
   // Debounce: search as the user types, once they pause.

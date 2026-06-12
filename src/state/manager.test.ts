@@ -75,6 +75,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     sharedRoot: "/shared",
     suitesPath: null,
     watcherEnabled: true,
+    watcherForceMigrated: true,
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
     skills: { enabled: false, favoritesPath: null },
