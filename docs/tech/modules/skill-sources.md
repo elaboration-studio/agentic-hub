@@ -182,8 +182,10 @@ enough. `SkillInstallEvent` is the streamed, ts-rs-exported event type.
 - `settings`: skills block defaults off, roundtrips, legacy config without the
   block defaults off.
 - UI store (`src/state/skills.ts`): search (success / blank / error), favorites
-  load / star / unstar. Mocks `@/ipc` + toasts. (Install is window-local state in
-  `InstallWindow`, no longer in this store.)
+  load / star / unstar, and the pure `filterFavorites` helper (name / repo /
+  owner / slug, case-insensitive, blank-query passthrough) that backs the local
+  filter box on the Skills page and the install window. Mocks `@/ipc` + toasts.
+  (Install is window-local state in `InstallWindow`, no longer in this store.)
 
 ## Follow-ups
 

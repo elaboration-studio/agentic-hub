@@ -19,11 +19,16 @@ Three surfaces:
    where starred skills are stored, and a "Check CLI" button. No API key: search
    uses the keyless public index.
 2. **Skills page** (a header tab shown only when the source is enabled) — search
-   skills.sh, open a result on GitHub / skills.sh, and star/unstar favorites.
+   skills.sh, open a result on GitHub / skills.sh, and star/unstar favorites. A
+   local filter box narrows the starred list as you type (matching name, repo,
+   owner, or slug).
 3. **Workspace → Install skills** — a floating action button opens a dedicated
    **install window** with a skill × tool matrix; tick the tools for one or more
    starred skills and install them into the active project via the source CLI,
-   watching the CLI output stream live with a **Cancel** control.
+   watching the CLI output stream live with a **Cancel** control. The same local
+   filter box narrows the matrix rows; filtering only changes what is shown —
+   already-selected skills stay queued even when hidden, and a column "select all"
+   applies to the visible rows.
 
 ## Why local "stars"
 
@@ -65,10 +70,11 @@ record of what is installed; the source CLI's own lock file
 1. Config → enable **Skills.sh source**, optionally click **Check CLI** (verifies
    `npx`/Node for installs). No key needed for search.
 2. Open the **Skills** tab, type to search (debounced), and **star** the skills
-   you want.
+   you want. The starred list below has its own filter box for quickly finding a
+   skill in a long list.
 3. In the Manager, pick a project in the left rail, click the floating **+**
-   action, tick the target tools for one or more starred skills in the matrix,
-   **Install**.
+   action, optionally filter the matrix, tick the target tools for one or more
+   starred skills, **Install**.
 4. The install window streams each CLI run live; skills install in turn (one
    failure never aborts the rest) and **Cancel** stops the in-flight run. When it
    finishes, the main window re-scans and shows the new skills under each tool
