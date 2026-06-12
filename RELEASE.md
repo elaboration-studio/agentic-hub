@@ -30,6 +30,10 @@ file verbatim as the GitHub Release body. For the full version history see
 - **Favorites parity with suites.** Your starred-skills file gets the same
   cross-device robustness — set a custom `favoritesPath` inside a git repo and
   share your favorite skills across machines, with backups and live reload.
+- **Search your starred skills.** A local filter box on the Resources page and in
+  the install-into-project window narrows the starred list as you type (by name,
+  repo, owner, or slug), so big lists stay easy to navigate. Hidden skills you
+  already selected still install.
 
 ### Migration
 

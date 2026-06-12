@@ -33,6 +33,11 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 - **Favorites cross-device parity.** The starred-skills file gets suites-level
   robustness (backups + live reload) so a custom `favoritesPath` inside a git
   repo can be shared across machines.
+- **Filter starred skills as you type.** A local search box on the Resources page
+  and in the install-into-project window narrows the starred list instantly
+  (matching name, repo, owner, or slug). In the install window, filtering only
+  changes what is shown — already-selected skills stay queued for install even
+  when hidden, and a column "select all" applies to the visible rows.
 
 ### Changed
 
