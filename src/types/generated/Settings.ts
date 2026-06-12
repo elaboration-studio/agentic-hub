@@ -27,6 +27,11 @@ suitesPath: string | null,
  */
 watcherEnabled: boolean, 
 /**
+ * One-time migration marker: 0.8.1 force-enables the watcher once (flipping
+ * configs that had paused it), then sets this so future user pauses stick.
+ */
+watcherForceMigrated: boolean, 
+/**
  * Preferred editor for opening a capability's original file. Defaults to
  * the OS default app.
  */

@@ -109,6 +109,10 @@ impl SuiteStore {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
+        // Keep a one-level backup of the last good file before overwriting, so a
+        // clobber (a git merge gone wrong on the synced suites file) leaves the
+        // prior content at `<file>.bak` for recovery.
+        crate::paths::back_up_dotfile(&self.path);
         let json = serde_json::to_string_pretty(file)?;
         let tmp = self.path.with_extension("json.tmp");
         fs::write(&tmp, json)?;
@@ -479,6 +483,41 @@ mod tests {
         let raw = fs::read_to_string(&store.path).unwrap();
         assert!(raw.contains("\"cap\""), "upgraded to object form: {raw}");
         assert!(raw.contains("\"source\""));
+    }
+
+    #[test]
+    fn write_keeps_a_backup_of_the_prior_good_file() {
+        let (_d, store) = store();
+        store.create(create("first", &["skill:a"])).unwrap();
+        let first = fs::read_to_string(&store.path).unwrap();
+
+        // A later write backs the prior content up to `<file>.bak` for recovery.
+        store.create(create("second", &["skill:b"])).unwrap();
+        let mut bak = store.path.as_os_str().to_os_string();
+        bak.push(".bak");
+        assert_eq!(fs::read_to_string(PathBuf::from(bak)).unwrap(), first);
+    }
+
+    #[test]
+    fn backfill_is_in_memory_only_and_never_rewrites_the_file() {
+        // Regression guard for the cross-device git-sync corruption: applying or
+        // editing a suite must never silently rewrite the synced suites file with
+        // device-specific source qualifications (that divergence is what a later
+        // `git pull` line-merges into empty capability arrays).
+        let (_d, store) = store();
+        let made = store.create(create("coding", &["skill:a"])).unwrap();
+        let before = fs::read_to_string(&store.path).unwrap();
+
+        // The apply/update path loads the suite and qualifies its refs in memory.
+        let mut suite = store.get(&made.id).unwrap().unwrap();
+        let items = vec![item_from("skill:a", "~/.agentic", ".agentic")];
+        assert!(
+            SuiteStore::backfill_sources(&mut suite, &items),
+            "backfill reports a change in memory"
+        );
+
+        // ...but the on-disk file is byte-identical: no persist, no churn.
+        assert_eq!(fs::read_to_string(&store.path).unwrap(), before);
     }
 
     #[test]

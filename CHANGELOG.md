@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.8.1] — 2026-06-12
+
+### Fixed
+
+- **Suites no longer go empty on git sync.** `cmd_apply_suite` and
+  `cmd_update_suite` no longer persist the in-memory `backfill_sources` source
+  qualification. That opportunistic `store.put` rewrote the synced suites file
+  with device-specific qualifiers on every apply/edit, so two machines diverged
+  and a later `git pull` line-merged the multi-line `capabilities` arrays into an
+  empty set (suite name kept, resources lost). Apply and palette "Apply suite…"
+  are now read-only over the suites file.
+
+### Added
+
+- **One-level `.bak` backups.** `SuiteStore::write_file` and
+  `SkillFavoritesStore::write` copy the prior good (non-empty) file to
+  `<file>.bak` before the atomic `tmp`+`rename` (`paths::back_up_dotfile`), so an
+  accidental clobber is recoverable without `git checkout`.
+- **Live reload of synced state files.** The watcher subscribes to the resolved
+  suites and skill-favorites files (single-file, NonRecursive) and emits
+  `suite-store-changed` (kind `external`) and the new `skills-favorites-changed`
+  event, so the Suites and Resources views reload after an external rewrite (a
+  `git pull` on a custom path) instead of holding — and later re-saving — a
+  stale snapshot.
+- **Favorites cross-device parity.** The starred-skills file gets suites-level
+  robustness (backups + live reload) so a custom `favoritesPath` inside a git
+  repo can be shared across machines.
+- **Filter starred skills as you type.** A local search box on the Resources page
+  and in the install-into-project window narrows the starred list instantly
+  (matching name, repo, owner, or slug). In the install window, filtering only
+  changes what is shown — already-selected skills stay queued for install even
+  when hidden, and a column "select all" applies to the visible rows.
+
+### Changed
+
+- **Watcher forced on once; toggle moved to Config.** New
+  `Settings.watcherForceMigrated` marker drives a one-time `setup()` migration
+  that flips any paused config back on, then respects later user pauses. The
+  enable/pause control moved from the header to **Config ▸ Source watcher**.
+
 ## [0.8.0] — 2026-06-10
 
 ### Added

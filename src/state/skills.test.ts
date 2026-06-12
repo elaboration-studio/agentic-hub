@@ -18,7 +18,7 @@ import {
 } from "@/ipc";
 import { toast } from "sonner";
 import type { SkillFavorite, SkillSearchHit } from "@/types";
-import { SKILLS_SH_PROVIDER, favoriteFromResult, useSkillsStore } from "./skills";
+import { SKILLS_SH_PROVIDER, favoriteFromResult, filterFavorites, useSkillsStore } from "./skills";
 
 const mocked = {
   searchSkills: vi.mocked(searchSkills),
@@ -66,6 +66,57 @@ describe("favoriteFromResult", () => {
     expect(fav.installRef).toBe("vercel-labs/agent-skills");
     expect(fav.pageUrl).toBe("https://skills.sh/vercel-labs/agent-skills/next-js");
     expect(fav.githubUrl).toBe("https://github.com/vercel-labs/agent-skills");
+  });
+});
+
+describe("filterFavorites", () => {
+  const tdd: SkillFavorite = {
+    provider: SKILLS_SH_PROVIDER,
+    id: "vercel-labs/agent-skills/tdd",
+    slug: "tdd",
+    name: "Test Driven Development",
+    source: "vercel-labs/agent-skills",
+    installRef: "vercel-labs/agent-skills",
+    githubUrl: null,
+    pageUrl: null,
+    starredAt: "2026-01-01",
+  };
+  const react: SkillFavorite = {
+    provider: SKILLS_SH_PROVIDER,
+    id: "acme/toolkit/react-helper",
+    slug: "react-helper",
+    name: "React Helper",
+    source: "acme/toolkit",
+    installRef: "acme/toolkit",
+    githubUrl: null,
+    pageUrl: null,
+    starredAt: "2026-01-02",
+  };
+  const favorites = [tdd, react];
+
+  it("returns the full list for an empty or whitespace query", () => {
+    expect(filterFavorites(favorites, "")).toEqual(favorites);
+    expect(filterFavorites(favorites, "   ")).toEqual(favorites);
+  });
+
+  it("matches by name", () => {
+    expect(filterFavorites(favorites, "driven")).toEqual([tdd]);
+  });
+
+  it("matches by source / install ref (owner-repo)", () => {
+    expect(filterFavorites(favorites, "acme")).toEqual([react]);
+  });
+
+  it("matches by slug", () => {
+    expect(filterFavorites(favorites, "react-helper")).toEqual([react]);
+  });
+
+  it("is case-insensitive", () => {
+    expect(filterFavorites(favorites, "REACT")).toEqual([react]);
+  });
+
+  it("returns an empty list when nothing matches", () => {
+    expect(filterFavorites(favorites, "nonexistent")).toEqual([]);
   });
 });
 

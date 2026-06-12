@@ -516,7 +516,7 @@ pub async fn cmd_update_suite(
     input: UpdateSuiteInput,
 ) -> IpcResult<SuiteDefinition> {
     let store = suite_store()?;
-    let mut suite = store.update(&input.id, input.changes)?;
+    let suite = store.update(&input.id, input.changes)?;
     // Dynamic binding sync: a capability edit re-applies (full reset) to the
     // bound tools so their projections track the new set. When the edited suite
     // is the base, it merges into every applied suite, so re-sync ALL bindings;
@@ -537,11 +537,6 @@ pub async fn cmd_update_suite(
     if !to_resync.is_empty() {
         let settings = Settings::load()?;
         let scanned = api::scan(&settings);
-        // Opportunistically qualify any unqualified refs against the scan so the
-        // suite is portable on the next sync.
-        if SuiteStore::backfill_sources(&mut suite, &scanned.items) {
-            let _ = store.put(&suite);
-        }
         resync_bindings(&store, &settings, &scanned, &to_resync);
         // Tool projections changed — nudge the manager to refresh.
         let _ = app.emit("sources-changed", ());
@@ -579,10 +574,11 @@ pub async fn cmd_apply_suite(
         .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
 
     let scanned = api::scan(&settings);
-    // Opportunistically qualify unqualified refs so the suite syncs portably.
-    if SuiteStore::backfill_sources(&mut suite, &scanned.items) {
-        let _ = store.put(&suite);
-    }
+    // Qualify unqualified refs in-memory so apply matching is source-precise.
+    // We deliberately do NOT persist this: rewriting the synced suites file
+    // behind the user's back makes two devices diverge, and a later `git pull`
+    // line-merges the divergent multi-line capability arrays into an empty set.
+    SuiteStore::backfill_sources(&mut suite, &scanned.items);
     // Union the base suite's capabilities so its rules/skills are always present.
     let base = store.base()?;
     let effective = api::merge_base_caps(&suite, base.as_ref());

@@ -205,6 +205,8 @@ function ShortcutPanel({ settings, onChanged }: PanelProps) {
 function WatcherPanel({ onChanged }: PanelProps) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const watching = useManagerStore((s) => s.watching);
+  const toggleWatching = useManagerStore((s) => s.toggleWatching);
 
   const onResync = useCallback(async () => {
     setBusy(true);
@@ -222,14 +224,19 @@ function WatcherPanel({ onChanged }: PanelProps) {
 
   return (
     <Card className="p-4">
-      <CardHeader className="p-0">
-        <CardTitle className={sectionTitle}>Sync recovery</CardTitle>
+      <CardHeader className="flex-row items-center justify-between p-0">
+        <CardTitle className={sectionTitle}>Source watcher</CardTitle>
+        <Switch
+          checked={watching}
+          onCheckedChange={(v) => void toggleWatching(v)}
+          aria-label={watching ? "Watching — pause the watcher" : "Paused — enable the watcher"}
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-2 p-0">
         <p className={hint}>
-          The source watcher keeps every tool in sync automatically (toggle it from the header). If
-          projections ever look out of sync, force a full rescan and resync of all enabled tools and
-          the active workspace.
+          When on, the watcher keeps every tool in sync automatically as your source roots change —
+          leave it on. If projections ever look out of sync, force a full rescan and resync of all
+          enabled tools and the active workspace.
         </p>
         <div className="flex items-center gap-3">
           <Button onClick={() => void onResync()} disabled={busy}>

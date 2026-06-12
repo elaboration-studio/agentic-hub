@@ -31,6 +31,24 @@ pub fn expand_tilde(input: &str) -> PathBuf {
     PathBuf::from(input)
 }
 
+/// Best-effort one-level backup of a dotfile before it is overwritten. Copies
+/// `path` to `<path>.bak` only when the file exists and is non-empty, so an
+/// accidental clobber (a botched git merge resolved while the app is open, a
+/// mistaken edit) is recoverable without reaching for `git checkout`. The empty
+/// guard means a freshly-emptied file never overwrites a good backup. Never
+/// errors the caller: a failed backup must not block the real write.
+pub fn back_up_dotfile(path: &std::path::Path) {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return;
+    };
+    if !meta.is_file() || meta.len() == 0 {
+        return;
+    }
+    let mut bak = path.as_os_str().to_os_string();
+    bak.push(".bak");
+    let _ = std::fs::copy(path, std::path::Path::new(&bak));
+}
+
 /// Render a path home-relative (`~/…`) for display. Inverse of [`expand_tilde`].
 /// Paths outside the home directory are returned unchanged.
 pub fn tildify(path: &std::path::Path) -> String {

@@ -4,20 +4,21 @@
 // a Cancel that kills the running process. Selection + console live together so
 // the whole "install" flow is one cohesive surface.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Info } from "lucide-react";
+import { Info, Search } from "lucide-react";
 import {
   cancelInstall,
   installSkillStream,
   onInstallContextChanged,
   takeInstallContext,
 } from "@/ipc";
-import { useSkillsStore } from "@/state/skills";
+import { useSkillsStore, filterFavorites } from "@/state/skills";
 import { messageOf } from "@/shared";
 import type { InstallContext, SkillInstallEvent, ToolId } from "@/types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { InstallMatrix, type InstallStatus } from "./InstallMatrix";
 
 // Selection: favorite id → the tools to install it for. A skill with no tools
@@ -40,8 +41,13 @@ export function InstallWindow() {
   const [statuses, setStatuses] = useState<Record<string, InstallStatus>>({});
   const [lines, setLines] = useState<string[]>([]);
   const [installing, setInstalling] = useState(false);
+  const [filter, setFilter] = useState("");
   const cancelledRef = useRef(false);
   const consoleRef = useRef<HTMLPreElement>(null);
+
+  // Selection always spans the full starred set, so a filter narrows only what
+  // is shown — it never drops already-picked (now-hidden) skills.
+  const shown = useMemo(() => filterFavorites(favorites, filter), [favorites, filter]);
 
   const load = useCallback(async () => {
     try {
@@ -82,18 +88,21 @@ export function InstallWindow() {
     });
   }, []);
 
+  // Column "select all" applies to the visible (filtered) rows only, while
+  // leaving any hidden rows' picks untouched.
   const toggleColumn = useCallback(
     (tool: ToolId, on: boolean) => {
       setPicks((prev) => {
-        const copy: Picks = {};
-        for (const f of favorites) {
-          const next = withTool(prev[f.id], tool, on);
+        const copy: Picks = { ...prev };
+        for (const f of shown) {
+          const next = withTool(copy[f.id], tool, on);
           if (next.length) copy[f.id] = next;
+          else delete copy[f.id];
         }
         return copy;
       });
     },
-    [favorites],
+    [shown],
   );
 
   // Run one skill install, resolving when its stream ends. Lines stream into the
@@ -200,16 +209,34 @@ export function InstallWindow() {
           No starred skills. Star some on the Resources page first.
         </p>
       ) : (
-        <div className="max-h-72 shrink-0 overflow-auto">
-          <InstallMatrix
-            favorites={favorites}
-            picks={picks}
-            statuses={statuses}
-            disabled={installing}
-            onToggleCell={toggleCell}
-            onToggleColumn={toggleColumn}
-          />
-        </div>
+        <>
+          <div className="relative shrink-0">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={filter}
+              placeholder="Filter starred skills…"
+              className="pl-9"
+              disabled={installing}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </div>
+          {shown.length === 0 ? (
+            <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+              No starred skills match “{filter.trim()}”.
+            </p>
+          ) : (
+            <div className="max-h-72 shrink-0 overflow-auto">
+              <InstallMatrix
+                favorites={shown}
+                picks={picks}
+                statuses={statuses}
+                disabled={installing}
+                onToggleCell={toggleCell}
+                onToggleColumn={toggleColumn}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {(lines.length > 0 || installing) && (

@@ -102,8 +102,16 @@ pub struct SkillFavoritesState { pub favorites: Vec<SkillFavorite> }
 ```
 
 API: `read` / `add` (upsert by `(provider, id)`, newest-first, stamps
-`starred_at`) / `remove`. Atomic tmp+rename write; missing file → empty;
-malformed JSON → `StateParse` (never silently overwrites the user's file).
+`starred_at`) / `remove`. Atomic tmp+rename write preceded by a one-level
+`<file>.bak` backup of the prior good (non-empty) file
+(`paths::back_up_dotfile`); missing file → empty; malformed JSON → `StateParse`
+(never silently overwrites the user's file).
+
+Because the favorites file is meant to be git-synced across devices (set a custom
+`favorites_path` inside a repo), it gets the same robustness as the suites file:
+the watcher subscribes to the resolved path and emits `skills-favorites-changed`
+on an external rewrite, so the Resources view reloads after a `git pull` instead
+of holding a stale list (see [watcher.md](./watcher.md)).
 
 ## Settings
 
@@ -174,8 +182,10 @@ enough. `SkillInstallEvent` is the streamed, ts-rs-exported event type.
 - `settings`: skills block defaults off, roundtrips, legacy config without the
   block defaults off.
 - UI store (`src/state/skills.ts`): search (success / blank / error), favorites
-  load / star / unstar. Mocks `@/ipc` + toasts. (Install is window-local state in
-  `InstallWindow`, no longer in this store.)
+  load / star / unstar, and the pure `filterFavorites` helper (name / repo /
+  owner / slug, case-insensitive, blank-query passthrough) that backs the local
+  filter box on the Skills page and the install window. Mocks `@/ipc` + toasts.
+  (Install is window-local state in `InstallWindow`, no longer in this store.)
 
 ## Follow-ups
 

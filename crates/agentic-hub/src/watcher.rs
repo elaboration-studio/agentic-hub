@@ -22,6 +22,8 @@ use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use notify::{recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter};
 
+use crate::commands::SuiteStoreChangedEvent;
+
 /// The per-tool directories and instruction files inside a workspace that the
 /// inventory scan reads; watched (when present) so edits live-refresh the view.
 const WORKSPACE_WATCH_DIRS: [&str; 4] = [".agents", ".claude", ".cursor", ".codex"];
@@ -143,6 +145,7 @@ fn replace(slot: &mut MutexGuard<'_, Option<Running>>, app: AppHandle) {
         }
     }
     watch_active_workspace(&mut watcher);
+    watch_state_files(&mut watcher, &settings);
 
     // Seed the snapshot so the first change diffs against startup state
     // (no auto-enable flood on launch).
@@ -192,8 +195,7 @@ fn run_once(app: &AppHandle, prev: &mut HashSet<String>) {
     let scanned = api::scan(&settings);
     reconcile::reconcile_all(&scanned.items, &settings, prev);
     *prev = scanned.items.iter().map(|i| i.id.clone()).collect();
-    let _ = app.emit("sources-changed", ());
-    let _ = app.emit("workspace-changed", ());
+    emit_refresh(app);
 }
 
 /// Full rescan + resync with no newcomer auto-enable (the Config fallback /
@@ -210,8 +212,25 @@ pub fn resync_now(app: &AppHandle) {
     // newcomer — a pure refresh/repair pass.
     let all: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
     reconcile::reconcile_all(&scanned.items, &settings, &all);
+    emit_refresh(app);
+}
+
+/// Notify the UI after a reconcile/refresh pass. Beyond the global matrix and
+/// workspace inventory, we also nudge the suites and favorites views: a single
+/// batch (e.g. a `git pull`) can rewrite the synced suites or favorites file, so
+/// both must reload from disk to avoid showing — and later re-saving — a stale
+/// in-memory snapshot.
+fn emit_refresh(app: &AppHandle) {
     let _ = app.emit("sources-changed", ());
     let _ = app.emit("workspace-changed", ());
+    let _ = app.emit(
+        "suite-store-changed",
+        SuiteStoreChangedEvent {
+            kind: "external".to_string(),
+            suite_id: None,
+        },
+    );
+    let _ = app.emit("skills-favorites-changed", ());
 }
 
 /// Subscribe to the active workspace's existing tool dirs and instruction files
@@ -230,6 +249,22 @@ fn watch_active_workspace(watcher: &mut RecommendedWatcher) {
     }
     for file in WORKSPACE_WATCH_FILES {
         let path = dir.join(file);
+        if path.is_file() {
+            let _ = watcher.watch(&path, RecursiveMode::NonRecursive);
+        }
+    }
+}
+
+/// Subscribe to the resolved suites and skill-favorites files so an external
+/// rewrite (a `git pull` on a synced custom path) wakes the worker and the UI
+/// reloads from disk. Watched as single files (NonRecursive): when they live at
+/// a custom path inside a git repo we must not watch the whole repo. No-op for a
+/// file that does not exist yet.
+fn watch_state_files(watcher: &mut RecommendedWatcher, settings: &Settings) {
+    for path in [
+        settings.resolved_suites_path(),
+        settings.resolved_favorites_path(),
+    ] {
         if path.is_file() {
             let _ = watcher.watch(&path, RecursiveMode::NonRecursive);
         }

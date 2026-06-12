@@ -181,6 +181,10 @@ pub struct Settings {
     /// projections on change. Defaults to on (the manual Rescan button is gone).
     #[serde(default = "default_true")]
     pub watcher_enabled: bool,
+    /// One-time migration marker: 0.8.1 force-enables the watcher once (flipping
+    /// configs that had paused it), then sets this so future user pauses stick.
+    #[serde(default)]
+    pub watcher_force_migrated: bool,
     /// Preferred editor for opening a capability's original file. Defaults to
     /// the OS default app.
     #[serde(default)]
@@ -328,6 +332,8 @@ impl Default for Settings {
             shared_root: expand_tilde("~/.agentic"),
             suites_path: None,
             watcher_enabled: true,
+            // A fresh config already has the watcher on; nothing to migrate.
+            watcher_force_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             skills: SkillsConfig::default(),
@@ -358,6 +364,18 @@ impl Settings {
             Some(p) => expand_tilde(&p.to_string_lossy()),
             None => crate::skill_favorites::default_path(),
         }
+    }
+
+    /// One-time 0.8.1 migration: force the source watcher on, overriding a prior
+    /// user pause exactly once, then mark it done so future pauses stick. Returns
+    /// whether anything changed (and thus needs persisting). Idempotent.
+    pub fn migrate_force_watcher_on(&mut self) -> bool {
+        if self.watcher_force_migrated {
+            return false;
+        }
+        self.watcher_enabled = true;
+        self.watcher_force_migrated = true;
+        true
     }
 
     /// Load from the canonical path, falling back to defaults if absent.
@@ -478,6 +496,7 @@ impl Settings {
             shared_root: shared_root.into(),
             suites_path: None,
             watcher_enabled: true,
+            watcher_force_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             skills: SkillsConfig::default(),
@@ -495,6 +514,29 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pre_0_8_1_config_deserializes_unmigrated_and_force_on_flips_it_once() {
+        // Simulate a pre-0.8.1 file: the watcher was paused and the migration
+        // marker key does not exist yet (serde must fill it with false).
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        let obj = value.as_object_mut().unwrap();
+        obj.remove("watcherForceMigrated");
+        obj.insert("watcherEnabled".to_string(), serde_json::Value::Bool(false));
+        let mut s: Settings = serde_json::from_value(value).unwrap();
+        assert!(!s.watcher_enabled, "starts paused");
+        assert!(!s.watcher_force_migrated, "marker absent in legacy file");
+
+        // First migration forces it on and marks itself done.
+        assert!(s.migrate_force_watcher_on());
+        assert!(s.watcher_enabled);
+        assert!(s.watcher_force_migrated);
+
+        // Idempotent: a later user pause is respected, never re-forced.
+        s.watcher_enabled = false;
+        assert!(!s.migrate_force_watcher_on());
+        assert!(!s.watcher_enabled);
+    }
 
     #[test]
     fn defaults_match_tool_adapter_matrix() {

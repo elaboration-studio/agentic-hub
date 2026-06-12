@@ -3,12 +3,12 @@
 // starring goes through IPC. Favorites are reused from the Workspace scope to
 // install skills.
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, GitBranch, Search, Star } from "lucide-react";
 import { toast } from "sonner";
-import { openUrl } from "@/ipc";
+import { openUrl, onSkillsFavoritesChanged } from "@/ipc";
 import { useManagerStore } from "@/state/manager";
-import { useSkillsStore, SKILLS_SH_PROVIDER } from "@/state/skills";
+import { useSkillsStore, SKILLS_SH_PROVIDER, filterFavorites } from "@/state/skills";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -45,8 +45,17 @@ export function SkillsPage() {
   const unstar = useSkillsStore((s) => s.unstar);
   const loadFavorites = useSkillsStore((s) => s.loadFavorites);
 
+  const [filter, setFilter] = useState("");
+
   useEffect(() => {
     void loadFavorites();
+  }, [loadFavorites]);
+
+  // Reload when the favorites file changes on disk (e.g. a `git pull` on a
+  // synced custom path) so the starred list never shows a stale snapshot.
+  useEffect(() => {
+    const unlisten = onSkillsFavoritesChanged(() => void loadFavorites());
+    return () => void unlisten.then((fn) => fn());
   }, [loadFavorites]);
 
   // Debounce: search as the user types, once they pause.
@@ -59,6 +68,8 @@ export function SkillsPage() {
     () => new Set(favorites.filter((f) => f.provider === SKILLS_SH_PROVIDER).map((f) => f.id)),
     [favorites],
   );
+
+  const shown = useMemo(() => filterFavorites(favorites, filter), [favorites, filter]);
 
   if (!skills?.enabled) {
     return (
@@ -119,15 +130,31 @@ export function SkillsPage() {
         </Dialog>
       </div>
 
+      {favorites.length > 0 && (
+        <div className="relative shrink-0">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filter}
+            placeholder="Filter starred skills…"
+            className="pl-9"
+            onChange={(e) => setFilter(e.target.value)}
+          />
+        </div>
+      )}
+
       <Card className="flex min-h-0 flex-1 flex-col p-4">
         <CardContent className="flex min-h-0 flex-col gap-2 overflow-y-auto p-0">
           {favorites.length === 0 ? (
             <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
               No starred skills yet. Search and star a result to reuse it across projects.
             </p>
+          ) : shown.length === 0 ? (
+            <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+              No starred skills match “{filter.trim()}”.
+            </p>
           ) : (
             <ul className="flex flex-col gap-1.5">
-              {favorites.map((f) => (
+              {shown.map((f) => (
                 <SkillRow
                   key={`${f.provider}:${f.id}`}
                   name={f.name}

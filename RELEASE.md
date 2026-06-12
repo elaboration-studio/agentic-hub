@@ -5,40 +5,45 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.8.0] — 2026-06-10
+## [0.8.1] — 2026-06-12
 
 ### Highlights
 
-- **A layered command palette.** Summoning the palette now lands on a hub of
-  first-class commands grouped into sections — **Search** (all resources,
-  skills, agents, rules, hooks, commands, suites), **Go to** (global,
-  workspace), **Navigate** (Manager, Suites, Config), and **Actions** (apply a
-  suite, pause/resume watching). Pick a mode first, then type: a query targets
-  exactly the slice of resources you mean, instead of one global mixed result
-  list. Cross-kind search is still one drill-in away via "Search all resources".
-- **Go to global.** Locate any shared resource in the Manager matrix — same
-  scroll-and-highlight affordance the workspace locate already had, now for the
-  global scope too.
-- **Toggle watching from anywhere.** The palette's Pause/Resume watching action
-  flips the source watcher without surfacing the main window; the header toggle
-  stays in sync.
-- **Jump between search modes with Ctrl+number.** Ctrl+1…Ctrl+7 switch into
-  each search slice from any palette view; the hub labels each row with `⌃1`…`⌃7`
-  so the shortcuts are discoverable.
-
-### Changes
-
-- Typing at the palette root filters the hub commands only — resource,
-  workspace, and suite results appear inside their dedicated modes.
-- Every drill-in view shows a breadcrumb; Backspace on an empty query steps back
-  one level (suite-tools returns to the suite search, then the root).
-- The `hub-locate` event payload is now scope-tagged (`global` or `workspace`);
-  a new `hub-watcher-changed` event syncs the watcher toggle across windows.
+- **Fixed: suites no longer go empty after a git sync.** When the suites file
+  lived at a custom path inside a git repo synced across machines, applying or
+  editing a suite silently rewrote the file with device-specific source
+  qualifiers. Two machines diverged, and a later `git pull` line-merged the
+  multi-line capability arrays into nothing — the suite names survived but the
+  resources vanished. Apply and palette "Apply suite…" are now pure reads: the
+  synced file stops churning, so the merge that emptied it can't happen.
+- **Belt-and-suspenders backups.** Every write to the suites and skill-favorites
+  files first copies the prior good file to `<file>.bak`, so an accidental
+  clobber is recoverable without reaching for `git checkout`.
+- **Live reload after a pull.** The watcher now also watches the suites and
+  favorites files. An external rewrite (a `git pull` on a synced path) reloads
+  the Suites and Resources views immediately, so a stale in-memory snapshot can
+  never overwrite freshly-pulled content.
+- **Watcher on by default, toggle moved to Config.** The source watcher is an
+  install-once preference, so its switch now lives in Config ▸ Source watcher
+  rather than the header. A one-time migration flips any config that had paused
+  the watcher back on; a deliberate pause after that still sticks.
+- **Favorites parity with suites.** Your starred-skills file gets the same
+  cross-device robustness — set a custom `favoritesPath` inside a git repo and
+  share your favorite skills across machines, with backups and live reload.
+- **Search your starred skills.** A local filter box on the Resources page and in
+  the install-into-project window narrows the starred list as you type (by name,
+  repo, owner, or slug), so big lists stay easy to navigate. Hidden skills you
+  already selected still install.
 
 ### Migration
 
-- **None required.** No settings or on-disk format changed.
+- **Automatic.** On first launch 0.8.1 force-enables the watcher once (recorded
+  via a new `watcherForceMigrated` settings marker). No file formats changed and
+  no manual steps are needed.
 
 ### Known Issues
 
-- None.
+- File-level watching of the suites/favorites files relies on path-based OS
+  events (FSEvents on macOS). On Linux, a file replaced by rename may need the
+  next app focus to refresh; the `.bak` backup and git history remain the
+  recovery path either way.

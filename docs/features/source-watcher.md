@@ -18,7 +18,11 @@ a silent staleness trap.
 The watcher closes that loop: it watches the source roots, and on any change it
 re-scans, reconciles every enabled tool's projections from fresh source content,
 re-patches the active workspace, and live-refreshes the UI. The Rescan button is
-replaced by a single **Watch** toggle.
+replaced by a single **enable/pause** switch that lives in Config (it is an
+install-once preference, not a frequently-flipped header control). It also
+watches the suites and skill-favorites files so a synced rewrite (a `git pull`
+on a custom path) reloads those views live instead of showing — and later
+re-saving — a stale snapshot.
 
 ## User story
 
@@ -41,8 +45,11 @@ control.
     same-source, same-kind sibling in its immediate parent folder is already
     enabled for T (a new file in a brand-new folder stays disabled);
   - never takes over foreign files/links.
-- A header **Watch / Paused** toggle (replaces Rescan), persisted in settings
+- A Config **enable/pause** switch (replaces Rescan), persisted in settings
   (`watcherEnabled`, default on).
+- Watching the resolved suites and skill-favorites files (single-file,
+  NonRecursive) so an external rewrite emits `suite-store-changed` /
+  `skills-favorites-changed` and the Suites and Resources views reload.
 - A Config **"Rescan & resync everything"** fallback button for recovery.
 - Live UI refresh on change — skipped while the user has unapplied edits, so an
   incoming event never discards an in-progress selection.
@@ -65,8 +72,10 @@ control.
   re-patched from those records so its hard copies refresh from fresh source
   content. Suites are explicit lists, so workspace content refreshes but no
   auto-enable happens there.
-- **Default on.** `watcherEnabled` defaults to true; configs written before the
-  flag existed default on too.
+- **Default on, forced once.** `watcherEnabled` defaults to true; configs written
+  before the flag existed default on too. v0.8.1 runs a one-time migration
+  (`watcherForceMigrated`) that flips any config that had paused the watcher back
+  on, then records the marker so a later user pause sticks.
 - **Loop-safe.** Reconcile is idempotent — a second pass over unchanged sources
   produces an empty plan and no writes, so writes into target dirs (which are not
   watched) cannot drive an unbounded loop.
@@ -74,17 +83,13 @@ control.
 ## Experience
 
 ```
-Header
-  Agentic Hub
-  Scope: [ Global | Workspace ]        ● Watching     (toggle)
-
-Config ▸ Sync recovery
+Config ▸ Source watcher                              ( on/off switch )
+  When on, the watcher keeps every tool in sync automatically…
   [ Rescan & resync everything ]   Done — projections reconciled.
 ```
 
-- The toggle shows a green live dot when watching, grey when paused. Clicking it
-  calls `cmd_set_watcher_enabled`, persists the choice, and starts/stops the
-  OS subscription immediately.
+- The switch calls `cmd_set_watcher_enabled`, persists the choice, and
+  starts/stops the OS subscription immediately.
 - On any debounced change the manager view re-scans and re-inspects itself; the
   matrix reflects refreshed states and any auto-enabled newcomers.
 
@@ -96,7 +101,8 @@ Config ▸ Sync recovery
 - [ ] A new skill dropped beside an enabled sibling is auto-enabled; a new skill in a brand-new folder stays disabled
 - [ ] Foreign files/links at a target are never taken over
 - [ ] The active workspace re-patches from its recorded `lastApplied` on change
-- [ ] The header toggle pauses/resumes watching and persists across restarts
+- [ ] The Config switch pauses/resumes watching and persists across restarts
+- [ ] A `git pull` that rewrites the synced suites/favorites file reloads the Suites and Resources views live
 - [ ] The Config fallback button forces a full rescan + resync (no auto-enable) and refreshes the UI
 - [ ] A live refresh is skipped while the user has unapplied matrix edits
 - [ ] Adding/removing a source or saving settings re-subscribes the watcher to current roots
