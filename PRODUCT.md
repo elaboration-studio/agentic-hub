@@ -312,7 +312,7 @@ Out of scope for now: teams, multi-machine sync, cloud profiles, organizational 
 - Primary target: macOS (universal binary, distributed as `.dmg`)
 - Secondary target: Linux (`.deb`, `.AppImage`)
 - Windows: documented as constrained in v1 due to symlink permission model — see `ARCHITECTURE.permissions.md`. Managed-copy fallback path documented but not validated for v1 shipping
-- No remote network calls in v1 (no telemetry, no auto-update endpoint pinging — auto-update via `tauri-plugin-updater` is a follow-on)
+- Local-first: the only network call is **opt-in** anonymous telemetry (Aptabase), off by default and toggled in Config (see decision D15). No auto-update endpoint pinging — auto-update via `tauri-plugin-updater` is a follow-on
 
 ## Milestones
 
@@ -399,7 +399,7 @@ Estimated effort: 3 days human / ~1 hour Arno-agentic-system
 - **Workspace manifest folder.** Confirmed `<ws>/.agentic-hub/workspace-patch.json`. Gitignore guidance: document in README that this folder should typically be gitignored, but allow users to commit it if they want shared project-level capability state.
 - **Windows symlink fallback.** Symlinks require either Developer Mode or admin elevation on Windows. v1 documents Windows as constrained. The `managed_copy` projection path technically works on Windows but has not been validated. Decide before any Windows release whether to ship at all or to skip.
 - **Auto-update.** `tauri-plugin-updater` is supported in Tauri 2.x but requires hosting signed manifests. For v1, the app is unsigned / unhosted. Decide before public release.
-- **Telemetry.** None in v1. Decide later if usage-pattern instrumentation is worth adding for personal-tool optimization.
+- **Telemetry.** Opt-in Aptabase telemetry shipped (decision D15): off by default, Rust-only lifecycle events (`app_started`/`app_exited`). Expanding the event set is a later call.
 - **OpenClaw workspace support.** Currently out of scope (matches VS Code decision). Revisit once OpenClaw's project-level scan path stabilizes.
 
 ## References

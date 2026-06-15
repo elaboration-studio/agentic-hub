@@ -2,6 +2,7 @@
 import type { EditorPref } from "./EditorPref";
 import type { SkillsConfig } from "./SkillsConfig";
 import type { SourceConfig } from "./SourceConfig";
+import type { TelemetryConfig } from "./TelemetryConfig";
 import type { ToolsSettings } from "./ToolsSettings";
 
 /**
@@ -45,4 +46,8 @@ paletteShortcut: string,
 /**
  * Opt-in skills.sh public source config. Defaults to disabled.
  */
-skills: SkillsConfig, tools: ToolsSettings, };
+skills: SkillsConfig, 
+/**
+ * Opt-in anonymous usage telemetry (Aptabase). Defaults to disabled.
+ */
+telemetry: TelemetryConfig, tools: ToolsSettings, };

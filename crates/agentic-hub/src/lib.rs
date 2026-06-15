@@ -9,12 +9,15 @@ mod error;
 mod install_window;
 mod menu;
 mod palette;
+mod telemetry;
 mod watcher;
 
 use agentic_core::settings::{default_palette_shortcut, Settings};
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, RunEvent, WindowEvent};
+use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_global_shortcut::ShortcutState;
+use telemetry::TelemetryState;
 use watcher::WatcherState;
 
 /// Register the `tauri-nspanel` plugin on macOS so the palette window can be
@@ -32,11 +35,25 @@ fn with_macos_panel(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri
 
 /// Build and run the Tauri application.
 pub fn run() {
+    // The Aptabase plugin starts its flush loop with a bare `tokio::spawn`
+    // during plugin setup, which panics without an active Tokio runtime. Tauri
+    // does not enter one on the main thread, so we own a runtime here and keep
+    // its context entered for the whole app lifetime.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("error while building the Tokio runtime");
+    let _runtime_guard = runtime.enter();
+
     with_macos_panel(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        // Opt-in telemetry. The plugin is always registered (it sends nothing
+        // until `track_event` is called); every call is gated on consent via
+        // `TelemetryState`, so nothing leaves the machine while disabled.
+        .plugin(tauri_plugin_aptabase::Builder::new(telemetry::APTABASE_KEY).build())
         // Global summon accelerator for the command palette. The handler fires
         // for any registered shortcut; we only ever register the palette one.
         .plugin(
@@ -49,6 +66,7 @@ pub fn run() {
                 .build(),
         )
         .manage(WatcherState::default())
+        .manage(TelemetryState::default())
         .manage(install_window::InstallContextState::default())
         .manage(install_window::InstallState::default())
         .menu(menu::build_menu)
@@ -72,6 +90,13 @@ pub fn run() {
             // Start the source watcher on launch when enabled in settings.
             if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());
+            }
+            // Seed the live telemetry consent flag, then record app start if the
+            // user has opted in. No-op (and no network) when disabled.
+            let telemetry_on = settings.telemetry.enabled;
+            app.state::<TelemetryState>().set_enabled(telemetry_on);
+            if telemetry_on {
+                let _ = app.track_event("app_started", None);
             }
             // Pre-create the (hidden) palette panel so the first summon is
             // instant, then register the configured global accelerator. A bad
@@ -167,12 +192,19 @@ pub fn run() {
         .expect("error while building the Agentic Hub Tauri application")
         // Re-show the hidden window when the user clicks the Dock icon (macOS
         // `applicationShouldHandleReopen`), so a background app is never stranded.
-        .run(|app, event| {
-            if let RunEvent::Reopen { .. } = event {
+        .run(|app, event| match event {
+            RunEvent::Reopen { .. } => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
             }
+            // Record app exit (and flush before the process ends) only when the
+            // user has opted into telemetry.
+            RunEvent::Exit if app.state::<TelemetryState>().enabled() => {
+                let _ = app.track_event("app_exited", None);
+                app.flush_events_blocking();
+            }
+            _ => {}
         });
 }

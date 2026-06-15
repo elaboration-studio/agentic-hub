@@ -1,6 +1,6 @@
 [package]
 name = "agentic-hub"
-version = "0.8.1"
+version = "0.8.2"
 description = "Tauri 2.x desktop shell for Agentic Hub. Thin #[tauri::command] wrappers over agentic-core."
 edition.workspace = true
 license.workspace = true
@@ -29,9 +29,15 @@ serde_json = { workspace = true }
 tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-aptabase = "1"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
+# Aptabase's plugin setup spawns its background flush loop with a bare
+# `tokio::spawn`, so an active Tokio runtime must be entered before the app is
+# built (Tauri does not enter one on the main thread). We own that runtime in
+# `run()`.
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
 # macOS-only: subclass the palette window to a non-activating NSPanel so it can
 # float over other apps' full-screen Spaces (standard NSWindow cannot — see
 # tauri#11488). Encapsulates the objc FFI, keeping this crate `unsafe`-free.

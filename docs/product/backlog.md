@@ -36,7 +36,7 @@ their agentic resources, it doesn't belong here.
 |----|---|------|--------------------|---------|
 | L1 | P2 | Windows symlink/managed-copy path | Windows users can manage resources | Decide ship-vs-skip (D-open-1) before any Windows release |
 | L2 | P2 | OpenClaw workspace support | Parity for the 4th tool in workspace scope | When OpenClaw's project scan path stabilizes |
-| L3 | P2 | Opt-in usage telemetry | Optimize the personal-tool experience with real data | Only if a concrete question needs it (D-open-3) |
+| L3 | Done | Opt-in usage telemetry | Optimize the personal-tool experience with real data | Shipped: opt-in Aptabase, off by default, Rust-only lifecycle events (D15) |
 | L4 | P2 | Suite import/export & composition | Share/compose known-good capability sets | Demand from dogfooding |
 | L5 | P2 | Cross-tool consistency inspector | Audit which tools have an item at a glance | PRD P2 story; pull forward if drift becomes painful |
 

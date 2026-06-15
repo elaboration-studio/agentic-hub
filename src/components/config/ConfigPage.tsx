@@ -56,6 +56,7 @@ export function ConfigPage() {
       <SkillsSourcePanel {...props} />
       <ToolsPanel {...props} />
       <WatcherPanel {...props} />
+      <TelemetryPanel {...props} />
     </div>
   );
 }
@@ -527,6 +528,63 @@ function SkillsSourcePanel({ settings, onChanged }: PanelProps) {
             </div>
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TelemetryPanel({ settings, onChanged }: PanelProps) {
+  const telemetry = settings.telemetry;
+  const [busy, setBusy] = useState(false);
+
+  const persist = useCallback(
+    async (next: Settings["telemetry"]) => {
+      setBusy(true);
+      try {
+        await saveSettings({ ...settings, telemetry: next });
+        onChanged();
+      } catch (e) {
+        toast.error(messageOf(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [settings, onChanged],
+  );
+
+  return (
+    <Card className="p-4">
+      <CardHeader className="flex-row items-center justify-between p-0">
+        <CardTitle className={sectionTitle}>Usage telemetry</CardTitle>
+        <Switch
+          checked={telemetry.enabled}
+          disabled={busy}
+          onCheckedChange={(v) => void persist({ enabled: v })}
+          aria-label="Enable anonymous usage telemetry"
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 p-0">
+        <p className={hint}>
+          Off by default. When on, the app sends anonymous lifecycle events (app
+          start and exit, plus your OS and app version) to{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => void openExternal("https://aptabase.com")}
+          >
+            Aptabase
+          </button>
+          {" "}to help improve the tool. No file contents, paths, or personal data
+          are ever sent. See the{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => void openExternal("https://aptabase.com/legal/privacy")}
+          >
+            privacy policy
+          </button>
+          .
+        </p>
       </CardContent>
     </Card>
   );

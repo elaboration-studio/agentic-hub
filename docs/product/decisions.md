@@ -105,6 +105,22 @@ WebView `fetch`. "Star" is **local-only** (no remote favorites endpoint).
 Release body. Cutting a release **replaces** it (never prepends); cumulative
 history lives in `CHANGELOG.md`, newest first.
 
+### D15 — Opt-in Aptabase telemetry ✅ (resolves D-open-3)
+**Date:** 2026-06-15
+**Context:** D-open-3 left telemetry open, to be revisited only if a concrete
+optimization question needed real usage data. We chose to add the lightest
+honest signal — does the app get launched — without compromising the
+local-first posture.
+**Decision:** add **opt-in** anonymous telemetry via `tauri-plugin-aptabase`,
+**off by default**, toggled in Config (`Settings.telemetry.enabled`, mirrored at
+runtime by a `TelemetryState` flag so a toggle takes effect with no restart).
+Only coarse lifecycle events (`app_started`, `app_exited`) are sent, **from Rust
+only** — the WebView never calls out, so there is no `@aptabase/tauri` binding
+and no `aptabase:allow-track-event` ACL entry. Nothing is sent while disabled.
+**Consequence:** the v1 "no remote network calls" stance now has one
+user-consented exception. Evaluation lives in
+[telemetry-options.md](telemetry-options.md).
+
 ---
 
 ## Open
@@ -118,9 +134,9 @@ Tracked as backlog L1.
 `tauri-plugin-updater` needs hosted signed manifests. v1 is unsigned/unhosted on
 non-macOS. **Decide hosting + signing before public multi-OS release.** Backlog X5.
 
-### D-open-3 — Telemetry ❓
-None in v1. Revisit only if a concrete optimization question needs real usage
-data; weigh against the local-only, no-network-calls posture. Backlog L3.
+### D-open-3 — Telemetry ✅ resolved by D15
+Resolved: opt-in Aptabase telemetry, off by default, Rust-only lifecycle events.
+See D15. Backlog L3 done.
 
 ### D-open-4 — API-key storage ❓
 Plaintext in `config.json` today (accepted v1 tradeoff, tech-debt T1). Move to OS
