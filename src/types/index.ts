@@ -38,6 +38,7 @@ export type { ScanError } from "./generated/ScanError";
 export type { ScanResult } from "./generated/ScanResult";
 export type { Settings } from "./generated/Settings";
 export type { SkillsConfig } from "./generated/SkillsConfig";
+export type { TelemetryConfig } from "./generated/TelemetryConfig";
 export type { SkillFavorite } from "./generated/SkillFavorite";
 export type { SkillFavoritesState } from "./generated/SkillFavoritesState";
 export type { SkillCliStatus } from "./generated/SkillCliStatus";

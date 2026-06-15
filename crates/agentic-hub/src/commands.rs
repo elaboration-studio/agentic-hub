@@ -53,6 +53,7 @@ pub async fn cmd_load_settings() -> IpcResult<Settings> {
 pub async fn cmd_save_settings(
     app: AppHandle,
     watcher: State<'_, WatcherState>,
+    telemetry: State<'_, crate::telemetry::TelemetryState>,
     settings: Settings,
 ) -> IpcResult<()> {
     if !agentic_core::settings::is_valid_shortcut(&settings.palette_shortcut) {
@@ -62,6 +63,9 @@ pub async fn cmd_save_settings(
         ));
     }
     settings.save()?;
+    // Mirror the telemetry consent flag so a mid-session toggle takes effect at
+    // once (gates the next tracked event without needing a restart).
+    telemetry.set_enabled(settings.telemetry.enabled);
     // Source roots may have changed; re-subscribe if the watcher is running.
     watcher.restart_if_running(app.clone());
     // The summon accelerator may have changed; re-register it now.

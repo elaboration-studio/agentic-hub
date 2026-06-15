@@ -114,6 +114,21 @@ pub struct SkillsConfig {
     pub favorites_path: Option<PathBuf>,
 }
 
+/// Opt-in anonymous usage telemetry (Aptabase). Off by default; nothing is sent
+/// unless the user enables it. The desktop shell tracks only coarse lifecycle
+/// events (app start/exit) from Rust — the WebView never calls out.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TelemetryConfig {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 /// Per-tool target paths and toggles. Mirrors the IPC `ToolSettings` shape.
 #[cfg_attr(
     feature = "ts-export",
@@ -197,6 +212,9 @@ pub struct Settings {
     /// Opt-in skills.sh public source config. Defaults to disabled.
     #[serde(default)]
     pub skills: SkillsConfig,
+    /// Opt-in anonymous usage telemetry (Aptabase). Defaults to disabled.
+    #[serde(default)]
+    pub telemetry: TelemetryConfig,
     pub tools: ToolsSettings,
 }
 
@@ -337,6 +355,7 @@ impl Default for Settings {
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             skills: SkillsConfig::default(),
+            telemetry: TelemetryConfig::default(),
             tools: ToolsSettings::default(),
         }
     }
@@ -500,6 +519,7 @@ impl Settings {
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             skills: SkillsConfig::default(),
+            telemetry: TelemetryConfig::default(),
             tools: ToolsSettings {
                 codex: tool("codex"),
                 claude: tool("claude"),
@@ -648,6 +668,42 @@ mod tests {
             reloaded.resolved_favorites_path(),
             PathBuf::from("/tmp/fav.json")
         );
+    }
+
+    #[test]
+    fn telemetry_defaults_off_and_roundtrips() {
+        let s = Settings::default();
+        assert!(!s.telemetry.enabled, "telemetry is opt-in, off by default");
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let configured = Settings {
+            telemetry: TelemetryConfig { enabled: true },
+            ..Settings::default()
+        };
+        configured.save_to(&path).unwrap();
+        let reloaded = Settings::load_from(&path).unwrap();
+        assert_eq!(reloaded.telemetry, configured.telemetry);
+        assert!(reloaded.telemetry.enabled);
+    }
+
+    #[test]
+    fn legacy_config_without_telemetry_block_defaults_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        // A config written before the telemetry block existed (no `telemetry` key).
+        fs::write(
+            &path,
+            r#"{ "sharedRoot": "/tmp/agentic", "tools": {
+                "codex": {"enabled": true, "skillsPath": "/c/skills", "agentsPath": "/c/agents", "rulesPath": "/c/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "claude": {"enabled": true, "skillsPath": "/cl/skills", "agentsPath": "/cl/agents", "rulesPath": "/cl/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "cursor": {"enabled": true, "skillsPath": "/cu/skills", "agentsPath": "/cu/agents", "rulesPath": "/cu/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "openclaw": {"enabled": false, "skillsPath": "/o/skills", "agentsPath": "/o/agents", "rulesPath": "/o/rules", "instructionsPath": null, "hooksEnabled": false, "hooksFile": null}
+            } }"#,
+        )
+        .unwrap();
+        let loaded = Settings::load_from(&path).unwrap();
+        assert!(!loaded.telemetry.enabled, "absent block defaults to off");
     }
 
     #[test]

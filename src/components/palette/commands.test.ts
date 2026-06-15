@@ -67,6 +67,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
     skills: { enabled: false, favoritesPath: null },
+    telemetry: { enabled: false },
     tools: {
       codex: toolSettings(overrides.codex ?? true),
       claude: toolSettings(overrides.claude ?? true),
