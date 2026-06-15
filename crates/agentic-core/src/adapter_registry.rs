@@ -21,6 +21,10 @@ pub enum Layout {
 pub enum ProjectionMode {
     LinkSync,
     FileSync,
+    /// Managed copy whose bytes are rendered from the source (Codex agents:
+    /// markdown → subagent TOML). Like `FileSync` for state/op purposes, but the
+    /// target is renamed to `.toml` and written through a content transform.
+    CodexAgentToml,
     MarkdownSectionSync,
     JsonSection,
 }
@@ -152,15 +156,27 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
 }
 
 impl ResolvedAdapter {
-    /// Layout for a kind. Only Claude *skills* are flat — Claude's skill loader
-    /// scans `~/.claude/skills/` non-recursively, so nested source folders must
-    /// collapse to their basename. Claude *agents* are scanned recursively (the
-    /// loader walks `~/.claude/agents/` subfolders; identity comes from the
-    /// `name` frontmatter), so they keep nesting like every other kind. See
+    /// Layout for a kind. Flat collapses a nested source path to its basename;
+    /// Nested preserves it. Flattening is required wherever a tool's loader is
+    /// **non-recursive** (it scans only the top level of the target dir):
+    ///
+    /// - Claude *skills* — `~/.claude/skills/` is scanned non-recursively.
+    /// - Cursor *agents* — `~/.cursor/agents/` is scanned non-recursively and
+    ///   identity is the filename ([Cursor subagents](https://cursor.com/docs/subagents)).
+    /// - Codex *agents* — only top-level `*.toml` are loaded from
+    ///   `~/.codex/agents/` ([Codex subagents](https://developers.openai.com/codex/subagents)).
+    ///
+    /// Claude *agents* are the exception: that loader walks subfolders and takes
+    /// identity from the `name` frontmatter, so they stay nested (flattening
+    /// would collide same-basename agents). Same-basename collisions from
+    /// flattening are resolved deterministically by the planner
+    /// (`resolve_target_collisions`). See
     /// `docs/tech/reference/tool-adapter-matrix.md`.
     pub fn layout_for(&self, kind: CapabilityKind) -> Layout {
+        use CapabilityKind::{Agent, Skill};
         match (self.tool_id, kind) {
-            (ToolId::Claude, CapabilityKind::Skill) => Layout::Flat,
+            (ToolId::Claude, Skill) => Layout::Flat,
+            (ToolId::Cursor | ToolId::Codex, Agent) => Layout::Flat,
             _ => Layout::Nested,
         }
     }
@@ -169,11 +185,15 @@ impl ResolvedAdapter {
     /// combination is unsupported (OpenClaw hooks).
     pub fn projection_mode_for(&self, kind: CapabilityKind) -> Option<ProjectionMode> {
         use CapabilityKind::{Agent, Command, Hook, Rule, Skill};
-        use ProjectionMode::{FileSync, JsonSection, LinkSync, MarkdownSectionSync};
+        use ProjectionMode::{CodexAgentToml, FileSync, JsonSection, LinkSync, MarkdownSectionSync};
         match (self.tool_id, kind) {
             (ToolId::Openclaw, Hook | Command) => None,
             (_, Hook) => Some(JsonSection),
             (ToolId::Cursor, Agent) => Some(FileSync),
+            // Codex loads only `*.toml` subagents (name/description/
+            // developer_instructions); markdown is ignored. Render the source to
+            // a managed TOML copy rather than symlinking the markdown.
+            (ToolId::Codex, Agent) => Some(CodexAgentToml),
             // Claude's skill and command loaders do not follow symlinks, so they
             // are hard-copied (managed) rather than linked.
             (ToolId::Claude, Skill | Command) => Some(FileSync),
@@ -196,11 +216,13 @@ impl ResolvedAdapter {
         }
     }
 
-    /// Whether this `(tool, kind)` projects as a managed copy (Cursor agents).
+    /// Whether this `(tool, kind)` projects as a managed copy — a real file
+    /// recorded in the per-root manifest (Cursor agents, Claude skills/commands,
+    /// Codex agents). Codex agents are a transformed copy but still managed.
     pub fn uses_managed_copy(&self, kind: CapabilityKind) -> bool {
         matches!(
             self.projection_mode_for(kind),
-            Some(ProjectionMode::FileSync)
+            Some(ProjectionMode::FileSync | ProjectionMode::CodexAgentToml)
         )
     }
 
@@ -214,10 +236,15 @@ impl ResolvedAdapter {
             CapabilityKind::Command => self.commands_path.as_ref()?,
             CapabilityKind::Hook => return None,
         };
-        let rel = match self.layout_for(item.kind) {
+        let mut rel = match self.layout_for(item.kind) {
             Layout::Nested => item.relative_path.clone(),
             Layout::Flat => PathBuf::from(item.relative_path.file_name()?),
         };
+        // Codex subagents must be `.toml`; the source markdown is rendered to
+        // TOML on write, so the projected filename swaps its extension too.
+        if self.projection_mode_for(item.kind) == Some(ProjectionMode::CodexAgentToml) {
+            rel.set_extension("toml");
+        }
         Some(base.join(rel))
     }
 }
@@ -304,7 +331,45 @@ mod tests {
         );
         assert_eq!(openclaw.projection_mode_for(CapabilityKind::Hook), None);
         assert!(cursor.uses_managed_copy(CapabilityKind::Agent));
-        assert!(!codex.uses_managed_copy(CapabilityKind::Agent));
+        // Codex agents render to a managed TOML copy, not a markdown symlink.
+        assert_eq!(
+            codex.projection_mode_for(CapabilityKind::Agent),
+            Some(ProjectionMode::CodexAgentToml)
+        );
+        assert!(codex.uses_managed_copy(CapabilityKind::Agent));
+    }
+
+    #[test]
+    fn codex_agent_target_is_toml_flat() {
+        let s = Settings::default();
+        let codex = resolve(&s, ToolId::Codex);
+        // Codex loads only top-level `*.toml` subagents (nested files are
+        // ignored), so the source basename is collapsed and the extension swaps
+        // md -> toml. Source: https://developers.openai.com/codex/subagents (2026).
+        let agent = item(CapabilityKind::Agent, "team/cto.md");
+        let target = codex.target_path_for(&agent).unwrap();
+        assert!(
+            target.ends_with(Path::new(".codex/agents/cto.toml")),
+            "{target:?}"
+        );
+        assert_eq!(codex.layout_for(CapabilityKind::Agent), Layout::Flat);
+    }
+
+    #[test]
+    fn cursor_agent_is_flat() {
+        // Cursor's subagent loader scans only the top level of `~/.cursor/agents/`
+        // and derives identity from the filename, so a nested source spec must
+        // collapse to its basename or Cursor never discovers it. Source:
+        // https://cursor.com/docs/subagents (2026).
+        let s = Settings::default();
+        let cursor = resolve(&s, ToolId::Cursor);
+        assert_eq!(cursor.layout_for(CapabilityKind::Agent), Layout::Flat);
+        let agent = item(CapabilityKind::Agent, "zoom/cto.md");
+        let target = cursor.target_path_for(&agent).unwrap();
+        assert!(
+            target.ends_with(Path::new(".cursor/agents/cto.md")),
+            "cursor flattens nested agents to basename: {target:?}"
+        );
     }
 
     #[test]

@@ -24,6 +24,15 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ### Fixed
 
+- **Codex (and any tool sharing the bug) agent projection silently did nothing
+  for older configs.** Enabling agents for Codex appeared to succeed in the
+  matrix but never wrote to `~/.codex/agents`. Configs persisted before v0.5.0
+  retained the superseded Codex `agentsPath` default of `~/.agents/agents` — the
+  OpenStandard-owned shared root — so projections collided there instead of
+  landing where Codex reads subagents. A one-time migration
+  (`Settings::migrate_codex_agents_path`, marker `codexAgentsPathMigrated`)
+  rewrites that exact stale default to `~/.codex/agents` on launch; a deliberate
+  custom path is left untouched.
 - **Startup panic from the telemetry plugin.** The Aptabase plugin starts its
   background flush loop with a bare `tokio::spawn` during setup, which panicked
   at launch ("there is no reactor running") because Tauri does not enter a Tokio

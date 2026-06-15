@@ -200,6 +200,12 @@ pub struct Settings {
     /// configs that had paused it), then sets this so future user pauses stick.
     #[serde(default)]
     pub watcher_force_migrated: bool,
+    /// One-time migration marker: rewrites a stale Codex `agentsPath` of
+    /// `~/.agents/agents` (the pre-0.5.0 default, shared with OpenStandard) to
+    /// the self-contained `~/.codex/agents` once, then sets this so a later
+    /// deliberate choice of the old path sticks.
+    #[serde(default)]
+    pub codex_agents_path_migrated: bool,
     /// Preferred editor for opening a capability's original file. Defaults to
     /// the OS default app.
     #[serde(default)]
@@ -352,6 +358,8 @@ impl Default for Settings {
             watcher_enabled: true,
             // A fresh config already has the watcher on; nothing to migrate.
             watcher_force_migrated: true,
+            // A fresh config already ships the correct codex path; skip migration.
+            codex_agents_path_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             skills: SkillsConfig::default(),
@@ -394,6 +402,24 @@ impl Settings {
         }
         self.watcher_enabled = true;
         self.watcher_force_migrated = true;
+        true
+    }
+
+    /// One-time migration: rewrite a stale Codex `agents_path` of
+    /// `~/.agents/agents` — the pre-0.5.0 default that collided with the
+    /// OpenStandard-owned shared root, so Codex subagents never landed in
+    /// `~/.codex/agents` where Codex reads them — to the current self-contained
+    /// default. Only the exact superseded default is rewritten; any deliberate
+    /// custom path is left alone. Returns whether the marker was newly set (and
+    /// thus the config needs persisting). Idempotent.
+    pub fn migrate_codex_agents_path(&mut self) -> bool {
+        if self.codex_agents_path_migrated {
+            return false;
+        }
+        self.codex_agents_path_migrated = true;
+        if self.tools.codex.agents_path == expand_tilde("~/.agents/agents") {
+            self.tools.codex.agents_path = expand_tilde("~/.codex/agents");
+        }
         true
     }
 
@@ -516,6 +542,7 @@ impl Settings {
             suites_path: None,
             watcher_enabled: true,
             watcher_force_migrated: true,
+            codex_agents_path_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             skills: SkillsConfig::default(),
@@ -556,6 +583,77 @@ mod tests {
         s.watcher_enabled = false;
         assert!(!s.migrate_force_watcher_on());
         assert!(!s.watcher_enabled);
+    }
+
+    #[test]
+    fn pre_codex_agents_path_config_migrates_once_to_dot_codex() {
+        // Simulate a config created before the codex `agentsPath` default moved
+        // from `~/.agents/agents` (shared, OpenStandard-owned) to the
+        // self-contained `~/.codex/agents`: the stale path is present and the
+        // migration marker key does not exist (serde must fill it false).
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        let obj = value.as_object_mut().unwrap();
+        obj.remove("codexAgentsPathMigrated");
+        let codex = obj
+            .get_mut("tools")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .get_mut("codex")
+            .unwrap()
+            .as_object_mut()
+            .unwrap();
+        codex.insert(
+            "agentsPath".to_string(),
+            serde_json::Value::String(
+                expand_tilde("~/.agents/agents")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        );
+        let mut s: Settings = serde_json::from_value(value).unwrap();
+        assert!(!s.codex_agents_path_migrated, "marker absent in legacy file");
+        assert_eq!(s.tools.codex.agents_path, expand_tilde("~/.agents/agents"));
+
+        // First migration moves the stale shared path into `.codex` and marks
+        // itself done.
+        assert!(s.migrate_codex_agents_path());
+        assert_eq!(s.tools.codex.agents_path, expand_tilde("~/.codex/agents"));
+        assert!(s.codex_agents_path_migrated);
+
+        // Idempotent: a later deliberate choice of the old path is respected,
+        // never re-moved.
+        s.tools.codex.agents_path = expand_tilde("~/.agents/agents");
+        assert!(!s.migrate_codex_agents_path());
+        assert_eq!(s.tools.codex.agents_path, expand_tilde("~/.agents/agents"));
+    }
+
+    #[test]
+    fn codex_agents_path_migration_leaves_custom_paths_untouched() {
+        // A user who deliberately customized the codex agents path keeps it; the
+        // migration only rewrites the exact superseded default.
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        let obj = value.as_object_mut().unwrap();
+        obj.remove("codexAgentsPathMigrated");
+        obj.get_mut("tools")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .get_mut("codex")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert(
+                "agentsPath".to_string(),
+                serde_json::Value::String("/custom/codex/agents".to_string()),
+            );
+        let mut s: Settings = serde_json::from_value(value).unwrap();
+        assert!(s.migrate_codex_agents_path(), "marker set on first run");
+        assert_eq!(
+            s.tools.codex.agents_path,
+            PathBuf::from("/custom/codex/agents")
+        );
+        assert!(s.codex_agents_path_migrated);
     }
 
     #[test]

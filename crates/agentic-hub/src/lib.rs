@@ -87,6 +87,13 @@ pub fn run() {
             if settings.migrate_force_watcher_on() {
                 let _ = settings.save();
             }
+            // One-time migration: rewrite a stale Codex agents path of
+            // `~/.agents/agents` (pre-0.5.0 default, shared with OpenStandard) to
+            // the self-contained `~/.codex/agents` so Codex subagent projection
+            // lands where Codex actually reads it. Best-effort save.
+            if settings.migrate_codex_agents_path() {
+                let _ = settings.save();
+            }
             // Start the source watcher on launch when enabled in settings.
             if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());

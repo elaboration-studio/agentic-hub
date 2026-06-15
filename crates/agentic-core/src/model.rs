@@ -253,6 +253,21 @@ pub enum OperationKind {
     SkipConflict,
 }
 
+/// Content transform applied when writing a managed copy. `CodexAgentToml`
+/// renders the markdown source as a Codex subagent TOML before writing (Codex
+/// reads only `*.toml` in `~/.codex/agents/`); absence means the source bytes
+/// are copied verbatim (every other managed copy).
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentTransform {
+    CodexAgentToml,
+}
+
 /// A single planned mutation for one `(tool, item)`, computed by the planner
 /// against fresh disk state.
 #[cfg_attr(
@@ -277,6 +292,11 @@ pub struct PlannedOperation {
     /// confirmed `foreign_file` resolution; always `false` for normal ops.
     #[serde(default)]
     pub force: bool,
+    /// How the source maps onto the written bytes for managed-copy ops. `None`
+    /// (the default) copies verbatim; `CodexAgentToml` renders the markdown
+    /// source as Codex subagent TOML. Ignored by link and remove ops.
+    #[serde(default)]
+    pub content_transform: Option<ContentTransform>,
 }
 
 /// A per-operation failure. One failing op never aborts the rest.

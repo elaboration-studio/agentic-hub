@@ -10,6 +10,7 @@
 pub mod adapter_registry;
 pub mod api;
 pub mod applier;
+pub mod codex_agent;
 pub mod error;
 pub mod hook_sync;
 pub mod managed_copy;
@@ -36,7 +37,8 @@ pub use api::{AdapterStatus, InspectResult};
 pub use error::{CoreError, Result};
 pub use hook_sync::{HookEventSpec, HookManifest};
 pub use model::{
-    ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncError,
+    ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, ContentTransform,
+    HookSyncError,
     HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome,
     ScanError, ScanResult, SourceRef, SuiteBinding, SuiteCapabilityRef, SuiteDefinition,
     SuiteValidationResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,

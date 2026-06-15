@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agentic-core"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "include_dir",
  "reqwest 0.13.4",
@@ -19,13 +19,14 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.18",
+ "toml 1.1.2+spec-1.1.0",
  "ts-rs",
  "uuid",
 ]
 
 [[package]]
 name = "agentic-hub"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "agentic-core",
  "notify",

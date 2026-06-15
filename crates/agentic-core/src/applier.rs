@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::managed_copy;
-use crate::model::{ApplyError, ApplyResult, OperationKind, PlannedOperation};
+use crate::model::{ApplyError, ApplyResult, ContentTransform, OperationKind, PlannedOperation};
 
 #[derive(Debug, Clone, Copy)]
 enum Effect {
@@ -99,14 +99,12 @@ fn run(op: &PlannedOperation) -> Result<Effect, Fail> {
         }
         CreateManagedCopy => {
             let source = source(op)?;
-            managed_copy::write_managed_copy(&source, target, &op.target_root, &op.item_id, false)
-                .map_err(Fail::Io)?;
+            write_managed(op, &source, false)?;
             Ok(Effect::Created)
         }
         ReplaceManagedCopy => {
             let source = source(op)?;
-            managed_copy::write_managed_copy(&source, target, &op.target_root, &op.item_id, true)
-                .map_err(Fail::Io)?;
+            write_managed(op, &source, true)?;
             Ok(Effect::Refreshed)
         }
         RemoveManagedCopy => {
@@ -145,6 +143,58 @@ fn to_apply_error(op: &PlannedOperation, fail: Fail) -> ApplyError {
 
 fn source(op: &PlannedOperation) -> Result<std::path::PathBuf, Fail> {
     op.source_path.clone().ok_or(Fail::MissingSource)
+}
+
+/// Write a managed copy, either verbatim or through the op's content transform.
+/// Codex agents render the markdown source to subagent TOML and clean up the
+/// markdown symlink the pre-TOML design left behind.
+fn write_managed(op: &PlannedOperation, source: &Path, atomic: bool) -> Result<(), Fail> {
+    let target = op.target_path.as_path();
+    match op.content_transform {
+        Some(ContentTransform::CodexAgentToml) => {
+            let md = fs::read_to_string(source).map_err(Fail::Io)?;
+            let rendered = crate::codex_agent::to_toml(&md, &target_stem(target));
+            managed_copy::write_managed_content(
+                rendered.as_bytes(),
+                target,
+                &op.target_root,
+                &op.item_id,
+                source,
+                atomic,
+            )
+            .map_err(Fail::Io)?;
+            remove_superseded_markdown(target, source);
+        }
+        None => {
+            managed_copy::write_managed_copy(source, target, &op.target_root, &op.item_id, atomic)
+                .map_err(Fail::Io)?;
+        }
+    }
+    // Self-heal a layout/path change: drop any copy of this same item left at a
+    // different path (e.g. a nested copy superseded by the flat one after the
+    // agent-flatten migration). Manifest-tracked copies only; user files safe.
+    managed_copy::prune_other_paths_for_item(&op.target_root, &op.item_id, target).map_err(Fail::Io)
+}
+
+fn target_stem(target: &Path) -> String {
+    target
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// Remove the markdown symlink the pre-TOML Codex design projected at
+/// `<stem>.md`, but only when it is our own symlink (points at this agent's
+/// source). A user's real markdown file at that path is never touched.
+fn remove_superseded_markdown(toml_target: &Path, source: &Path) {
+    let legacy = toml_target.with_extension("md");
+    if is_symlink(&legacy) {
+        if let Ok(dest) = fs::read_link(&legacy) {
+            if dest == source {
+                let _ = fs::remove_file(&legacy);
+            }
+        }
+    }
 }
 
 fn ensure_parent(target: &Path) -> Result<(), Fail> {
@@ -199,6 +249,7 @@ mod tests {
             kind,
             reason: String::new(),
             force: false,
+            content_transform: None,
         }
     }
 
@@ -257,6 +308,37 @@ mod tests {
         assert_eq!(res.errors.len(), 1);
         assert_eq!(res.errors[0].code, "conflict_real_file_at_target");
         assert!(real.exists());
+    }
+
+    #[test]
+    fn create_managed_copy_prunes_superseded_nested_copy_of_same_item() {
+        // Simulates the agent-flatten upgrade: an item previously projected to a
+        // nested managed copy (`zoom/cto.md`) is now projected flat (`cto.md`).
+        // Applying the flat create must self-heal by pruning the nested orphan.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("agents");
+        let source = dir.path().join("src/zoom/cto.md");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "cto body").unwrap();
+
+        // Seed the pre-flatten nested managed copy for this item.
+        let nested = root.join("zoom/cto.md");
+        managed_copy::write_managed_copy(&source, &nested, &root, "agent:zoom/cto.md", false)
+            .unwrap();
+
+        // Apply the new flat projection for the same item.
+        let flat = root.join("cto.md");
+        let mut create = op(OperationKind::CreateManagedCopy, flat.clone(), Some(source));
+        create.item_id = "agent:zoom/cto.md".into();
+        create.target_root = root.clone();
+        let res = apply(&[create], |_, _, _, _| {});
+
+        assert_eq!(res.created, 1);
+        assert!(flat.is_file(), "flat copy written");
+        assert!(!nested.exists(), "nested orphan pruned");
+        assert!(!root.join("zoom").exists(), "now-empty nested dir removed");
+        assert!(managed_copy::read_entry(&root, &nested).is_none());
+        assert!(managed_copy::read_entry(&root, &flat).is_some());
     }
 
     #[cfg(unix)]

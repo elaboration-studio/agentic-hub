@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use crate::adapter_registry::{ProjectionMode, ResolvedAdapter};
 use crate::managed_copy;
 use crate::model::{
-    CapabilityItem, CapabilityKind, LinkState, OperationKind, PlannedOperation, ToolCapabilityState,
+    CapabilityItem, CapabilityKind, ContentTransform, LinkState, OperationKind, PlannedOperation,
+    ToolCapabilityState,
 };
 use crate::rule_sync::{self, BlockState};
 
@@ -42,6 +43,12 @@ fn inspect_item(item: &CapabilityItem, adapter: &ResolvedAdapter) -> Option<Tool
             let target = adapter.target_path_for(item)?;
             let root = adapter.base_path_for(item.kind)?;
             let (state, current) = inspect_managed_copy(item, &target, root);
+            (target, state, current)
+        }
+        ProjectionMode::CodexAgentToml => {
+            let target = adapter.target_path_for(item)?;
+            let root = adapter.base_path_for(item.kind)?;
+            let (state, current) = inspect_codex_agent(item, &target, root);
             (target, state, current)
         }
         ProjectionMode::LinkSync => {
@@ -139,6 +146,64 @@ fn inspect_managed_copy(
     }
 }
 
+/// State for a Codex subagent managed copy. Unlike a verbatim managed copy, the
+/// target bytes are the *rendered* TOML, so enabled-ness compares the target to
+/// the freshly rendered output (which also catches source drift) rather than to
+/// the source bytes.
+fn inspect_codex_agent(
+    item: &CapabilityItem,
+    target: &Path,
+    target_root: &Path,
+) -> (LinkState, Option<PathBuf>) {
+    let meta = match fs::symlink_metadata(target) {
+        Ok(m) => m,
+        Err(_) => return (LinkState::Disabled, None),
+    };
+    if meta.file_type().is_symlink() {
+        // The legacy markdown symlink lived at the `.md` target, not here; guard
+        // anyway. Ours (points at our source) is stale; anything else is foreign.
+        let dest = fs::read_link(target).ok();
+        let state = if dest.as_deref() == Some(item.source_path.as_path()) {
+            LinkState::Stale
+        } else {
+            LinkState::ForeignLink
+        };
+        return (state, dest);
+    }
+    if meta.is_dir() {
+        return (LinkState::ForeignFile, None);
+    }
+    match managed_copy::read_entry(target_root, target) {
+        Some(entry) if entry.source_path == item.source_path => match expected_codex_toml(item) {
+            Some(expected) => match fs::read(target) {
+                Ok(actual) if actual == expected.as_bytes() => {
+                    (LinkState::Enabled, Some(target.to_path_buf()))
+                }
+                Ok(_) => (LinkState::Stale, Some(target.to_path_buf())),
+                Err(_) => (LinkState::Broken, Some(target.to_path_buf())),
+            },
+            // Source unreadable: cannot render the expected output.
+            None => (LinkState::Broken, Some(target.to_path_buf())),
+        },
+        // Manifest attributes the copy elsewhere, or a user-owned file.
+        Some(_) | None => (LinkState::ForeignFile, None),
+    }
+}
+
+/// The Codex TOML the source should render to, or `None` if it can't be read.
+fn expected_codex_toml(item: &CapabilityItem) -> Option<String> {
+    let md = fs::read_to_string(&item.source_path).ok()?;
+    Some(crate::codex_agent::to_toml(&md, &codex_fallback_name(item)))
+}
+
+/// Fallback agent name when the source frontmatter omits `name`: the file stem.
+fn codex_fallback_name(item: &CapabilityItem) -> String {
+    item.relative_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| item.name.clone())
+}
+
 fn inspect_markdown_rule(instructions: &Path, relative_path: &Path) -> LinkState {
     let content = match fs::read_to_string(instructions) {
         Ok(c) => c,
@@ -172,7 +237,10 @@ pub fn build_plan(
         let Some(mode) = adapter.projection_mode_for(item.kind) else {
             continue;
         };
-        if !matches!(mode, ProjectionMode::LinkSync | ProjectionMode::FileSync) {
+        if !matches!(
+            mode,
+            ProjectionMode::LinkSync | ProjectionMode::FileSync | ProjectionMode::CodexAgentToml
+        ) {
             continue;
         }
         let Some(state) = inspect_item(item, adapter) else {
@@ -182,8 +250,13 @@ pub fn build_plan(
             continue;
         };
         let desired = desired_enabled.get(&item.id).copied().unwrap_or(false);
-        let managed = matches!(mode, ProjectionMode::FileSync);
-        if let Some(op) = diff_op(item, &state, root, desired, managed, force) {
+        let managed = matches!(
+            mode,
+            ProjectionMode::FileSync | ProjectionMode::CodexAgentToml
+        );
+        let transform =
+            (mode == ProjectionMode::CodexAgentToml).then_some(ContentTransform::CodexAgentToml);
+        if let Some(op) = diff_op(item, &state, root, desired, managed, transform, force) {
             ops.push(op);
         }
     }
@@ -197,6 +270,7 @@ fn diff_op(
     target_root: &Path,
     desired: bool,
     managed: bool,
+    transform: Option<ContentTransform>,
     force: bool,
 ) -> Option<PlannedOperation> {
     use LinkState::{Broken, Disabled, Enabled, ForeignFile, ForeignLink, Stale};
@@ -288,6 +362,7 @@ fn diff_op(
         kind,
         reason: reason.to_string(),
         force: takeover,
+        content_transform: transform,
     })
 }
 
@@ -375,8 +450,8 @@ mod tests {
         let agents_dir = dir.path().join("codex-agents");
         fs::create_dir_all(&agents_dir).unwrap();
 
-        let adapter = adapter_with(ToolId::Codex, |s| {
-            s.tools.codex.agents_path = agents_dir.clone();
+        let adapter = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.agents_path = agents_dir.clone();
         });
         let it = item(CapabilityKind::Agent, "foo.md", source.clone());
         let target = adapter.target_path_for(&it).unwrap();
@@ -495,8 +570,8 @@ mod tests {
         let source = dir.path().join("src/foo.md");
         write(&source, "agent");
         let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Codex, |s| {
-            s.tools.codex.agents_path = agents_dir.clone();
+        let adapter = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         let rule = item(
@@ -562,8 +637,8 @@ mod tests {
         let source = dir.path().join("src/foo.md");
         write(&source, "agent body");
         let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Codex, |s| {
-            s.tools.codex.agents_path = agents_dir.clone();
+        let adapter = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         // A real (user-owned) file occupies the target -> ForeignFile.
@@ -659,8 +734,8 @@ mod tests {
         let source = dir.path().join("src/foo.md");
         write(&source, "agent");
         let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Codex, |s| {
-            s.tools.codex.agents_path = agents_dir.clone();
+        let adapter = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         let target = adapter.target_path_for(&agent).unwrap();
@@ -704,8 +779,8 @@ mod tests {
         let source = dir.path().join("src/foo.md");
         write(&source, "agent");
         let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Codex, |s| {
-            s.tools.codex.agents_path = agents_dir.clone();
+        let adapter = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         let target = adapter.target_path_for(&agent).unwrap();
@@ -767,8 +842,8 @@ mod tests {
         let other = dir.path().join("src/other.md");
         write(&other, "other");
         let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Codex, |s| {
-            s.tools.codex.agents_path = agents_dir.clone();
+        let adapter = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         let target = adapter.target_path_for(&agent).unwrap();
@@ -816,6 +891,119 @@ mod tests {
             inspect_managed_copy(&it, &target, &root).0,
             LinkState::ForeignLink
         );
+    }
+
+    #[test]
+    fn codex_agent_enable_writes_valid_toml_then_disable_removes_it() {
+        // End-to-end: enabling a Codex agent renders the markdown spec to a
+        // `.toml` Codex actually loads, marks the item Enabled, and disabling
+        // tears the copy back down.
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/cto.md");
+        write(
+            &source,
+            "---\nname: cto\ndescription: Chief Technology Officer.\n---\n# CTO\n\nBuild clear systems.\n",
+        );
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "cto.md", source);
+        let target = adapter.target_path_for(&agent).unwrap();
+        assert!(target.ends_with("codex-agents/cto.toml"));
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::CreateManagedCopy);
+        assert_eq!(
+            ops[0].content_transform,
+            Some(crate::model::ContentTransform::CodexAgentToml)
+        );
+
+        let res = crate::applier::apply(&ops, |_, _, _, _| {});
+        assert_eq!(res.created, 1, "{:?}", res.errors);
+
+        // The written file is valid TOML with the Codex subagent schema.
+        let parsed: toml::Table =
+            toml::from_str(&fs::read_to_string(&target).unwrap()).expect("valid TOML");
+        assert_eq!(parsed["name"].as_str(), Some("cto"));
+        assert_eq!(parsed["description"].as_str(), Some("Chief Technology Officer."));
+        assert!(parsed["developer_instructions"]
+            .as_str()
+            .unwrap()
+            .contains("Build clear systems."));
+
+        // Re-inspection is now Enabled (compares against the freshly rendered TOML).
+        assert_eq!(
+            inspect_codex_agent(&agent, &target, &agents_dir).0,
+            LinkState::Enabled
+        );
+
+        // Disable removes the managed copy.
+        desired.insert(agent.id.clone(), false);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::RemoveManagedCopy);
+        crate::applier::apply(&ops, |_, _, _, _| {});
+        assert!(!target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_agent_enable_cleans_up_superseded_markdown_symlink() {
+        // The pre-TOML design symlinked `cto.md`; enabling the TOML copy removes
+        // that orphaned symlink (but only because it is ours).
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/cto.md");
+        write(&source, "---\nname: cto\n---\nBody.\n");
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "cto.md", source.clone());
+        let toml_target = adapter.target_path_for(&agent).unwrap();
+        let legacy_md = toml_target.with_extension("md");
+        fs::create_dir_all(&agents_dir).unwrap();
+        symlink(&source, &legacy_md).unwrap();
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        crate::applier::apply(&ops, |_, _, _, _| {});
+
+        assert!(toml_target.is_file(), "toml written");
+        assert!(
+            !legacy_md.exists(),
+            "the superseded markdown symlink was cleaned up"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_agent_enable_keeps_user_owned_markdown_file() {
+        // A user's real `cto.md` (not our symlink) must survive — never delete
+        // real files.
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/cto.md");
+        write(&source, "---\nname: cto\n---\nBody.\n");
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "cto.md", source);
+        let toml_target = adapter.target_path_for(&agent).unwrap();
+        let user_md = toml_target.with_extension("md");
+        fs::create_dir_all(&agents_dir).unwrap();
+        write(&user_md, "user's own notes");
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        crate::applier::apply(&ops, |_, _, _, _| {});
+
+        assert!(toml_target.is_file());
+        assert_eq!(fs::read_to_string(&user_md).unwrap(), "user's own notes");
     }
 
     #[test]

@@ -64,6 +64,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     suitesPath: null,
     watcherEnabled: true,
     watcherForceMigrated: true,
+    codexAgentsPathMigrated: true,
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
     skills: { enabled: false, favoritesPath: null },
