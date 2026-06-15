@@ -11,9 +11,9 @@ The root architecture establishes that the Rust core (`agentic-core`) owns all f
 The projection engine is the single largest piece of architecturally novel design in this app. It has:
 
 - four pipeline stages, each with its own data model and failure modes
-- five tool adapters with four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
+- five tool adapters with five projection modes (`link_sync`, `file_sync`, `codex_agent_toml`, `markdown_section_sync`, `json_section`)
 - two layout strategies (`flat`, `nested`) with explicit collision handling
-- a separate managed-copy lifecycle with stale detection for Cursor agents
+- a separate managed-copy lifecycle with stale detection for Cursor agents and Codex TOML subagents
 - a marker-delimited managed block contract for `markdown_section_sync` tools
 
 Folding all of that into the root architecture would either bloat the root doc beyond its 500-line target or under-specify the engine. The engine is also the surface most likely to need iteration as new tools are added, so it benefits from being a separate reading path.
@@ -40,7 +40,7 @@ In scope:
 - `scanner`, `adapter_registry`, `planner`, `applier`, `rule_sync` modules in `agentic-core`
 - Global-scope projections only (workspace scope is the sibling doc)
 - All five tools (Codex, Claude Code, Cursor, OpenClaw, OpenStandard)
-- All four projection modes (`link_sync`, `file_sync`, `markdown_section_sync`, `json_section`)
+- All five projection modes (`link_sync`, `file_sync`, `codex_agent_toml`, `markdown_section_sync`, `json_section`)
 - All five capability kinds (`skill`, `agent`, `rule`, `hook`, `command`)
 - All four state classes (item state, link state, planned op, apply result)
 

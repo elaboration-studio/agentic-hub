@@ -2,7 +2,7 @@
 
 Status: Stable
 Mode: Detailed
-Last Updated: 2026-06-04
+Last Updated: 2026-06-15
 Depends On: [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md)
 Related Docs: [docs/tech/modules/claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md), [docs/tech/modules/openclaw-tool-adapter.md](../modules/openclaw-tool-adapter.md), [docs/tech/modules/rule-projection-sync.md](../modules/rule-projection-sync.md), [docs/tech/modules/workspace-inventory.md](../modules/workspace-inventory.md)
 
@@ -22,9 +22,9 @@ Single-page reference table for every tool adapter: target paths, projection mod
 | `commandsPath` default | `~/.codex/prompts` | `~/.claude/commands` | `~/.cursor/commands` | _none_ | `~/.agents/commands` |
 | `instructionsPath` default | `~/.codex/AGENTS.md` | `~/.claude/CLAUDE.md` | _unused_ | `~/.openclaw/workspace/SOUL.md` | `~/.agents/AGENTS.md` |
 | `skillLayout` | `Nested` | `Flat` | `Nested` | `Nested` | `Nested` |
-| `agentLayout` | `Nested` | `Nested` | `Nested` | `Nested` | `Nested` |
+| `agentLayout` | `Flat` | `Nested` | `Flat` | `Nested` | `Nested` |
 | Skill projection | symlink | **managed copy** (flat) | symlink | symlink | symlink |
-| Agent projection | symlink | symlink (nested) | **managed copy** | symlink | symlink |
+| Agent projection | **managed copy → TOML** (`codex_agent_toml`, flat) | symlink (nested) | **managed copy** (flat) | symlink | symlink |
 | Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `link_sync` | `markdown_section_sync` | `markdown_section_sync` |
 | Rule target | `~/.codex/AGENTS.md` (managed block) | `~/.claude/CLAUDE.md` (managed block) | symlinks under `~/.cursor/rules/` | `~/.openclaw/workspace/SOUL.md` (managed block) | `~/.agents/AGENTS.md` (managed block) |
 | Mirrored rule files | optional at `~/.codex/agentic-rules/` (annotated when present) | optional at `~/.claude/rules/` (rarely used) | n/a (rules are real files via symlink) | optional at `~/.openclaw/agentic-rules/` | optional at `~/.agents/rules/` |
@@ -42,6 +42,10 @@ The open-standard `~/.agents/` root (the convention OpenAI Codex documents for s
 
 The Codex `agentsPath` default was `~/.agents/agents` before v0.5.0, which collided with the OpenStandard-owned shared root — Codex agent projection landed there instead of `~/.codex/agents`, where Codex actually reads subagents, so enabling Codex agents silently did nothing. Configs persisted before the default moved keep the stale path. `Settings::migrate_codex_agents_path()` (marker `codexAgentsPathMigrated`, run once from `setup()`) rewrites that exact superseded default to `~/.codex/agents`; a deliberate custom path is left untouched.
 
+### Codex agents project as transformed TOML, not a symlink
+
+Codex loads subagents only from `*.toml` files (`name` / `description` / `developer_instructions`); a symlinked markdown spec is ignored. So Codex is the one tool whose **agent** projection is neither a plain symlink nor a verbatim managed copy: it uses the `codex_agent_toml` projection mode. The markdown source (YAML frontmatter `name` / `description` + body as `developer_instructions`) is rendered to a Codex subagent TOML (`crates/agentic-core/src/codex_agent.rs`) and written as a **managed copy** at `<name>.toml` (the adapter renames the `.md` source stem to `.toml`). Because the on-disk bytes are derived (not a byte-for-byte copy of the source), staleness is detected by re-rendering the expected TOML and comparing content, not by source hash. The applier carries the intent via `PlannedOperation.content_transform = CodexAgentToml`; absent that field, managed copies are written verbatim. On enable, any superseded `<name>.md` symlink the hub previously created is removed (self-heal); a user-authored `.md` at that path is never touched.
+
 ### Why Cursor agents and Claude skills are managed copies
 
 Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
@@ -50,9 +54,19 @@ Cursor loads agent files into memory at launch, and Claude's skill loader does n
 
 Commands are file-based, nested markdown (`<root>/commands/**/*.md`), projected into each tool's slash-command directory. Cursor (`~/.cursor/commands`), Codex (`~/.codex/prompts`), and OpenStandard (`~/.agents/commands`) follow symlinks, so commands symlink there like skills/agents. Claude's command loader, like its skill loader, does **not** follow symlinks, so Claude commands are managed copies (`~/.claude/commands`). OpenClaw has no command concept and is unsupported. Commands always keep their nested path (no flat collapse).
 
-### Why only Claude *skills* are flat
+### Which `(tool, kind)` flatten, and why
 
-Claude Code's **skill** loader scans only the top level of `~/.claude/skills/` — nested folders are not discovered ([docs](https://code.claude.com/docs/en/skills); issues [#18192](https://github.com/anthropics/claude-code/issues/18192) / [#10238](https://github.com/anthropics/claude-code/issues/10238)). Flat layout collapses a skill's `relative_path` to its basename. Claude **agents**, by contrast, are scanned **recursively** — `~/.claude/agents/` subfolders are honored and identity comes from the `name` frontmatter, not the path ([sub-agents docs](https://code.claude.com/docs/en/sub-agents)) — so agents stay nested (flattening would collide same-basename agents). See [claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md).
+Flat layout collapses an item's `relative_path` to its basename; nested preserves the source folder structure. **Flatten wherever a tool's loader is non-recursive** (it scans only the top level of the target dir, so a nested file is never discovered):
+
+| `(tool, kind)` | Layout | Why |
+|----------------|--------|-----|
+| Claude **skill** | Flat | Skill loader scans only the top level of `~/.claude/skills/` ([docs](https://code.claude.com/docs/en/skills); issues [#18192](https://github.com/anthropics/claude-code/issues/18192) / [#10238](https://github.com/anthropics/claude-code/issues/10238)). |
+| Cursor **agent** | Flat | Subagent loader scans only the top level of `~/.cursor/agents/`; identity is the filename ([Cursor subagents](https://cursor.com/docs/subagents)). |
+| Codex **agent** | Flat | Only top-level `*.toml` are loaded from `~/.codex/agents/`; nested files are ignored ([Codex subagents](https://developers.openai.com/codex/subagents)). |
+| Claude **agent** | Nested | Agent loader walks subfolders **recursively**; identity is the `name` frontmatter, not the path ([sub-agents docs](https://code.claude.com/docs/en/sub-agents)) — flattening would collide same-basename agents. |
+| everything else | Nested | Loaders follow nested paths (or the path is the identity, e.g. commands). |
+
+Flattening can map two differently-nested sources to the same basename (`zoom/cto.md` and `team/cto.md` → `cto.md`). Those collisions are resolved deterministically by the planner's `resolve_target_collisions` (lowest `item_id` wins; the rest become `skip_conflict`), exactly as for Claude skills. When the layout itself changes for an upgrading user (a previously-nested agent now projects flat), the applier self-heals: writing the flat managed copy prunes any copy of the *same item* left at the old nested path (`managed_copy::prune_other_paths_for_item`), including the now-empty folder. Only our own manifest-tracked copies are touched. See [claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md).
 
 ## Workspace scope (writes into project directories)
 
@@ -85,8 +99,10 @@ Notes:
 
 ### Agent
 
-- Global Codex / Claude / OpenClaw / OpenStandard: symlink (nested for all — Claude scans `~/.claude/agents/` recursively)
-- Global Cursor: managed copy (per-root manifest)
+- Global Claude / OpenClaw / OpenStandard: symlink — **nested** (Claude scans `~/.claude/agents/` recursively; identity is the `name` frontmatter)
+- Global Codex: managed copy rendered to TOML (`codex_agent_toml`) — **flat** (Codex loads only top-level `*.toml` subagents)
+- Global Cursor: managed copy (per-root manifest) — **flat** (Cursor's subagent loader is non-recursive; identity is the filename)
+- Flat collisions resolve via `resolve_target_collisions`; a layout change self-heals via `prune_other_paths_for_item`
 - Workspace: read-only inventory (Codex reads `.codex/agents/*.toml`; Claude/Cursor read `*.md`)
 
 ### Rule
@@ -117,6 +133,7 @@ Notes:
 |------|--------|--------|--------|
 | Symlink (`link_sync`) | `create_link` | `replace_link` | `remove_link` |
 | Managed copy (`file_sync` with metadata) | `create_managed_copy` | `replace_managed_copy` | `remove_managed_copy` |
+| Codex agent TOML (`codex_agent_toml`) | `create_managed_copy` + `content_transform` | `replace_managed_copy` + `content_transform` | `remove_managed_copy` |
 | Markdown section (`markdown_section_sync`) | full block rewrite via `rule_sync` | full block rewrite | block removal (file remains if other content present) |
 | JSON section (`json_section`) | `sync_json_section` | `sync_json_section` | `clear_json_section` (foreign entries preserved) |
 
@@ -146,6 +163,7 @@ fn projection_mode(tool: ToolId, kind: CapabilityKind, scope: SyncScope) -> Proj
         (_,        Command, _)       => LinkSync,
 
         // Global scope
+        (Codex,    Agent, Global)    => CodexAgentToml,  // renders TOML; Codex loads only *.toml
         (Cursor,   Agent, Global)    => ManagedCopy,
         (Claude,   Skill, Global)    => ManagedCopy,
         (Cursor,   Rule,  Global)    => LinkSync,
@@ -169,8 +187,9 @@ OpenClaw + Workspace returns `Err(UnsupportedInWorkspaceScope)`. A hook targetin
 ```
 fn layout(tool: ToolId, kind: CapabilityKind, scope: SyncScope) -> Layout {
     match (tool, kind, scope) {
-        (Claude, Skill, Global) => Flat,  // skill loader is non-recursive
-        _ => Nested,                       // incl. Claude agents (recursive loader)
+        (Claude, Skill, Global)          => Flat,  // skill loader is non-recursive
+        (Cursor | Codex, Agent, Global)  => Flat,  // subagent loaders are non-recursive
+        _                                => Nested, // incl. Claude agents (recursive loader)
     }
 }
 ```
