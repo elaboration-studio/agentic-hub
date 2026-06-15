@@ -5,45 +5,26 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.8.1] — 2026-06-12
+## [0.8.2] — 2026-06-15
 
 ### Highlights
 
-- **Fixed: suites no longer go empty after a git sync.** When the suites file
-  lived at a custom path inside a git repo synced across machines, applying or
-  editing a suite silently rewrote the file with device-specific source
-  qualifiers. Two machines diverged, and a later `git pull` line-merged the
-  multi-line capability arrays into nothing — the suite names survived but the
-  resources vanished. Apply and palette "Apply suite…" are now pure reads: the
-  synced file stops churning, so the merge that emptied it can't happen.
-- **Belt-and-suspenders backups.** Every write to the suites and skill-favorites
-  files first copies the prior good file to `<file>.bak`, so an accidental
-  clobber is recoverable without reaching for `git checkout`.
-- **Live reload after a pull.** The watcher now also watches the suites and
-  favorites files. An external rewrite (a `git pull` on a synced path) reloads
-  the Suites and Resources views immediately, so a stale in-memory snapshot can
-  never overwrite freshly-pulled content.
-- **Watcher on by default, toggle moved to Config.** The source watcher is an
-  install-once preference, so its switch now lives in Config ▸ Source watcher
-  rather than the header. A one-time migration flips any config that had paused
-  the watcher back on; a deliberate pause after that still sticks.
-- **Favorites parity with suites.** Your starred-skills file gets the same
-  cross-device robustness — set a custom `favoritesPath` inside a git repo and
-  share your favorite skills across machines, with backups and live reload.
-- **Search your starred skills.** A local filter box on the Resources page and in
-  the install-into-project window narrows the starred list as you type (by name,
-  repo, owner, or slug), so big lists stay easy to navigate. Hidden skills you
-  already selected still install.
+- **Opt-in usage telemetry.** A new Config ▸ Usage telemetry toggle (off by
+  default) lets you share anonymous lifecycle events — only `app_started` and
+  `app_exited`, plus your OS and app version — via Aptabase to help improve the
+  tool. Events are sent from Rust only and gated on your consent at runtime: the
+  WebView never calls out, and nothing leaves your machine while the toggle is
+  off. No file contents, paths, or personal data are ever sent.
+- **Refreshed app logo and bundled icons** across the desktop, iOS, and Android
+  icon sets.
+
+### Fixed
+
+- **Startup panic from the telemetry plugin.** The app no longer panics at
+  launch ("there is no reactor running") — it now owns a Tokio runtime so the
+  telemetry plugin's background flush loop can start cleanly.
 
 ### Migration
 
-- **Automatic.** On first launch 0.8.1 force-enables the watcher once (recorded
-  via a new `watcherForceMigrated` settings marker). No file formats changed and
-  no manual steps are needed.
-
-### Known Issues
-
-- File-level watching of the suites/favorites files relies on path-based OS
-  events (FSEvents on macOS). On Linux, a file replaced by rename may need the
-  next app focus to refresh; the `.bak` backup and git history remain the
-  recovery path either way.
+- **Automatic.** No file formats changed and no manual steps are needed.
+  Telemetry stays off until you turn it on.

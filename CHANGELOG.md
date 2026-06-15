@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.8.2] — 2026-06-15
+
+### Added
+
+- **Opt-in usage telemetry (Aptabase).** A new Config toggle
+  (`Settings.telemetry.enabled`, off by default) enables anonymous lifecycle
+  telemetry via `tauri-plugin-aptabase`. Only `app_started` / `app_exited` are
+  sent, from Rust only, gated on consent at runtime — the WebView never calls
+  out, and nothing is sent while disabled. Resolves the long-open telemetry
+  question (decision D15).
+
+### Changed
+
+- **Refreshed app logo and bundled icons** across desktop, iOS, and Android icon
+  sets.
+
+### Fixed
+
+- **Startup panic from the telemetry plugin.** The Aptabase plugin starts its
+  background flush loop with a bare `tokio::spawn` during setup, which panicked
+  at launch ("there is no reactor running") because Tauri does not enter a Tokio
+  runtime on the main thread. `run()` now owns a multi-thread Tokio runtime and
+  keeps its context entered for the app lifetime.
+
 ## [0.8.1] — 2026-06-12
 
 ### Fixed
