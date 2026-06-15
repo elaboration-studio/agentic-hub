@@ -51,7 +51,7 @@ The strategy: a Rust core (`agentic-core`) owns the entire projection engine —
 
 ## System overview
 
-Agentic Hub runs as a single-user desktop app. There is no server, no remote sync, no telemetry, no auto-update in v1. The system boundary is the local filesystem on one machine.
+Agentic Hub runs as a single-user desktop app. There is no server, no remote sync, and no auto-update in v1. The only network egress is opt-in anonymous usage telemetry (off by default; see below). The system boundary is the local filesystem on one machine.
 
 External surfaces:
 
@@ -59,7 +59,7 @@ External surfaces:
 - **Tool homes** — `~/.codex`, `~/.claude`, `~/.cursor`, `~/.openclaw` — owned by the respective AI tools, written into by the projection engine with safe semantics
 - **App-owned data** — `~/.agentic-hub/config.json` (settings), `~/.agentic-suites.json` (suites, parity path with VS Code extension), `~/.agentic-hub/state.json` (workspace target store). Workspace scope is read-only and writes no per-workspace data.
 
-No network calls in v1.
+No network calls in v1 except opt-in usage telemetry (Aptabase), which is off by default and sends only coarse lifecycle events from the Rust core when the user enables it.
 
 ## Domain architecture docs
 
@@ -412,7 +412,7 @@ Trust boundary: the WebView is **untrusted**. The Rust core is **trusted**.
 - `shell:execute` is never granted to the WebView
 - All target paths normalized to absolute paths via `path.canonicalize()` before validation
 - Workspace scope is read-only: it scans a project's own tool dirs and writes nothing, so there is no write-side boundary to enforce there
-- No remote network calls; no telemetry; no auto-update endpoint pinging in v1
+- No auto-update endpoint pinging in v1. The only remote egress is opt-in usage telemetry (Aptabase) — off by default, sent from the Rust core only, gated on consent at runtime; the WebView never calls out
 
 See [ARCHITECTURE.permissions.md](ARCHITECTURE.permissions.md) for the full capability model.
 
