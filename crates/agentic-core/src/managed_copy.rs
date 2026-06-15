@@ -146,12 +146,100 @@ pub fn write_managed_copy(
     write_manifest(target_root, &manifest)
 }
 
+/// Write rendered `content` to `target` and record it in the root manifest
+/// against `source` (the original file, for stale detection). Used for managed
+/// copies whose bytes are transformed from the source rather than copied
+/// verbatim (Codex subagent TOML). When `atomic`, stages to a sibling `.tmp`
+/// and renames into place.
+pub fn write_managed_content(
+    content: &[u8],
+    target: &Path,
+    target_root: &Path,
+    item_id: &str,
+    source: &Path,
+    atomic: bool,
+) -> std::io::Result<()> {
+    use std::fs;
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if atomic {
+        let tmp = target.with_extension("agentic.tmp");
+        fs::write(&tmp, content)?;
+        fs::rename(&tmp, target)?;
+    } else {
+        fs::write(target, content)?;
+    }
+
+    let source_hash = content_hash(source).unwrap_or_default();
+    let mut manifest = read_manifest(target_root);
+    manifest.entries.insert(
+        entry_key(target_root, target),
+        ManagedEntry {
+            item_id: item_id.to_string(),
+            source_path: source.to_path_buf(),
+            source_hash,
+        },
+    );
+    write_manifest(target_root, &manifest)
+}
+
 /// Remove a managed copy (file or folder) and drop its manifest entry.
 pub fn remove_managed_copy(target: &Path, target_root: &Path) -> std::io::Result<()> {
     remove_existing(target)?;
     let mut manifest = read_manifest(target_root);
     manifest.entries.remove(&entry_key(target_root, target));
     write_manifest(target_root, &manifest)
+}
+
+/// Remove managed copies recorded for `item_id` at any path other than `keep`,
+/// deleting both the file/folder and its manifest entry, then sweeping any
+/// now-empty parent directories under `target_root`. This self-heals a layout
+/// or path change for a single item (e.g. a nested → flat agent move): the new
+/// copy is written at `keep` first, then stale copies of the *same item*
+/// elsewhere in the root are pruned. Only our own manifest-tracked copies are
+/// touched — a user's own files are never affected.
+pub fn prune_other_paths_for_item(
+    target_root: &Path,
+    item_id: &str,
+    keep: &Path,
+) -> std::io::Result<()> {
+    let keep_key = entry_key(target_root, keep);
+    let mut manifest = read_manifest(target_root);
+    let stale: Vec<String> = manifest
+        .entries
+        .iter()
+        .filter(|(key, entry)| entry.item_id == item_id && **key != keep_key)
+        .map(|(key, _)| key.clone())
+        .collect();
+    if stale.is_empty() {
+        return Ok(());
+    }
+    for key in &stale {
+        let path = target_root.join(key);
+        remove_existing(&path)?;
+        remove_empty_ancestors(target_root, &path);
+        manifest.entries.remove(key);
+    }
+    write_manifest(target_root, &manifest)
+}
+
+/// Remove now-empty directories from `child`'s parent up to (but not including)
+/// `root`. Best-effort: stops at the first directory that is non-empty, equal
+/// to `root`, outside `root`, or already gone.
+fn remove_empty_ancestors(root: &Path, child: &Path) {
+    let mut dir = child.parent();
+    while let Some(d) = dir {
+        if d == root || !d.starts_with(root) {
+            break;
+        }
+        // `remove_dir` only succeeds on an empty directory; a failure means it
+        // is non-empty (or gone), so stop climbing.
+        if std::fs::remove_dir(d).is_err() {
+            break;
+        }
+        dir = d.parent();
+    }
 }
 
 /// Remove whatever sits at `target` — symlink, file, or directory — ignoring a
@@ -254,6 +342,75 @@ mod tests {
             entry.source_hash,
             hash_file(&source.join("SKILL.md")).unwrap()
         );
+    }
+
+    #[test]
+    fn managed_content_writes_rendered_bytes_and_tracks_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("codex-agents");
+        let source = dir.path().join("src/cto.md");
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, "---\nname: cto\n---\nbody").unwrap();
+        let target = root.join("cto.toml");
+
+        write_managed_content(b"name = \"cto\"\n", &target, &root, "agent:cto.md", &source, true)
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "name = \"cto\"\n");
+        assert!(!target.with_extension("agentic.tmp").exists());
+        let entry = read_entry(&root, &target).unwrap();
+        // The manifest tracks the markdown source (for stale detection), even
+        // though the bytes on disk are the rendered TOML.
+        assert_eq!(entry.source_path, source);
+        assert_eq!(entry.source_hash, content_hash(&source).unwrap());
+    }
+
+    #[test]
+    fn prune_removes_same_item_at_other_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("agents");
+        let src = dir.path().join("src/zoom/cto.md");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        std::fs::write(&src, "cto v1").unwrap();
+
+        // Old nested managed copy (pre-flatten layout) + new flat copy for the
+        // same item.
+        let nested = root.join("zoom/cto.md");
+        write_managed_copy(&src, &nested, &root, "agent:zoom/cto.md", false).unwrap();
+        let flat = root.join("cto.md");
+        write_managed_copy(&src, &flat, &root, "agent:zoom/cto.md", false).unwrap();
+
+        prune_other_paths_for_item(&root, "agent:zoom/cto.md", &flat).unwrap();
+
+        assert!(flat.is_file(), "flat copy kept");
+        assert!(!nested.exists(), "nested orphan removed");
+        assert!(!root.join("zoom").exists(), "now-empty dir removed");
+        assert!(
+            read_entry(&root, &nested).is_none(),
+            "nested manifest entry dropped"
+        );
+        assert!(
+            read_entry(&root, &flat).is_some(),
+            "flat manifest entry kept"
+        );
+    }
+
+    #[test]
+    fn prune_keeps_copies_of_other_items() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("agents");
+        let src_a = dir.path().join("src/a.md");
+        let src_b = dir.path().join("src/b.md");
+        std::fs::create_dir_all(src_a.parent().unwrap()).unwrap();
+        std::fs::write(&src_a, "a").unwrap();
+        std::fs::write(&src_b, "b").unwrap();
+        let a = root.join("a.md");
+        let b = root.join("b.md");
+        write_managed_copy(&src_a, &a, &root, "agent:a.md", false).unwrap();
+        write_managed_copy(&src_b, &b, &root, "agent:b.md", false).unwrap();
+
+        // Pruning item a (keeping its only copy) must not touch item b.
+        prune_other_paths_for_item(&root, "agent:a.md", &a).unwrap();
+        assert!(a.is_file() && b.is_file(), "other items untouched");
     }
 
     #[test]

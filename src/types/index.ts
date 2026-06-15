@@ -29,6 +29,7 @@ export type { InspectResult } from "./generated/InspectResult";
 export type { InstallContext } from "./generated/InstallContext";
 export type { IpcError } from "./generated/IpcError";
 export type { LinkState } from "./generated/LinkState";
+export type { ContentTransform } from "./generated/ContentTransform";
 export type { OperationKind } from "./generated/OperationKind";
 export type { PlannedOperation } from "./generated/PlannedOperation";
 export type { RuleSyncError } from "./generated/RuleSyncError";

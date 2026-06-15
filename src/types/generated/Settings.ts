@@ -33,6 +33,13 @@ watcherEnabled: boolean,
  */
 watcherForceMigrated: boolean, 
 /**
+ * One-time migration marker: rewrites a stale Codex `agentsPath` of
+ * `~/.agents/agents` (the pre-0.5.0 default, shared with OpenStandard) to
+ * the self-contained `~/.codex/agents` once, then sets this so a later
+ * deliberate choice of the old path sticks.
+ */
+codexAgentsPathMigrated: boolean, 
+/**
  * Preferred editor for opening a capability's original file. Defaults to
  * the OS default app.
  */

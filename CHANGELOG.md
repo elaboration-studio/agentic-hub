@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.8.3] — 2026-06-15
+
+### Fixed
+
+- **Agents in source subfolders never loaded in Cursor or Codex.** An agent
+  organized under a nested path (e.g. `zoom/cto.md`) was projected to a matching
+  subfolder (`~/.cursor/agents/zoom/cto.md`), but Cursor's and Codex's subagent
+  loaders scan only the **top level** of their agents directory — nested files
+  are ignored. Cursor and Codex agents now use `Layout::Flat`, collapsing the
+  source path to its basename (`~/.cursor/agents/cto.md`,
+  `~/.codex/agents/cto.toml`) so the loader discovers them. Claude is
+  unchanged — its agent loader is recursive and keys on the `name` frontmatter,
+  so Claude agents stay nested. Same-basename collisions from flattening resolve
+  deterministically (lowest `item_id` wins; the rest become `skip_conflict`),
+  and the upgrade self-heals: writing the flat copy prunes the old nested copy
+  of the same item (`managed_copy::prune_other_paths_for_item`), including its
+  now-empty folder. Only hub-managed copies are touched; user files are left
+  alone.
+- **Codex agent projection did nothing useful, in two compounding ways.**
+  Enabling agents for Codex appeared to succeed in the matrix but Codex never
+  picked the agent up. Two distinct root causes:
+  1. *Wrong destination (older configs).* Configs persisted before v0.5.0
+     retained the superseded Codex `agentsPath` default of `~/.agents/agents` —
+     the OpenStandard-owned shared root — so projections collided there instead
+     of landing where Codex reads subagents. A one-time migration
+     (`Settings::migrate_codex_agents_path`, marker `codexAgentsPathMigrated`)
+     rewrites that exact stale default to `~/.codex/agents` on launch; a
+     deliberate custom path is left untouched.
+  2. *Wrong format (all configs).* Even at the right path, the hub symlinked the
+     raw markdown spec. Codex only loads `*.toml` subagent files (`name`,
+     `description`, `developer_instructions`) from `~/.codex/agents/`, so the
+     markdown link was ignored. Codex agents now use a new `CodexAgentToml`
+     projection mode: the markdown source (YAML frontmatter + body) is rendered
+     to a Codex subagent TOML and written as a managed copy at `<name>.toml`.
+     Enabling self-heals by removing any superseded `.md` symlink the hub
+     previously created; a user-authored `.md` at the same path is left
+     untouched.
+
 ## [0.8.2] — 2026-06-15
 
 ### Added
