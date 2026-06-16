@@ -10,6 +10,8 @@ import type {
   ApplyResult,
   ApplySuiteResult,
   CapabilityItem,
+  CliTool,
+  CliToolStatus,
   InspectResult,
   InstallContext,
   PlannedOperation,
@@ -246,6 +248,16 @@ export const scanWorkspace = (workspaceId: string): Promise<WorkspaceInventory> 
 /// Fired by the watcher after a workspace's tool dirs change.
 export const onWorkspaceChanged = (cb: () => void): Promise<UnlistenFn> =>
   listen("workspace-changed", () => cb());
+
+// ---- CLI tool preflight ---------------------------------------------------
+
+/// The CLI tool catalog (bundled set merged with any user-local override).
+export const listToolCatalog = (): Promise<CliTool[]> =>
+  invoke("cmd_list_tool_catalog");
+
+/// Probe one tool by id: installed + version, and auth state when applicable.
+export const checkTool = (id: string): Promise<CliToolStatus> =>
+  invoke("cmd_check_tool", { input: { id } });
 
 // ---- Skill sources (skills.sh) --------------------------------------------
 

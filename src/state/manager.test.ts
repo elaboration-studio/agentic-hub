@@ -74,6 +74,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     sources: [{ id: "default", label: "Default", path: "/shared" }],
     sharedRoot: "/shared",
     suitesPath: null,
+    cliToolsPath: null,
     watcherEnabled: true,
     watcherForceMigrated: true,
     codexAgentsPathMigrated: true,
