@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.9.1] — 2026-06-16
+
+### Fixed
+
+- **Install Skills window footer overlap.** On a short window the live output
+  console kept a fixed minimum height and spilled over the Close / Cancel
+  buttons. The console `<pre>` now shrinks to `min-h-0` and scrolls internally,
+  and the footer is `shrink-0`, so the buttons always stay below the output.
+
 ## [0.9.0] — 2026-06-16
 
 ### Added

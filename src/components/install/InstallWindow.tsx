@@ -244,14 +244,14 @@ export function InstallWindow() {
           <span className="text-xs font-medium text-muted-foreground">Output</span>
           <pre
             ref={consoleRef}
-            className="min-h-32 flex-1 overflow-auto rounded-lg border bg-secondary/40 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap wrap-break-word"
+            className="min-h-0 flex-1 overflow-auto rounded-lg border bg-secondary/40 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap wrap-break-word"
           >
             {lines.join("\n")}
           </pre>
         </div>
       )}
 
-      <footer className="flex justify-end gap-2">
+      <footer className="flex shrink-0 justify-end gap-2">
         <Button variant="ghost" onClick={() => void getCurrentWindow().close()} disabled={installing}>
           Close
         </Button>
