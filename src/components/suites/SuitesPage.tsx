@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { onSuiteStoreChanged } from "@/ipc";
 import type { CapabilityItem, CapabilityKind, ToolId } from "@/types";
-import { type ToolDef } from "@/shared";
+import { KIND_LABEL, KIND_ORDER, type ToolDef } from "@/shared";
 import { useManagerStore } from "@/state/manager";
 import { useSuitesStore } from "@/state/suites";
 import { Button } from "@/components/ui/button";
@@ -35,8 +35,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 
-const SUITE_KINDS: CapabilityKind[] = ["skill", "agent", "rule"];
-const KIND_LABELS: Record<string, string> = { skill: "Skills", agent: "Agents", rule: "Rules" };
 const sectionTitle = "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 
 type KindFilter = "all" | CapabilityKind;
@@ -116,7 +114,7 @@ export function SuitesPage() {
   const visibleItems = useMemo(() => {
     const q = capSearch.trim().toLowerCase();
     return items.filter((it) => {
-      if (!SUITE_KINDS.includes(it.kind)) return false;
+      if (!KIND_ORDER.includes(it.kind)) return false;
       if (kindFilter !== "all" && it.kind !== kindFilter) return false;
       if (!q) return true;
       return it.name.toLowerCase().includes(q) || it.relativePath.toLowerCase().includes(q);
@@ -287,9 +285,11 @@ export function SuitesPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All kinds</SelectItem>
-                      <SelectItem value="skill">Skills</SelectItem>
-                      <SelectItem value="agent">Agents</SelectItem>
-                      <SelectItem value="rule">Rules</SelectItem>
+                      {KIND_ORDER.map((kind) => (
+                        <SelectItem key={kind} value={kind}>
+                          {KIND_LABEL[kind]}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -356,13 +356,13 @@ export function SuitesPage() {
 
 function buildTree(items: CapabilityItem[]): SNode[] {
   const roots: SNode[] = [];
-  for (const kind of SUITE_KINDS) {
+  for (const kind of KIND_ORDER) {
     const kindItems = items.filter((it) => it.kind === kind);
     if (kindItems.length === 0) continue;
     const kindNode: SNode = {
       id: `kind:${kind}`,
       type: "kind",
-      label: KIND_LABELS[kind],
+      label: KIND_LABEL[kind],
       description: `${kindItems.length} visible`,
       children: [],
       itemIds: kindItems.map((it) => it.id),

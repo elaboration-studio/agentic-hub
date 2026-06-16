@@ -581,6 +581,50 @@ mod tests {
     }
 
     #[test]
+    fn apply_suite_commands_reflect_exactly_the_suite_set() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(
+            &root.path().join("commands/review/code-review.md"),
+            "# review",
+        );
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Cursor,
+            &suite("with-cmd", &["command:review/code-review.md"]),
+        );
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Cursor),
+            vec!["command:review/code-review.md"],
+            "command projected when in the suite"
+        );
+        let target = settings
+            .tools
+            .cursor
+            .commands_path
+            .as_ref()
+            .unwrap()
+            .join("review/code-review.md");
+        assert!(target.exists(), "command symlink/copy exists on disk");
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Cursor,
+            &suite("empty", &[]),
+        );
+        assert!(
+            enabled_ids(&settings, &scanned.items, ToolId::Cursor).is_empty(),
+            "command cleared by the full reset"
+        );
+        assert!(!target.exists(), "command projection removed on re-apply");
+    }
+
+    #[test]
     fn apply_suite_hooks_reflect_exactly_the_suite_set() {
         let root = tempfile::tempdir().unwrap();
         let tools = tempfile::tempdir().unwrap();

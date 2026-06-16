@@ -153,7 +153,9 @@ Path: `~/.agentic-suites.json` (preserved from VS Code extension for parity)
         "skill:dev/tdd",
         "agent:coding/coding-agent",
         "rule:general/precise",
-        "rule:general/workspace"
+        "rule:general/workspace",
+        "hook:auto-format-after-edit",
+        "command:review/code-review.md"
       ],
       "createdAt": "2026-05-20T10:00:00Z",
       "updatedAt": "2026-05-20T10:00:00Z"
