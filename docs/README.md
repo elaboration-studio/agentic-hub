@@ -49,6 +49,7 @@ Detailed technical design for each subsystem of the projection engine and adjace
 - [suite-bindings.md](tech/modules/suite-bindings.md) — suite↔tool binding store; auto re-sync on capability edits
 - [workspace-inventory.md](tech/modules/workspace-inventory.md) — workspace target store, per-tool scan, read-only inventory contract
 - [skill-sources.md](tech/modules/skill-sources.md) — pluggable skill-source seam, skills.sh provider, local favorites store, install path
+- [cli-tools.md](tech/modules/cli-tools.md) — Tools preflight: bundled tool catalog (+ user override), login-PATH probe with timeout, install/auth status
 - [watcher.md](tech/modules/watcher.md) — source watcher + reconcile engine, auto-enable heuristic, debounce, loop avoidance
 - [tauri-ipc-contract.md](tech/modules/tauri-ipc-contract.md) — complete IPC command surface and event schemas
 - [agentic-demo-scaffold.md](tech/modules/agentic-demo-scaffold.md) — bundled tree embedding, scaffold modes, atomic writes
