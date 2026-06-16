@@ -192,6 +192,10 @@ pub struct Settings {
     /// `~/.agentic-suites.json` (migration-parity default).
     #[serde(default)]
     pub suites_path: Option<PathBuf>,
+    /// Optional user-local CLI-tools catalog JSON, merged over the bundled
+    /// catalog (override by id, append new). `None` uses only the bundled set.
+    #[serde(default)]
+    pub cli_tools_path: Option<PathBuf>,
     /// When on, the desktop shell watches the source roots and auto-reconciles
     /// projections on change. Defaults to on (the manual Rescan button is gone).
     #[serde(default = "default_true")]
@@ -355,6 +359,7 @@ impl Default for Settings {
             sources: Vec::new(),
             shared_root: expand_tilde("~/.agentic"),
             suites_path: None,
+            cli_tools_path: None,
             watcher_enabled: true,
             // A fresh config already has the watcher on; nothing to migrate.
             watcher_force_migrated: true,
@@ -391,6 +396,14 @@ impl Settings {
             Some(p) => expand_tilde(&p.to_string_lossy()),
             None => crate::skill_favorites::default_path(),
         }
+    }
+
+    /// Effective user CLI-tools override path (tilde-expanded), or `None` when
+    /// the user relies solely on the bundled catalog.
+    pub fn resolved_cli_tools_path(&self) -> Option<PathBuf> {
+        self.cli_tools_path
+            .as_ref()
+            .map(|p| expand_tilde(&p.to_string_lossy()))
     }
 
     /// One-time 0.8.1 migration: force the source watcher on, overriding a prior
@@ -540,6 +553,7 @@ impl Settings {
             sources: Vec::new(),
             shared_root: shared_root.into(),
             suites_path: None,
+            cli_tools_path: None,
             watcher_enabled: true,
             watcher_force_migrated: true,
             codex_agents_path_migrated: true,
