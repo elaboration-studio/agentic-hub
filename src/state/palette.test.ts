@@ -62,6 +62,7 @@ function makeSettings(): Settings {
     sources: [],
     sharedRoot: "/shared",
     suitesPath: null,
+    cliToolsPath: null,
     watcherEnabled: true,
     watcherForceMigrated: true,
     codexAgentsPathMigrated: true,

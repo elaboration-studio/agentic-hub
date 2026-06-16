@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.9.0] — 2026-06-16
+
+### Added
+
+- **Tools preflight in the Resources panel.** The Resources tab is now a
+  two-pane view: a left rail switches between **Tools** (always available) and
+  **Skills** (the skills.sh browser, shown only when that source is enabled).
+  The Tools pane is a preflight check for the command-line tools agents rely on
+  — Node, Python, Homebrew, git, the GitHub/GitLab CLIs, the Claude/Codex/Cursor
+  agent CLIs, and Vercel — showing each tool's install and (where applicable)
+  auth status, with per-row and "Refresh all" re-checks and an Install link out
+  to each tool's website. Tools come from a bundled JSON catalog
+  (`resources/cli-tools/catalog.json`), mergeable with an optional user-local
+  override via `settings.cliToolsPath` (remote/hot-update deferred). Status is
+  probed in Rust with the resolved login `PATH` and a per-check timeout; probes
+  run `program` + `args` directly (no shell). PATH resolution is now centralized
+  in `agentic-core::shell_env`, shared with the skills installer. See
+  [docs/tech/modules/cli-tools.md](docs/tech/modules/cli-tools.md).
+
+### Security
+
+- **`cliToolsPath` is config-file-only.** Because the tool catalog defines
+  executables that get run, the untrusted WebView must not be able to set its
+  path. `cmd_save_settings` now preserves the on-disk `cli_tools_path` and
+  discards any value the renderer sends; the override is set only by
+  hand-editing the settings file.
+- **Login-`PATH` resolution is timeout-bounded and cached.** `shell_env`
+  resolves the login shell `PATH` at most once (`OnceLock`) and kills the probe
+  shell after a 5s timeout, so a hanging rc file can't stall tool checks.
+
 ## [0.8.3] — 2026-06-15
 
 ### Fixed

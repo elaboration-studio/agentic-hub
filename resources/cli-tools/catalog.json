@@ -1,0 +1,77 @@
+[
+  {
+    "id": "node",
+    "name": "Node.js",
+    "category": "Runtime",
+    "installUrl": "https://nodejs.org/en/download",
+    "check": { "program": "node", "args": ["--version"] }
+  },
+  {
+    "id": "python3",
+    "name": "Python 3",
+    "category": "Runtime",
+    "installUrl": "https://www.python.org/downloads/",
+    "check": { "program": "python3", "args": ["--version"] }
+  },
+  {
+    "id": "homebrew",
+    "name": "Homebrew",
+    "category": "Package manager",
+    "installUrl": "https://brew.sh",
+    "check": { "program": "brew", "args": ["--version"] }
+  },
+  {
+    "id": "git",
+    "name": "Git",
+    "category": "Version control",
+    "installUrl": "https://git-scm.com/downloads",
+    "check": { "program": "git", "args": ["--version"] }
+  },
+  {
+    "id": "gh",
+    "name": "GitHub CLI",
+    "category": "Version control",
+    "installUrl": "https://cli.github.com",
+    "check": { "program": "gh", "args": ["--version"] },
+    "auth": { "program": "gh", "args": ["auth", "status"] }
+  },
+  {
+    "id": "glab",
+    "name": "GitLab CLI",
+    "category": "Version control",
+    "installUrl": "https://gitlab.com/gitlab-org/cli",
+    "check": { "program": "glab", "args": ["--version"] },
+    "auth": { "program": "glab", "args": ["auth", "status"] }
+  },
+  {
+    "id": "claude",
+    "name": "Claude Code CLI",
+    "category": "Agent CLI",
+    "installUrl": "https://docs.claude.com/en/docs/claude-code/overview",
+    "check": { "program": "claude", "args": ["--version"] }
+  },
+  {
+    "id": "codex",
+    "name": "Codex CLI",
+    "category": "Agent CLI",
+    "installUrl": "https://developers.openai.com/codex/cli/",
+    "check": { "program": "codex", "args": ["--version"] },
+    "auth": { "program": "codex", "args": ["login", "status"] }
+  },
+  {
+    "id": "cursor-agent",
+    "name": "Cursor CLI",
+    "category": "Agent CLI",
+    "installUrl": "https://cursor.com/cli",
+    "check": { "program": "cursor-agent", "args": ["--version"] },
+    "auth": { "program": "cursor-agent", "args": ["status"] }
+  },
+  {
+    "id": "vercel",
+    "name": "Vercel CLI",
+    "category": "Deployment",
+    "installUrl": "https://vercel.com/docs/cli",
+    "check": { "program": "vercel", "args": ["--version"] },
+    "auth": { "program": "vercel", "args": ["whoami"] }
+  }
+]

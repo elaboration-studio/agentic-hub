@@ -10,6 +10,7 @@
 pub mod adapter_registry;
 pub mod api;
 pub mod applier;
+pub mod cli_tools;
 pub mod codex_agent;
 pub mod error;
 pub mod hook_sync;
@@ -23,6 +24,7 @@ pub mod rule_sync;
 pub mod scaffold;
 pub mod scanner;
 pub mod settings;
+pub mod shell_env;
 pub mod skill_favorites;
 pub mod skill_source;
 pub mod suite_binding_store;
@@ -34,15 +36,17 @@ pub use adapter_registry::{
     create_workspace_adapter, Layout, ProjectionMode, ResolvedAdapter, WORKSPACE_TOOL_IDS,
 };
 pub use api::{AdapterStatus, InspectResult};
+pub use cli_tools::{
+    bundled_catalog, check_tool, merge_catalogs, AuthState, CliTool, CliToolStatus,
+};
 pub use error::{CoreError, Result};
 pub use hook_sync::{HookEventSpec, HookManifest};
 pub use model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, ContentTransform,
-    HookSyncError,
-    HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError, RuleSyncOutcome,
-    ScanError, ScanResult, SourceRef, SuiteBinding, SuiteCapabilityRef, SuiteDefinition,
-    SuiteValidationResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
-    WorkspaceTarget, WorkspaceTargetsState,
+    HookSyncError, HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError,
+    RuleSyncOutcome, ScanError, ScanResult, SourceRef, SuiteBinding, SuiteCapabilityRef,
+    SuiteDefinition, SuiteValidationResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState,
+    ToolId, WorkspaceTarget, WorkspaceTargetsState,
 };
 pub use open_targets::is_openable;
 pub use planner::{build_plan, inspect_tool};

@@ -18,7 +18,7 @@ import { ManagerView } from "./components/manager/ManagerView";
 import { ConflictDialog } from "./components/manager/ConflictDialog";
 import { ConfigPage } from "./components/config/ConfigPage";
 import { SuitesPage } from "./components/suites/SuitesPage";
-import { SkillsPage } from "./components/skills/SkillsPage";
+import { ResourcesPage } from "./components/resources/ResourcesPage";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -153,7 +153,7 @@ export function App() {
           )}
           {data && route === "config" && <ConfigPage />}
           {data && route === "suites" && <SuitesPage />}
-          {data && route === "skills" && <SkillsPage />}
+          {route === "skills" && <ResourcesPage />}
           {route === "manager" && <ManagerView />}
         </main>
         {route === "manager" && scope === "global" && pending > 0 && <ActionBar />}

@@ -5,6 +5,10 @@
 export type { AdapterStatus } from "./generated/AdapterStatus";
 export type { CapabilityItem } from "./generated/CapabilityItem";
 export type { CapabilityKind } from "./generated/CapabilityKind";
+export type { AuthState } from "./generated/AuthState";
+export type { CliCommand } from "./generated/CliCommand";
+export type { CliTool } from "./generated/CliTool";
+export type { CliToolStatus } from "./generated/CliToolStatus";
 export type { ApplyError } from "./generated/ApplyError";
 export type { ApplyProgressEvent } from "./generated/ApplyProgressEvent";
 export type { ApplyResult } from "./generated/ApplyResult";
