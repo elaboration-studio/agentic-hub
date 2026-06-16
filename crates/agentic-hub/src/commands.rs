@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use agentic_core::adapter_registry::WORKSPACE_TOOL_IDS;
 use agentic_core::api::{self, InspectResult};
 use agentic_core::applier;
+use agentic_core::cli_tools::{self, CliTool, CliToolStatus};
 use agentic_core::managed_copy::now_iso8601;
 use agentic_core::model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, PlannedOperation, ScanResult,
@@ -54,7 +55,7 @@ pub async fn cmd_save_settings(
     app: AppHandle,
     watcher: State<'_, WatcherState>,
     telemetry: State<'_, crate::telemetry::TelemetryState>,
-    settings: Settings,
+    mut settings: Settings,
 ) -> IpcResult<()> {
     if !agentic_core::settings::is_valid_shortcut(&settings.palette_shortcut) {
         return Err(IpcError::new(
@@ -62,6 +63,11 @@ pub async fn cmd_save_settings(
             format!("Invalid palette shortcut: {}", settings.palette_shortcut),
         ));
     }
+    // `cli_tools_path` points at a catalog whose entries are executed (see
+    // `cli_tools::check_tool`). The WebView is untrusted, so it must never be
+    // able to set an executable-defining path: preserve whatever is on disk
+    // (hand-edited by the user) and discard any value the renderer sent.
+    settings.cli_tools_path = Settings::load()?.cli_tools_path;
     settings.save()?;
     // Mirror the telemetry consent flag so a mid-session toggle takes effect at
     // once (gates the next tracked event without needing a restart).
@@ -690,6 +696,51 @@ pub async fn cmd_scan_workspace(workspace_id: String) -> IpcResult<WorkspaceInve
         &target.dir,
         &WORKSPACE_TOOL_IDS,
     ))
+}
+
+// ---- CLI tool preflight ---------------------------------------------------
+
+/// The effective tool catalog: the bundled set merged with the user's optional
+/// local override (override by id, append new). A missing override file falls
+/// back to the bundled set; a malformed one surfaces a typed error.
+fn merged_cli_tools() -> IpcResult<Vec<CliTool>> {
+    let bundled = cli_tools::bundled_catalog()?;
+    let settings = Settings::load()?;
+    let merged = match settings.resolved_cli_tools_path() {
+        Some(path) => match std::fs::read_to_string(&path) {
+            Ok(text) => cli_tools::merge_catalogs(bundled, cli_tools::parse_catalog(&text)?),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => bundled,
+            Err(e) => return Err(IpcError::new("cli_tools_read_failed", e.to_string())),
+        },
+        None => bundled,
+    };
+    Ok(merged)
+}
+
+/// The CLI tool catalog the Tools panel renders (bundled + optional override).
+#[tauri::command]
+pub async fn cmd_list_tool_catalog() -> IpcResult<Vec<CliTool>> {
+    merged_cli_tools()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckToolInput {
+    pub id: String,
+}
+
+/// Probe one tool by id: run its check (installed + version) and, when
+/// applicable, its auth command. Shells out, so it runs on the blocking pool.
+#[tauri::command]
+pub async fn cmd_check_tool(input: CheckToolInput) -> IpcResult<CliToolStatus> {
+    let tool = merged_cli_tools()?
+        .into_iter()
+        .find(|t| t.id == input.id)
+        .ok_or_else(|| IpcError::new("unknown_tool", "Unknown CLI tool id"))?;
+    let status = tauri::async_runtime::spawn_blocking(move || cli_tools::check_tool(&tool))
+        .await
+        .map_err(|e| IpcError::new("internal", e.to_string()))?;
+    Ok(status)
 }
 
 // ---- Skill sources (skills.sh) --------------------------------------------
