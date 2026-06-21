@@ -565,8 +565,8 @@ function TelemetryPanel({ settings, onChanged }: PanelProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-2 p-0">
         <p className={hint}>
-          Off by default. When on, the app sends anonymous lifecycle events (app
-          start and exit, plus your OS and app version) to{" "}
+          On by default. When enabled, the app sends anonymous lifecycle events
+          (app start and exit, plus your OS and app version) to{" "}
           <button
             type="button"
             className="underline"
