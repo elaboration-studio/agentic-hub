@@ -14,6 +14,10 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   console kept a fixed minimum height and spilled over the Close / Cancel
   buttons. The console `<pre>` now shrinks to `min-h-0` and scrolls internally,
   and the footer is `shrink-0`, so the buttons always stay below the output.
+- **Suite Manager includes hooks and commands.** The suite editor and capability
+  checklist now list all five kinds (skills, agents, rules, hooks, commands) so
+  suites can define and apply complete capability sets. The apply pipeline
+  already projected hooks and commands; the UI had filtered them out.
 
 ## [0.9.0] — 2026-06-16
 

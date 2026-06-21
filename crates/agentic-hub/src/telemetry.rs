@@ -1,7 +1,7 @@
-//! Opt-in anonymous usage telemetry (Aptabase).
+//! Anonymous usage telemetry (Aptabase).
 //!
-//! Telemetry is off by default and gated on explicit user consent
-//! (`Settings.telemetry.enabled`). The Aptabase plugin is always registered —
+//! Telemetry is on by default and gated on `Settings.telemetry.enabled` (the
+//! user can disable it in Config). The Aptabase plugin is always registered —
 //! it sends nothing until `track_event` is called — and every call is guarded
 //! by the [`TelemetryState`] flag, so a runtime toggle takes effect at once and
 //! nothing leaves the machine while disabled. Events are sent from Rust only;

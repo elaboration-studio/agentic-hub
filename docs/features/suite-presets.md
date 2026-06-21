@@ -21,7 +21,7 @@ As a power user managing multiple AI tools, I want to save a named capability co
 
 ### In scope
 
-- Suite data model: named, tool-agnostic list of capability IDs
+- Suite data model: named, tool-agnostic list of capability IDs (all five kinds: skills, agents, rules, hooks, commands)
 - Suite storage: `~/.agentic-suites.json` (single portable dotfile, parity path with VS Code extension)
 - Suite Manager window: standalone Tauri window for creating, editing, renaming, and deleting suites
 - "Create from current" shortcut: capture the currently enabled capabilities for the focused tool as a new suite
@@ -124,7 +124,7 @@ When a suite references a capability ID that no longer exists in the shared root
 - [ ] Selecting a suite and clicking "Apply Suite" triggers a confirmation dialog
 - [ ] On confirm, all existing projections for the focused tool are removed or replaced
 - [ ] Only capabilities in the suite are enabled after apply
-- [ ] Projection sync runs correctly for all kinds (symlinks, managed copies, markdown sections)
+- [ ] Projection sync runs correctly for all kinds (symlinks, managed copies, markdown sections, hook json sections)
 - [ ] The apply result summary shows applied, skipped, and error counts
 - [ ] Stale suite references are skipped with a summary note
 - [ ] After suite apply, user can toggle individual items normally
