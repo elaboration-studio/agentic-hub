@@ -114,19 +114,25 @@ pub struct SkillsConfig {
     pub favorites_path: Option<PathBuf>,
 }
 
-/// Opt-in anonymous usage telemetry (Aptabase). Off by default; nothing is sent
-/// unless the user enables it. The desktop shell tracks only coarse lifecycle
-/// events (app start/exit) from Rust — the WebView never calls out.
+/// Anonymous usage telemetry (Aptabase). On by default; the user can disable it
+/// in Config. The desktop shell tracks only coarse lifecycle events (app
+/// start/exit) from Rust — the WebView never calls out.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
     ts(export, export_to = "../../../src/types/generated/")
 )]
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TelemetryConfig {
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        TelemetryConfig { enabled: true }
+    }
 }
 
 /// Per-tool target paths and toggles. Mirrors the IPC `ToolSettings` shape.
@@ -222,7 +228,7 @@ pub struct Settings {
     /// Opt-in skills.sh public source config. Defaults to disabled.
     #[serde(default)]
     pub skills: SkillsConfig,
-    /// Opt-in anonymous usage telemetry (Aptabase). Defaults to disabled.
+    /// Anonymous usage telemetry (Aptabase). Defaults to enabled.
     #[serde(default)]
     pub telemetry: TelemetryConfig,
     pub tools: ToolsSettings,
@@ -783,24 +789,24 @@ mod tests {
     }
 
     #[test]
-    fn telemetry_defaults_off_and_roundtrips() {
+    fn telemetry_defaults_on_and_roundtrips() {
         let s = Settings::default();
-        assert!(!s.telemetry.enabled, "telemetry is opt-in, off by default");
+        assert!(s.telemetry.enabled, "telemetry is on by default");
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
         let configured = Settings {
-            telemetry: TelemetryConfig { enabled: true },
+            telemetry: TelemetryConfig { enabled: false },
             ..Settings::default()
         };
         configured.save_to(&path).unwrap();
         let reloaded = Settings::load_from(&path).unwrap();
         assert_eq!(reloaded.telemetry, configured.telemetry);
-        assert!(reloaded.telemetry.enabled);
+        assert!(!reloaded.telemetry.enabled);
     }
 
     #[test]
-    fn legacy_config_without_telemetry_block_defaults_off() {
+    fn legacy_config_without_telemetry_block_defaults_on() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
         // A config written before the telemetry block existed (no `telemetry` key).
@@ -815,7 +821,7 @@ mod tests {
         )
         .unwrap();
         let loaded = Settings::load_from(&path).unwrap();
-        assert!(!loaded.telemetry.enabled, "absent block defaults to off");
+        assert!(loaded.telemetry.enabled, "absent block defaults to on");
     }
 
     #[test]

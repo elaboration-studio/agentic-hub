@@ -50,9 +50,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        // Opt-in telemetry. The plugin is always registered (it sends nothing
-        // until `track_event` is called); every call is gated on consent via
-        // `TelemetryState`, so nothing leaves the machine while disabled.
+        // Telemetry (on by default, user can disable in Config). The plugin is
+        // always registered (it sends nothing until `track_event` is called);
+        // every call is gated on `TelemetryState`, so nothing leaves the machine
+        // while disabled.
         .plugin(tauri_plugin_aptabase::Builder::new(telemetry::APTABASE_KEY).build())
         // Global summon accelerator for the command palette. The handler fires
         // for any registered shortcut; we only ever register the palette one.
