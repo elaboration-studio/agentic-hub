@@ -156,6 +156,7 @@ describe("palette store — workspace inventories", () => {
         items: [makeItem(`skill:qa-${id}`)],
         states: [],
         errors: [],
+        lockedSkills: [],
       }),
     );
 
@@ -183,7 +184,12 @@ describe("palette store — workspace inventories", () => {
     mocked.scanWorkspace.mockImplementation((id: string) =>
       id === "w2"
         ? Promise.reject(new Error("unreadable"))
-        : Promise.resolve({ items: [makeItem("skill:qa")], states: [], errors: [] }),
+        : Promise.resolve({
+            items: [makeItem("skill:qa")],
+            states: [],
+            errors: [],
+            lockedSkills: [],
+          }),
     );
 
     await usePaletteStore.getState().load();

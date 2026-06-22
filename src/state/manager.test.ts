@@ -219,6 +219,7 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
         makeState("claude", "skill:a", "enabled"),
       ],
       errors: [],
+      lockedSkills: [],
     });
 
     await useManagerStore.getState().loadWorkspace("ws-1");
@@ -256,6 +257,7 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
       items: [makeItem("skill:local")],
       states: [makeState("cursor", "skill:local", "enabled")],
       errors: [],
+      lockedSkills: [],
     });
 
     await useManagerStore.getState().loadWorkspace("ws-1");
@@ -271,6 +273,64 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
     expect(s.pendingKeys).toEqual([]);
   });
 
+  it("populates namespaced lockedSkills from the inventory lock", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    noGlobal();
+    mocked.scanWorkspace.mockResolvedValue({
+      items: [makeItem("skill:rust"), makeItem("skill:hand")],
+      states: [
+        makeState("cursor", "skill:rust", "enabled"),
+        makeState("cursor", "skill:hand", "enabled"),
+      ],
+      errors: [],
+      // Only the rust skill is managed by skills.sh.
+      lockedSkills: [
+        {
+          itemId: "skill:rust",
+          name: "rust",
+          source: "apollographql/skills",
+          sourceType: "github",
+        },
+      ],
+    });
+
+    await useManagerStore.getState().loadWorkspace("ws-1");
+    const locked = useManagerStore.getState().lockedSkills;
+
+    expect(locked.size).toBe(1);
+    // Keyed by the same namespaced id the matrix rows carry.
+    expect(locked.get(`${WS}skill:rust`)).toEqual({
+      name: "rust",
+      source: "apollographql/skills",
+    });
+    expect(locked.has(`${WS}skill:hand`)).toBe(false);
+  });
+
+  it("refresh clears lockedSkills set by loadWorkspace", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    noGlobal();
+    mocked.scanWorkspace.mockResolvedValue({
+      items: [makeItem("skill:rust")],
+      states: [makeState("cursor", "skill:rust", "enabled")],
+      errors: [],
+      lockedSkills: [
+        {
+          itemId: "skill:rust",
+          name: "rust",
+          source: "apollographql/skills",
+          sourceType: "github",
+        },
+      ],
+    });
+    await useManagerStore.getState().loadWorkspace("ws-1");
+    expect(useManagerStore.getState().lockedSkills.size).toBe(1);
+
+    seedHappyPath();
+    await useManagerStore.getState().refresh();
+
+    expect(useManagerStore.getState().lockedSkills.size).toBe(0);
+  });
+
   it("read-only mode rejects toggles", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
     noGlobal();
@@ -278,6 +338,7 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
       items: [makeItem("skill:a")],
       states: [makeState("cursor", "skill:a", "enabled")],
       errors: [],
+      lockedSkills: [],
     });
     await useManagerStore.getState().loadWorkspace("ws-1");
 
@@ -290,7 +351,12 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
   it("refresh clears the read-only flag set by loadWorkspace", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
     noGlobal();
-    mocked.scanWorkspace.mockResolvedValue({ items: [], states: [], errors: [] });
+    mocked.scanWorkspace.mockResolvedValue({
+      items: [],
+      states: [],
+      errors: [],
+      lockedSkills: [],
+    });
     await useManagerStore.getState().loadWorkspace("ws-1");
     expect(useManagerStore.getState().readOnly).toBe(true);
 

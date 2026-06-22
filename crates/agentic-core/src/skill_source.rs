@@ -217,6 +217,32 @@ pub fn skills_install_command(install_ref: &str, skill: Option<&str>, tools: &[T
     cmd
 }
 
+/// The non-interactive `npx` argument vector for updating one already-installed
+/// (pre-validated) skill in the current project. `--project` pins project scope
+/// (the skill lives in `skills-lock.json` here, not the global lock) and `--yes`
+/// skips the scope prompt; the leading `--yes` is npx's. The skill name is the
+/// lock key. Callers must `validate_skill_slug` first.
+pub fn skills_update_npx_args(skill: &str) -> Vec<String> {
+    vec![
+        "--yes".to_string(),
+        "skills@latest".to_string(),
+        "update".to_string(),
+        skill.to_string(),
+        "--project".to_string(),
+        "--yes".to_string(),
+    ]
+}
+
+/// Build the `npx skills update <name> --project --yes` command with the login
+/// `PATH` and telemetry disabled — ready for the caller to set `current_dir`,
+/// pipe stdio, and spawn. Pure assembly (no spawn); the exact program + argv is
+/// asserted in tests. Callers must `validate_skill_slug` first.
+pub fn skills_update_command(skill: &str) -> Command {
+    let mut cmd = npx_command();
+    cmd.args(skills_update_npx_args(skill));
+    cmd
+}
+
 /// Percent-encode a query component (RFC 3986 unreserved set passes through).
 fn encode_query(q: &str) -> String {
     let mut out = String::with_capacity(q.len());
@@ -490,6 +516,33 @@ mod tests {
             args,
             skills_npx_args("vercel-labs/agent-skills", Some("pr-review"), &tools)
         );
+    }
+
+    #[test]
+    fn update_args_pin_project_scope_non_interactively() {
+        // `update <name> --project --yes` runs headless against the project lock.
+        assert_eq!(
+            skills_update_npx_args("rust-best-practices"),
+            vec![
+                "--yes".to_string(),
+                "skills@latest".to_string(),
+                "update".to_string(),
+                "rust-best-practices".to_string(),
+                "--project".to_string(),
+                "--yes".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn update_command_builds_the_pinned_npx_invocation() {
+        let cmd = skills_update_command("rust-best-practices");
+        assert_eq!(cmd.get_program().to_string_lossy(), "npx");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args, skills_update_npx_args("rust-best-practices"));
     }
 
     #[test]

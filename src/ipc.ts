@@ -316,6 +316,30 @@ export const installSkillStream = (
   onEvent: Channel<SkillInstallEvent>,
 ): Promise<void> => invoke("cmd_install_skill_stream", { input, onEvent });
 
+/// Open (or focus) the install window in update mode for one skills.sh-managed
+/// skill. The window reads the `update` context on mount and runs `skills update`.
+export const openUpdateWindow = (
+  workspaceId: string,
+  provider: string,
+  installRef: string,
+  name: string,
+): Promise<void> =>
+  invoke("cmd_open_update_window", { workspaceId, provider, installRef, name });
+
+export interface UpdateSkillStreamPayload {
+  provider: string;
+  workspaceId: string;
+  /// The skill's install name — the `skills-lock.json` key passed to `update`.
+  name: string;
+}
+
+/// Update one already-installed skill, streaming output (then a terminal `done`)
+/// over `onEvent`. Shares the install window's streaming + cancel machinery.
+export const updateSkillStream = (
+  input: UpdateSkillStreamPayload,
+  onEvent: Channel<SkillInstallEvent>,
+): Promise<void> => invoke("cmd_update_skill_stream", { input, onEvent });
+
 /// Kill the in-flight install (if any). The current stream then ends as
 /// `cancelled`.
 export const cancelInstall = (): Promise<void> => invoke("cmd_cancel_install");

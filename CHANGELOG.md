@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.9.2] — 2026-06-22
+
+### Added
+
+- **Update skills.sh skills from the workspace inventory.** Workspace scope now
+  reads a project's `skills-lock.json` and marks every skill the skills.sh CLI
+  manages with a `skills.sh` badge. Each marked row gets an **Update via
+  skills.sh** action that opens the existing install window in a focused update
+  mode and runs `npx skills update <name> --project --yes` with live streaming,
+  Cancel, and an automatic re-scan when it finishes. This is the second
+  user-initiated workspace write (after install); scanning stays read-only and
+  tolerant — a missing or malformed lock simply marks nothing. See
+  [docs/features/skills-sh-integration.md](docs/features/skills-sh-integration.md)
+  and [docs/tech/modules/skill-sources.md](docs/tech/modules/skill-sources.md).
+
 ## [0.9.1] — 2026-06-16
 
 ### Fixed

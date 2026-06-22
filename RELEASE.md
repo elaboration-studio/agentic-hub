@@ -5,30 +5,22 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.9.1] — 2026-06-16
+## [0.9.2] — 2026-06-22
 
-### Fixes
+### Added
 
-- **Install Skills window: footer no longer overlaps the console.** When the
-  window was short, the streaming output panel kept a fixed minimum height and
-  spilled over the Close / Cancel buttons. The console now shrinks and scrolls
-  within the available space, and the footer always reserves its row, so the
-  buttons stay clear of the output.
+- **Update skills.sh skills, right from the workspace inventory.** When you audit
+  a project, every skill installed by the skills.sh CLI now carries a `skills.sh`
+  badge (read from the project's `skills-lock.json`). Its row menu gains **Update
+  via skills.sh**, which opens the install window in a focused update mode and
+  runs `npx skills update` for that one skill — live output, Cancel, and an
+  automatic re-scan when it's done. Scanning stays read-only; the update is an
+  explicit, per-row action.
 
 ### Migration
 
-- **None.**
+- **None.** Projects without a `skills-lock.json` simply show no badges.
 
 ### Known Issues
 
 - None.
-- **Suites now cover hooks and commands.** The Suite Manager capability tree
-  lists all five capability kinds — skills, agents, rules, hooks, and commands —
-  so a suite can capture and apply a complete tool configuration, not just the
-  original three kinds. Apply semantics are unchanged: a full reset through the
-  existing plan/apply, rule-sync, and hook-sync pipeline.
-
-### Migration
-
-- **None.** Existing suite files load unchanged; hooks and commands can be added
-  to suites from the editor or will apply when already present in saved refs.

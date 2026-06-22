@@ -80,6 +80,10 @@ interface ManagerState {
   // `key(tool, itemId)` -> owning suite, for cells a suite binding manages
   // (locked in the matrix). Empty when no suite is applied.
   ownership: Map<string, OwnershipInfo>;
+  // Namespaced item id -> the skills.sh install behind it, for workspace skills
+  // recorded in `skills-lock.json`. Drives the row badge + "Update" action.
+  // Empty in global scope.
+  lockedSkills: Map<string, { name: string; source: string }>;
 
   refresh: () => Promise<void>;
   loadWorkspace: (id: string) => Promise<void>;
@@ -206,6 +210,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   currentMap: new Map(),
   pendingKeys: [],
   ownership: new Map(),
+  lockedSkills: new Map(),
 
   refresh: async () => {
     set({ status: "loading", error: "" });
@@ -225,6 +230,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         workspaceTools: tools.filter((t) => WORKSPACE_TOOL_IDS.has(t.id)),
         pendingKeys: [],
         ownership,
+        lockedSkills: new Map(),
         watching: settings.watcherEnabled,
         readOnly: false,
         status: "ready",
@@ -255,6 +261,14 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       const states = [...global.states, ...inv.states.map(namespaceState)];
       const result: InspectResult = { states, adapterStatuses: [] };
       const currentMap = buildCurrentMap(result);
+      // Key by the same namespaced id the matrix rows carry, so a row lookup is
+      // a direct hit. The lock's `itemId` is the pre-namespace local id.
+      const lockedSkills = new Map(
+        inv.lockedSkills.map((l) => [
+          WORKSPACE_ID_PREFIX + l.itemId,
+          { name: l.name, source: l.source },
+        ]),
+      );
       set({
         data: {
           settings,
@@ -268,6 +282,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         workspaceTools: WORKSPACE_TOOLS,
         pendingKeys: [],
         ownership: new Map(),
+        lockedSkills,
         readOnly: true,
         status: "ready",
       });

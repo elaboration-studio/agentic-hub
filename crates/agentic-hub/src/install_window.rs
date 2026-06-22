@@ -9,14 +9,14 @@
 //! validated vector — see `docs/tech/modules/skill-sources.md`.
 
 use std::io::{BufRead, BufReader, Read};
-use std::process::{Child, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 use agentic_core::error::CoreError;
 use agentic_core::model::ToolId;
 use agentic_core::skill_source::{
-    provider_for, skills_install_command, skills_npx_args, validate_install_ref,
-    validate_skill_slug, SkillInstallEvent,
+    provider_for, skills_install_command, skills_npx_args, skills_update_command,
+    skills_update_npx_args, validate_install_ref, validate_skill_slug, SkillInstallEvent,
 };
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
@@ -34,8 +34,28 @@ pub const INSTALL_LABEL: &str = "install";
 const INSTALL_WIDTH: f64 = 760.0;
 const INSTALL_HEIGHT: f64 = 620.0;
 
+/// A single skill the window should **update** (rather than install). Set when
+/// the window is opened from a workspace row's "Update via skills.sh" action; the
+/// window then runs `npx skills update <name>` instead of showing the install
+/// matrix.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateTarget {
+    pub provider: String,
+    /// The install source (`owner/repo`), shown for context.
+    pub install_ref: String,
+    /// The skill's install name — the `skills-lock.json` key passed to update.
+    pub name: String,
+}
+
 /// Which workspace the install window targets, handed to it on mount. The label
-/// lets the window name the project it is installing into.
+/// lets the window name the project it is installing into. When `update` is set,
+/// the window runs in single-skill update mode instead of the install matrix.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
@@ -46,6 +66,9 @@ const INSTALL_HEIGHT: f64 = 620.0;
 pub struct InstallContext {
     pub workspace_id: String,
     pub workspace_label: String,
+    /// Present only in update mode: the one skill to update.
+    #[serde(default)]
+    pub update: Option<UpdateTarget>,
 }
 
 /// The context the next-opened install window should read on mount. Set by
@@ -99,6 +122,54 @@ pub async fn cmd_open_install_window(
         *guard = Some(InstallContext {
             workspace_id: target.id,
             workspace_label: target.label,
+            update: None,
+        });
+    }
+
+    let win = build_install_window(&app)
+        .map_err(|e| IpcError::new("window_build_failed", e.to_string()))?;
+    let _ = win.show();
+    let _ = win.set_focus();
+    if existed {
+        let _ = win.emit("install-context-changed", ());
+    }
+    Ok(())
+}
+
+/// Open (or focus) the install window in **update mode** for one skill. Mirrors
+/// [`cmd_open_install_window`] but stashes an [`UpdateTarget`] so the window runs
+/// `npx skills update <name>` instead of showing the install matrix. The ref +
+/// slug are re-validated in [`cmd_update_skill_stream`] before any spawn.
+#[tauri::command]
+pub async fn cmd_open_update_window(
+    app: AppHandle,
+    ctx_state: State<'_, InstallContextState>,
+    workspace_id: String,
+    provider: String,
+    install_ref: String,
+    name: String,
+) -> IpcResult<()> {
+    let target = WorkspaceTargetStore::new()
+        .read()?
+        .workspace_targets
+        .into_iter()
+        .find(|t| t.id == workspace_id)
+        .ok_or_else(|| IpcError::new("workspace_not_found", "Workspace target no longer exists"))?;
+
+    let existed = app.get_webview_window(INSTALL_LABEL).is_some();
+    {
+        let mut guard = ctx_state
+            .0
+            .lock()
+            .map_err(|_| IpcError::new("internal", "install context poisoned"))?;
+        *guard = Some(InstallContext {
+            workspace_id: target.id,
+            workspace_label: target.label,
+            update: Some(UpdateTarget {
+                provider,
+                install_ref,
+                name,
+            }),
         });
     }
 
@@ -207,9 +278,75 @@ pub async fn cmd_install_skill_stream(
     });
 
     let mut cmd = skills_install_command(&input.install_ref, slug, &input.tool_ids);
-    cmd.current_dir(&target.dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.current_dir(&target.dir);
+    run_skill_stream(app, install_state, watcher, cmd, on_event).await
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSkillInput {
+    pub provider: String,
+    pub workspace_id: String,
+    /// The skill's install name — the `skills-lock.json` key. Re-validated as a
+    /// slug before it reaches a process arg.
+    pub name: String,
+}
+
+/// Update one already-installed skill in the target workspace via
+/// `npx skills update <name> --project --yes`, streaming output live and
+/// finishing with a single [`SkillInstallEvent::Done`]. Shares the streaming +
+/// cancel + re-scan machinery with install (see [`run_skill_stream`]).
+#[tauri::command]
+pub async fn cmd_update_skill_stream(
+    app: AppHandle,
+    install_state: State<'_, InstallState>,
+    watcher: State<'_, WatcherState>,
+    input: UpdateSkillInput,
+    on_event: Channel<SkillInstallEvent>,
+) -> IpcResult<()> {
+    if provider_for(&input.provider).is_none() {
+        return Err(IpcError::new(
+            "unknown_provider",
+            "Unknown skill source provider",
+        ));
+    }
+    if !validate_skill_slug(&input.name) {
+        return Err(IpcError::new("invalid_skill_slug", "Unsafe skill name"));
+    }
+    let target = WorkspaceTargetStore::new()
+        .read()?
+        .workspace_targets
+        .into_iter()
+        .find(|t| t.id == input.workspace_id)
+        .ok_or_else(|| IpcError::new("workspace_not_found", "Workspace target no longer exists"))?;
+    if !target.dir.is_dir() {
+        return Err(IpcError::from(CoreError::NotADirectory(target.dir.clone())));
+    }
+
+    let args = skills_update_npx_args(&input.name);
+    let _ = on_event.send(SkillInstallEvent::Line {
+        stream: "stdout".into(),
+        text: format!("$ npx {}", args.join(" ")),
+    });
+
+    let mut cmd = skills_update_command(&input.name);
+    cmd.current_dir(&target.dir);
+    run_skill_stream(app, install_state, watcher, cmd, on_event).await
+}
+
+/// Spawn `cmd` (cwd already set), stream its stdout/stderr live as
+/// [`SkillInstallEvent::Line`] events, store the child in [`InstallState`] so
+/// Cancel can kill it, and finish with a single [`SkillInstallEvent::Done`]. On
+/// a clean success the watcher is nudged and `workspace-changed` is emitted so
+/// the main window re-scans the read-only inventory. Shared by install + update.
+async fn run_skill_stream(
+    app: AppHandle,
+    install_state: State<'_, InstallState>,
+    watcher: State<'_, WatcherState>,
+    mut cmd: Command,
+    on_event: Channel<SkillInstallEvent>,
+) -> IpcResult<()> {
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| match e.kind() {
         // The common failure: `npx` isn't on the resolved PATH. Map it to the
         // actionable hint instead of the opaque "No such file or directory".
@@ -223,7 +360,7 @@ pub async fn cmd_install_skill_stream(
             .0
             .lock()
             .map_err(|_| IpcError::new("internal", "install lock poisoned"))?;
-        // A prior child (if any) is replaced; installs run one at a time.
+        // A prior child (if any) is replaced; runs are sequential, one at a time.
         *guard = Some(child);
     }
 

@@ -60,7 +60,11 @@ pub struct WorkspaceInventory {
     pub items: Vec<CapabilityItem>,        // one row per distinct id, sorted by id
     pub states: Vec<ToolCapabilityState>,  // one per (tool, present item), always Enabled
     pub errors: Vec<ScanError>,
+    pub locked_skills: Vec<LockedSkill>,   // skill items the skills.sh CLI manages
 }
+
+pub struct LockedSkill { pub item_id: String, pub name: String,
+                         pub source: String, pub source_type: String }
 ```
 
 Algorithm per tool (skipped when the adapter is disabled):
@@ -81,6 +85,18 @@ Rules:
 - `source_id` = `"workspace"`, `source_label` = `"Workspace"`.
 - `__archived__` dirs are skipped; walks are depth-bounded (16) like the shared scanner; a missing tool dir is not an error; an unreadable dir produces a `ScanError`.
 
+## skills.sh lock marking
+
+After building items, the scan reads the project lock via
+`skill_lock::read_local_lock(ws)` (see [skill-sources.md](./skill-sources.md))
+and, for each `Skill` item whose **leaf folder name** is a key in the lock's
+`skills` map, emits a `LockedSkill { item_id, name, source, source_type }`
+(`item_id` is the local `skill:<rel>` id, pre-namespacing). This is how the UI
+marks a row as skills.sh-managed and targets `npx skills update`. Marking is
+tolerant — no lock file (or a malformed one) means an empty `locked_skills`, so a
+third-party lock never breaks the read-only scan. The UI store namespaces each
+`item_id` with the `ws::` prefix so the map key matches the matrix row id.
+
 ## Global × local merge (UI store)
 
 `scan_workspace` reports only the project's **local** resources. The full "what applies to this project?" view is assembled in the UI store (`manager.loadWorkspace`), which merges two sources before handing the matrix a single read-only dataset:
@@ -89,6 +105,8 @@ Rules:
 - **Local:** `scan_workspace` output. Local item ids and state `itemId`s are namespaced with a `ws::` prefix so a global and a local resource sharing the same relative path stay **distinct rows**, each carrying its own source (`.agentic-arno`, `.helper`, … vs `Workspace`).
 
 Both sets are unioned into `items` / `states`. Tool columns are fixed to `WORKSPACE_TOOLS` (Codex / Claude / Cursor). The matrix's source filter appears automatically (more than one source) and lets the user narrow to a single shared root or to `Workspace`. The `ws::` prefix uses the same `::` delimiter as `key()`, so tool parsing is unaffected. A `sources-changed` event reloads the merged inventory while in workspace scope (globals can change too), alongside `workspace-changed` for local edits.
+
+The store also builds `lockedSkills: Map<namespacedItemId, { name, source }>` from `inv.lockedSkills` (applying the `ws::` prefix), which the matrix reads to render a `skills.sh` badge and the row's **Update via skills.sh** action. It is reset to empty in global scope (`refresh`).
 
 ## Watcher integration
 
@@ -99,13 +117,13 @@ The `agentic-hub` watcher subscribes to the shared source roots **and** the acti
 - `cmd_scan_workspace(workspace_id) -> WorkspaceInventory` — resolve the dir from the target store, scan it.
 - `cmd_pick_workspace_dir`, `cmd_list_workspace_targets`, `cmd_set_active_workspace_target`, `cmd_remove_workspace_target` — target store CRUD; the mutating ones restart the watcher.
 - Event `workspace-changed` — the UI reloads the active inventory while in workspace scope.
-- `cmd_install_skill` (opt-in skills.sh source only) — the **one** explicit workspace write. It installs a starred skill into the active project via a controlled subprocess, then emits `workspace-changed` so this read-only scan re-runs. The scan never writes; see [skill-sources.md](./skill-sources.md).
+- Skills.sh install + update (opt-in source only) — the **two** explicit workspace writes, both driven from the `install` window. They run a starred skill's install (`npx skills add`) or a locked skill's update (`npx skills update`) via a controlled subprocess, then emit `workspace-changed` so this read-only scan re-runs. The scan never writes; see [skill-sources.md](./skill-sources.md).
 
 See [tauri-ipc-contract.md](./tauri-ipc-contract.md).
 
 ## Testing
 
-TDD unit tests in `workspace_inventory.rs`: per-tool discovery, cross-tool dedupe (one row, two present states), Cursor reading the shared `.agents/` dir, per-tool state dedupe across `.cursor`/`.agents`, instruction-file presence (`AGENTS.md` attributed to both Codex **and** Cursor; `CLAUDE.md` to Claude only), Codex subagents read from `.codex/agents/*.toml` (markdown in `.agents/agents` is not a Codex subagent), Cursor recursive nested skill discovery (name = leaf folder), Cursor nested `.mdc` rule discovery, empty workspace → nothing, `__archived__` skipped, OpenClaw skipped. Adapter-layout truths live in `adapter_registry.rs` (Claude skills Flat, Claude agents Nested + recursive). UI: `manager.loadWorkspace` populates a read-only inventory with no pending keys and refuses toggles, merges only `Enabled` global states with namespaced local resources, and `refresh` clears `readOnly`; the workspace store reload/pick/activate/remove handoff to `loadWorkspace`.
+TDD unit tests in `workspace_inventory.rs`: per-tool discovery, cross-tool dedupe (one row, two present states), Cursor reading the shared `.agents/` dir, per-tool state dedupe across `.cursor`/`.agents`, instruction-file presence (`AGENTS.md` attributed to both Codex **and** Cursor; `CLAUDE.md` to Claude only), Codex subagents read from `.codex/agents/*.toml` (markdown in `.agents/agents` is not a Codex subagent), Cursor recursive nested skill discovery (name = leaf folder), Cursor nested `.mdc` rule discovery, empty workspace → nothing, `__archived__` skipped, OpenClaw skipped, plus skills.sh lock marking (a skill in the lock is marked with its source; an unlocked skill is not; no lock file → empty). Adapter-layout truths live in `adapter_registry.rs` (Claude skills Flat, Claude agents Nested + recursive). UI: `manager.loadWorkspace` populates a read-only inventory with no pending keys and refuses toggles, merges only `Enabled` global states with namespaced local resources, populates namespaced `lockedSkills` from the inventory lock, and `refresh` clears `readOnly` and `lockedSkills`; the workspace store reload/pick/activate/remove handoff to `loadWorkspace`.
 
 ## Follow-ups
 

@@ -8,7 +8,7 @@ The root architecture establishes two scopes. **Global** scope *writes* into too
 
 > History: workspace scope previously *hard-copied a suite into a project* (a "workspace patch" with a manifest and clean-then-write cycle). That write flow was removed; workspace scope is now inventory-only. The shared root and global projection remain the single place capabilities are written.
 
-> One opt-in exception: when the skills.sh source is enabled, the user may explicitly **install a starred skill** into a workspace (`cmd_install_skill`, via a controlled `npx skills add` subprocess). This is the only workspace write — explicit, user-initiated, never part of scanning — after which the inventory re-scans. See [docs/tech/modules/skill-sources.md](docs/tech/modules/skill-sources.md). The scan itself remains strictly read-only.
+> Two opt-in exceptions: when the skills.sh source is enabled, the user may explicitly **install a starred skill** (via a controlled `npx skills add` subprocess) or **update an already-installed skill** (`npx skills update`, from a `skills.sh`-marked inventory row). These are the only two workspace writes — explicit, user-initiated, never part of scanning — after which the inventory re-scans. The marking that drives update is read from the project's `skills-lock.json` during the read-only scan. See [docs/tech/modules/skill-sources.md](docs/tech/modules/skill-sources.md). The scan itself remains strictly read-only.
 
 ## Why this domain is split out
 
