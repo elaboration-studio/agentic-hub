@@ -10,9 +10,10 @@ Related Docs: [docs/features/skills-sh-integration.md](../../features/skills-sh-
 ## Purpose
 
 Specify the pluggable public **skill source** layer: how the hub searches and
-stars skills from an external registry (skills.sh today) and installs one into a
-workspace via a controlled subprocess. This is the only workspace write path; it
-is explicit and user-initiated. The inventory scan stays read-only.
+stars skills from an external registry (skills.sh today), installs one into a
+workspace via a controlled subprocess, and **updates** an already-installed one.
+Install and update are the only two workspace write paths; both are explicit and
+user-initiated. The inventory scan stays read-only.
 
 ## Provider seam
 
@@ -60,6 +61,13 @@ Installs via `npx skills add <owner/repo>`. Pure, unit-tested bits:
   (program `npx`, the args above, login `PATH` applied, `DISABLE_TELEMETRY=1`).
   Pure assembly, no spawn, so the exact program + argv is asserted in tests and
   the shell layer owns IO (sets `cwd`, pipes stdio, spawns, streams).
+- `skills_update_npx_args(name)` →
+  `["--yes", "skills@latest", "update", name, "--project", "--yes"]`, and
+  `skills_update_command(name)` → the matching ready-to-spawn `Command`. Updates
+  one already-installed skill **by its lock name** (the `skills-lock.json` key,
+  re-validated with `validate_skill_slug`); `--project` pins project scope (the
+  skill lives in the project lock, not the global one) and `--yes` skips the
+  scope prompt. Same login `PATH` + telemetry handling as install.
 
 The spawn is thin: the ref is passed as an **argument vector element** (never
 interpolated into a shell string), with `cwd = workspace_dir` and
@@ -141,34 +149,56 @@ reconstructs URLs.
 - `cmd_add_skill_favorite(favorite) -> SkillFavorite`
 - `cmd_remove_skill_favorite({ provider, id })`
 
-Install runs in a **dedicated `install` window** (live output + Cancel), not a
-blocking command — see [The install window](#the-install-window). Error codes:
-`invalid_skill_ref`, `unknown_provider`, `skill_search`, `skill_cli_missing`,
-`install_failed`, `workspace_not_found`. See
+Install and update run in a **dedicated `install` window** (live output +
+Cancel), not blocking commands — see [The install window](#the-install-window).
+Error codes: `invalid_skill_ref`, `invalid_skill_slug`, `unknown_provider`,
+`skill_search`, `skill_cli_missing`, `install_failed`, `workspace_not_found`. See
 [tauri-ipc-contract.md](./tauri-ipc-contract.md).
+
+## The project lock (`skill_lock`)
+
+`agentic-core::skill_lock` reads the skills.sh project lock at
+`<workspace>/skills-lock.json`: `LocalSkillLock { version, skills: BTreeMap<name,
+LockedSkillEntry { source, source_type }> }`. `parse_local_lock(body)` is pure
+and unit-tested; `read_local_lock(ws)` is **tolerant** — a missing file or
+malformed JSON yields `None`, so a third-party lock can never break the read-only
+scan. The workspace inventory uses it to mark which skill rows the CLI manages
+(see [workspace-inventory.md](./workspace-inventory.md)); the lock — not any
+hub-kept state — is the project-local truth.
 
 ## The install window
 
-The one explicit workspace write is driven from its own `install` window
+The two explicit workspace writes are driven from one `install` window
 (mirroring the `palette` window) so output streams live and the run is
-cancellable. The lifecycle (all in `crates/agentic-hub/src/install_window.rs`):
+cancellable. The window runs in **install mode** (the favorites matrix) or, when
+its mount context carries an `update` target, **update mode** (one skill, one
+Update button). The lifecycle (all in `crates/agentic-hub/src/install_window.rs`):
 
 - `cmd_open_install_window(workspaceId)` — the workspace FAB stores an
-  `InstallContext { workspaceId, workspaceLabel }` and builds/shows the window.
+  `InstallContext { workspaceId, workspaceLabel, update: None }` and builds/shows
+  the window.
+- `cmd_open_update_window(workspaceId, provider, installRef, name)` — a row's
+  "Update via skills.sh" action stores the same context with
+  `update: Some(UpdateTarget { provider, installRef, name })`, reusing the same
+  build/show path.
 - `cmd_take_install_context()` — the window reads its target on mount (re-read on
-  the `install-context-changed` event if reopened for another workspace).
+  the `install-context-changed` event if reopened); `update` selects the mode.
 - `cmd_install_skill_stream(input, Channel<SkillInstallEvent>)` — validates the
   ref + slug + resolves the workspace dir against the target store (installs only
   into a remembered target; `input` carries the `slug` and selected `toolIds` so
-  the spawn is non-interactive), spawns `skills_install_command` with piped stdio, stores
-  the `Child` in `InstallState`, and streams one `line` event per output line then
-  a terminal `done { ok, cancelled }`. On success it `restart_if_running`s the
-  watcher and emits `workspace-changed` so the read-only inventory re-scans.
+  the spawn is non-interactive), then runs the shared stream helper.
+- `cmd_update_skill_stream({ provider, workspaceId, name }, Channel<…>)` —
+  validates the provider + slug + resolves the workspace dir, builds
+  `skills_update_command(name)`, and runs the **same** shared stream helper.
+- The shared helper spawns the command with piped stdio, stores the `Child` in
+  `InstallState`, streams one `line` event per output line then a terminal
+  `done { ok, cancelled }`, and on success `restart_if_running`s the watcher and
+  emits `workspace-changed` so the read-only inventory re-scans.
 - `cmd_cancel_install()` — kills the stored child; the stream then ends as
   `cancelled`. Closing the window kills any in-flight child too.
 
-Installs run sequentially, so a single in-flight child in `InstallState` is
-enough. `SkillInstallEvent` is the streamed, ts-rs-exported event type.
+Runs are sequential, so a single in-flight child in `InstallState` is enough.
+`SkillInstallEvent` is the streamed, ts-rs-exported event type.
 
 ## Testing
 
@@ -176,7 +206,10 @@ enough. `SkillInstallEvent` is the streamed, ts-rs-exported event type.
   empty components), fixed `npx` arg vector, `skills_install_command` program +
   argv, install rejects a bad ref before spawning, provider lookup, `search_url`
   keyless+encoded, `parse_search_response` link enrichment (GitHub vs well-known) +
-  malformed JSON, short-query short-circuit.
+  malformed JSON, short-query short-circuit, and the `update` argv + command
+  (`skills_update_npx_args` / `skills_update_command`).
+- `skill_lock`: `parse_local_lock` (real shape with ignored extra fields, empty,
+  malformed), `read_local_lock` (missing / malformed → `None`, present → parsed).
 - `skill_favorites`: add stamps + newest-first, upsert by `(provider, id)`,
   distinct providers, remove only the match, disk roundtrip, empty on missing.
 - `settings`: skills block defaults off, roundtrips, legacy config without the

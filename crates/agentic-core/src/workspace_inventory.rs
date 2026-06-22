@@ -16,6 +16,7 @@ use crate::model::{
     CapabilityItem, CapabilityKind, LinkState, ScanError, SourceRef, ToolCapabilityState, ToolId,
 };
 use crate::paths::tildify;
+use crate::skill_lock::read_local_lock;
 
 /// Bounded walk depth; mirrors the shared-root scanner guard against cycles.
 const MAX_DEPTH: usize = 16;
@@ -27,6 +28,27 @@ const ARCHIVED: &str = "__archived__";
 /// scope has a single implicit source (the project itself).
 const WORKSPACE_SOURCE_ID: &str = "workspace";
 const WORKSPACE_SOURCE_LABEL: &str = "Workspace";
+
+/// A skill in this workspace that the skills.sh CLI manages, matched from the
+/// project's `skills-lock.json`. Carries what the hub needs to offer a one-click
+/// `npx skills update`: the inventory item it annotates and the install source.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LockedSkill {
+    /// The inventory item id this annotates (`skill:<rel>`, pre-namespacing).
+    pub item_id: String,
+    /// The lock key — the skill's install name, passed to `skills update`.
+    pub name: String,
+    /// The `owner/repo` (or other transport) source it was installed from.
+    pub source: String,
+    /// Transport hint from the lock: `github`, `local`, etc.
+    pub source_type: String,
+}
 
 /// A read-only snapshot of one workspace's installed agentic resources, keyed
 /// the same way the manager matrix consumes a global scan + inspect.
@@ -43,6 +65,9 @@ pub struct WorkspaceInventory {
     /// One entry per `(tool, item)` actually present on disk, always `Enabled`.
     pub states: Vec<ToolCapabilityState>,
     pub errors: Vec<ScanError>,
+    /// Skill items the skills.sh CLI manages (from `skills-lock.json`), so the
+    /// UI can mark them and offer `npx skills update`. Empty when no lock.
+    pub locked_skills: Vec<LockedSkill>,
 }
 
 /// A resource discovered in one tool's workspace directory.
@@ -167,11 +192,35 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
         }
     }
 
+    let items: Vec<CapabilityItem> = by_id.into_values().collect();
+    let locked_skills = mark_locked_skills(ws, &items);
+
     WorkspaceInventory {
-        items: by_id.into_values().collect(),
+        items,
         states,
         errors,
+        locked_skills,
     }
+}
+
+/// Match inventory skill items against the project's `skills-lock.json` by their
+/// install name (the skill's leaf folder). Tolerant: no lock file → empty.
+fn mark_locked_skills(ws: &Path, items: &[CapabilityItem]) -> Vec<LockedSkill> {
+    let Some(lock) = read_local_lock(ws) else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter(|it| it.kind == CapabilityKind::Skill)
+        .filter_map(|it| {
+            lock.skills.get(&it.name).map(|entry| LockedSkill {
+                item_id: it.id.clone(),
+                name: it.name.clone(),
+                source: entry.source.clone(),
+                source_type: entry.source_type.clone(),
+            })
+        })
+        .collect()
 }
 
 /// Portable identity of the workspace-as-source (display only).
@@ -631,6 +680,36 @@ mod tests {
         let inv = scan_workspace(ws, &WS_TOOLS);
         let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, vec!["skill:live"]);
+    }
+
+    #[test]
+    fn marks_skills_present_in_the_project_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        // Two installed skills; only one is recorded in skills-lock.json.
+        write(&ws.join(".agents/skills/rust-best-practices/SKILL.md"), "# rust");
+        write(&ws.join(".agents/skills/handwritten/SKILL.md"), "# hand");
+        write(
+            &ws.join("skills-lock.json"),
+            r#"{"version":1,"skills":{"rust-best-practices":{"source":"apollographql/skills","sourceType":"github"}}}"#,
+        );
+
+        let inv = scan_workspace(ws, &WS_TOOLS);
+        assert_eq!(inv.locked_skills.len(), 1, "only the locked one is marked");
+        let locked = &inv.locked_skills[0];
+        assert_eq!(locked.item_id, "skill:rust-best-practices");
+        assert_eq!(locked.name, "rust-best-practices");
+        assert_eq!(locked.source, "apollographql/skills");
+        assert_eq!(locked.source_type, "github");
+    }
+
+    #[test]
+    fn no_lock_file_marks_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(&ws.join(".agents/skills/rust-best-practices/SKILL.md"), "# rust");
+        let inv = scan_workspace(ws, &WS_TOOLS);
+        assert!(inv.locked_skills.is_empty());
     }
 
     #[test]

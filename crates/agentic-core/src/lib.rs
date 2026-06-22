@@ -26,6 +26,7 @@ pub mod scanner;
 pub mod settings;
 pub mod shell_env;
 pub mod skill_favorites;
+pub mod skill_lock;
 pub mod skill_source;
 pub mod suite_binding_store;
 pub mod suite_store;
@@ -55,11 +56,12 @@ pub use scaffold::{scaffold_demo, ScaffoldMode, ScaffoldResult};
 pub use scanner::{scan, scan_all};
 pub use settings::{Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings};
 pub use skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
+pub use skill_lock::{parse_local_lock, read_local_lock, LocalSkillLock, LockedSkillEntry};
 pub use skill_source::{
     provider_for, SkillCliStatus, SkillInstallResult, SkillProvider, SkillSearchHit,
     SkillsShProvider,
 };
 pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
-pub use workspace_inventory::{scan_workspace, WorkspaceInventory};
+pub use workspace_inventory::{scan_workspace, LockedSkill, WorkspaceInventory};
 pub use workspace_target_store::WorkspaceTargetStore;

@@ -7,12 +7,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Info, Search } from "lucide-react";
+import { Info, RefreshCw, Search } from "lucide-react";
 import {
   cancelInstall,
   installSkillStream,
   onInstallContextChanged,
   takeInstallContext,
+  updateSkillStream,
 } from "@/ipc";
 import { useSkillsStore, filterFavorites } from "@/state/skills";
 import { messageOf } from "@/shared";
@@ -135,6 +136,34 @@ export function InstallWindow() {
     [appendLine],
   );
 
+  // Update mode runs a single `npx skills update <name>` for the locked skill the
+  // window was opened against. Reuses the same streaming console + Cancel.
+  const onUpdate = useCallback(async () => {
+    if (!context?.update) return;
+    const { provider, name } = context.update;
+    cancelledRef.current = false;
+    setInstalling(true);
+    setLines([]);
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const channel = new Channel<SkillInstallEvent>();
+      channel.onmessage = (ev) => {
+        if (ev.kind === "line") appendLine(ev.text);
+        else {
+          settled = true;
+          resolve();
+        }
+      };
+      updateSkillStream({ provider, workspaceId: context.workspaceId, name }, channel).catch(
+        (e) => {
+          appendLine(messageOf(e));
+          if (!settled) resolve();
+        },
+      );
+    });
+    setInstalling(false);
+  }, [context, appendLine]);
+
   const onInstall = useCallback(async () => {
     if (!context) return;
     const items = favorites.flatMap((f) => {
@@ -178,17 +207,21 @@ export function InstallWindow() {
     }
   }, []);
 
+  const update = context?.update ?? null;
   const selectedCount = favorites.filter((f) => (picks[f.id] ?? []).length > 0).length;
   const canInstall = selectedCount > 0 && !installing && context !== null;
 
   return (
     <div className="flex h-full flex-col gap-3 bg-background p-5 text-foreground">
       <header>
-        <h1 className="text-base font-semibold tracking-[0.2px]">Install skills</h1>
+        <h1 className="text-base font-semibold tracking-[0.2px]">
+          {update ? "Update skill" : "Install skills"}
+        </h1>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {context ? (
             <>
-              into <span className="font-medium text-foreground">{context.workspaceLabel}</span>
+              {update ? "in " : "into "}
+              <span className="font-medium text-foreground">{context.workspaceLabel}</span>
             </>
           ) : (
             "No workspace context — reopen from a workspace."
@@ -199,12 +232,31 @@ export function InstallWindow() {
       <div className="flex items-start gap-2 rounded-lg border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
         <Info className="mt-0.5 size-3.5 shrink-0" />
         <span>
-          Installs run <code className="font-mono">npx skills add</code>, so they need Node.js (npx)
-          on your PATH. Verify in <span className="font-medium">Config → skills.sh → Check CLI</span>.
+          {update ? (
+            <>
+              Updates run <code className="font-mono">npx skills update</code>, so they need Node.js
+              (npx) on your PATH. Verify in{" "}
+              <span className="font-medium">Config → skills.sh → Check CLI</span>.
+            </>
+          ) : (
+            <>
+              Installs run <code className="font-mono">npx skills add</code>, so they need Node.js
+              (npx) on your PATH. Verify in{" "}
+              <span className="font-medium">Config → skills.sh → Check CLI</span>.
+            </>
+          )}
         </span>
       </div>
 
-      {favorites.length === 0 ? (
+      {update ? (
+        <div className="shrink-0 rounded-lg border px-3 py-3">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="size-4 text-muted-foreground" />
+            <span className="font-semibold">{update.name}</span>
+          </div>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground">{update.installRef}</p>
+        </div>
+      ) : favorites.length === 0 ? (
         <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
           No starred skills. Star some on the Resources page first.
         </p>
@@ -258,6 +310,10 @@ export function InstallWindow() {
         {installing ? (
           <Button variant="destructive" onClick={() => void onCancel()}>
             Cancel
+          </Button>
+        ) : update ? (
+          <Button onClick={() => void onUpdate()} disabled={context === null}>
+            Update
           </Button>
         ) : (
           <Button onClick={() => void onInstall()} disabled={!canInstall}>

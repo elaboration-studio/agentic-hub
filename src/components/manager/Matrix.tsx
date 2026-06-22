@@ -16,6 +16,7 @@ import {
   List,
   Minus,
   MoreHorizontal,
+  RefreshCw,
   Search,
   Tag,
 } from "lucide-react";
@@ -28,7 +29,7 @@ import type {
   ToolCapabilityState,
   ToolId,
 } from "@/types";
-import { openPath, revealPath } from "@/ipc";
+import { openPath, openUpdateWindow, revealPath } from "@/ipc";
 import {
   editorApp,
   key,
@@ -42,6 +43,7 @@ import {
 } from "@/shared";
 import { useManagerStore, type OwnershipInfo } from "@/state/manager";
 import { useManagerFiltersStore } from "@/state/managerFilters";
+import { useWorkspaceStore } from "@/state/workspace";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -99,6 +101,8 @@ export function Matrix() {
   const onToggle = useManagerStore((s) => s.toggle);
   const onToggleMany = useManagerStore((s) => s.toggleMany);
   const readOnly = useManagerStore((s) => s.readOnly);
+  const lockedSkills = useManagerStore((s) => s.lockedSkills);
+  const workspaceId = useWorkspaceStore((s) => s.activeId);
 
   const view = useManagerFiltersStore((s) => s.view);
   const setView = useManagerFiltersStore((s) => s.setView);
@@ -204,6 +208,8 @@ export function Matrix() {
     settings: data.settings,
     readOnly,
     locateId,
+    lockedSkills,
+    workspaceId,
   };
   const effectiveCollapsed = query.trim() ? EMPTY_COLLAPSE : collapsed;
 
@@ -372,6 +378,10 @@ interface BodyContext {
   readOnly: boolean;
   // The row to surface from a palette locate (namespaced item id), or "".
   locateId: string;
+  // Namespaced item id -> skills.sh install behind it (workspace scope only).
+  lockedSkills: Map<string, { name: string; source: string }>;
+  // The active workspace id, needed to target an update run. "" in global scope.
+  workspaceId: string;
 }
 
 // The folder paths leading to a leaf, given its source-relative path. Used to
@@ -483,6 +493,9 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
         !!x.state && x.state.state === "enabled" && !!x.state.targetPath,
     );
 
+  // skills.sh manages this row (workspace scope) — offer a one-click update.
+  const locked = ctx.readOnly ? ctx.lockedSkills.get(item.id) : undefined;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -498,6 +511,26 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
+        {locked && ctx.workspaceId && (
+          <>
+            <DropdownMenuItem
+              onClick={() =>
+                run(
+                  openUpdateWindow(
+                    ctx.workspaceId,
+                    "skills.sh",
+                    locked.source,
+                    locked.name,
+                  ),
+                )
+              }
+            >
+              <RefreshCw className="size-3.5" />
+              Update via skills.sh
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onClick={() => run(openPath(originalFile(item), app))}>
           Open original
         </DropdownMenuItem>
@@ -535,6 +568,17 @@ function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge
         <span className={cn("mr-2 font-semibold", !item.valid && "text-destructive")}>
           {item.name}
         </span>
+        {ctx.lockedSkills.has(item.id) && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="mr-2 gap-1 text-muted-foreground">
+                <RefreshCw className="size-3" />
+                skills.sh
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>Installed via skills.sh — update from the row menu</TooltipContent>
+          </Tooltip>
+        )}
         {!badge && <code className="font-mono text-[11px] text-muted-foreground">{item.relativePath}</code>}
         <RowActions item={item} ctx={ctx} />
       </TableCell>

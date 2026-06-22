@@ -29,6 +29,22 @@ Three surfaces:
    filter box narrows the matrix rows; filtering only changes what is shown —
    already-selected skills stay queued even when hidden, and a column "select all"
    applies to the visible rows.
+4. **Workspace → Update a skills.sh skill** — when auditing a project, every
+   inventory row that the skills.sh CLI installed (matched from the project's
+   `skills-lock.json`) shows a `skills.sh` badge. Its row menu gains **Update via
+   skills.sh**, which reopens the install window in a focused **update mode** for
+   that single skill and runs `npx skills update <name>` with the same live
+   streaming, Cancel, and re-scan.
+
+## How the marking works
+
+The skills.sh CLI records project-scoped installs in `<workspace>/skills-lock.json`,
+mapping each install **name** (the skill's folder name) to its `source`
+(`owner/repo`). The read-only scan reads this lock and matches each skill item by
+its leaf folder name, attaching the source so the UI can mark the row and target
+an update. Matching is tolerant: a missing or malformed lock marks nothing and
+never fails the scan. The lock — not any hub-kept state — is the project-local
+source of truth.
 
 ## Why local "stars"
 
@@ -38,15 +54,15 @@ persisted at `~/.agentic-hub/skills-favorites.json` (overridable). The list is
 reused across projects to install the same skills again; the hub keeps **no**
 sync state with skills.sh.
 
-## How install fits the read-only inventory
+## How install and update fit the read-only inventory
 
 Workspace scope is a read-only audit (see
-[workspace-inventory](./workspace-inventory.md)). Installing a skill is the **one
-explicit, user-initiated write** into a workspace — never automatic, never part
-of scanning. After the install CLI runs, the hub re-scans the project and the
-inventory matrix reflects whatever landed. The hub does not maintain its own
-record of what is installed; the source CLI's own lock file
-(`skills-lock.json`) is the project-local truth.
+[workspace-inventory](./workspace-inventory.md)). Installing and updating a skill
+are the **only two explicit, user-initiated writes** into a workspace — never
+automatic, never part of scanning. After the CLI runs, the hub re-scans the
+project and the inventory matrix reflects whatever landed. The hub does not
+maintain its own record of what is installed; the source CLI's own lock file
+(`skills-lock.json`) is the project-local truth and also drives the row badges.
 
 ## Decisions
 
@@ -64,6 +80,11 @@ record of what is installed; the source CLI's own lock file
   stdout/stderr line-by-line over a Tauri `Channel` and can **Cancel** the running
   process. Installs run sequentially; one failure never aborts the rest. See
   [skill-sources](../tech/modules/skill-sources.md#the-install-window).
+- **Update reuses the install window.** The same window opens in an update mode
+  (carried by an `update` field on its mount context) showing one skill and a
+  single **Update** button. It runs `npx skills update <name> --project --yes` and
+  shares the exact streaming / Cancel / re-scan machinery with install — no
+  duplicate surface.
 
 ## User flow
 
@@ -79,6 +100,10 @@ record of what is installed; the source CLI's own lock file
    failure never aborts the rest) and **Cancel** stops the in-flight run. When it
    finishes, the main window re-scans and shows the new skills under each tool
    that has them.
+5. To update later, open a marked (`skills.sh`-badged) row's menu and pick
+   **Update via skills.sh**. The install window reopens in update mode for that
+   one skill; **Update** runs the CLI, **Cancel** stops it, and the re-scan
+   refreshes the inventory.
 
 ## Limitations / follow-ups
 
