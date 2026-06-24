@@ -1,6 +1,6 @@
 [package]
 name = "agentic-hub"
-version = "0.9.2"
+version = "0.9.3"
 description = "Tauri 2.x desktop shell for Agentic Hub. Thin #[tauri::command] wrappers over agentic-core."
 edition.workspace = true
 license.workspace = true
@@ -32,7 +32,11 @@ tauri-plugin-dialog = "2"
 tauri-plugin-aptabase = "1"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
+# Self-update: `updater` fetches the R2-hosted, minisign-signed feed and swaps
+# the bundle; `process` relaunches the app once the new version is installed.
+tauri-plugin-process = "2"
 tauri-plugin-store = "2"
+tauri-plugin-updater = "2"
 # Aptabase's plugin setup spawns its background flush loop with a bare
 # `tokio::spawn`, so an active Tokio runtime must be entered before the app is
 # built (Tauri does not enter one on the main thread). We own that runtime in
