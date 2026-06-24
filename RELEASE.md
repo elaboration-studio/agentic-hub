@@ -5,22 +5,23 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.9.2] — 2026-06-22
+## [0.9.3] — 2026-06-24
 
 ### Added
 
-- **Update skills.sh skills, right from the workspace inventory.** When you audit
-  a project, every skill installed by the skills.sh CLI now carries a `skills.sh`
-  badge (read from the project's `skills-lock.json`). Its row menu gains **Update
-  via skills.sh**, which opens the install window in a focused update mode and
-  runs `npx skills update` for that one skill — live output, Cancel, and an
-  automatic re-scan when it's done. Scanning stays read-only; the update is an
-  explicit, per-row action.
+- **In-app auto-update.** Agentic Hub now updates itself with Tauri's built-in
+  updater. It checks an R2-hosted feed on launch, on each app re-open, and
+  weekly — throttled to once per 7 days — and offers a one-click **Install &
+  Relaunch** when a newer signed release is available. Use **App ▸ Check for
+  Updates…** to force an immediate check. Each release is signed with a minisign
+  key and verified before it installs.
 
 ### Migration
 
-- **None.** Projects without a `skills-lock.json` simply show no badges.
+- **None.** This release installs over 0.9.2 in place; the next update onward
+  arrives automatically.
 
 ### Known Issues
 
-- None.
+- The `r2.dev` feed is edge-cached, so a freshly published release can take up
+  to a minute to appear to update checks.

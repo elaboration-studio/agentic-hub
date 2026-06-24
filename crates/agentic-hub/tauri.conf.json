@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Agentic Hub",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "identifier": "com.arno.agentic-hub",
   "build": {
     "frontendDist": "../../dist",
@@ -27,9 +27,18 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://pub-96a02606d38546a2a0d158c71c45d99b.r2.dev/agentic-hub/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBNDNBREMxQzMyMUZDMTkKUldRWi9DSER3YTFEbWpxMkZHaExCRWN2VWlZYVpxV09uMXpBUS91dlNTT1ZTc0EwN1g4czkvSXkK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "macOS": {
       "minimumSystemVersion": "11.0"
     },

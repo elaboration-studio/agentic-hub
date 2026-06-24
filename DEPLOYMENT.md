@@ -14,6 +14,11 @@ release configuration; the release workflow in
 
 - **`Agentic Hub_<version>_universal.dmg`** — the user-facing macOS installer.
   Produced at `target/universal-apple-darwin/release/bundle/dmg/`.
+- **`Agentic Hub.app.tar.gz`** + **`.sig`** — the Tauri *updater* payload and its
+  minisign signature, produced at `target/universal-apple-darwin/release/bundle/macos/`
+  because `bundle.createUpdaterArtifacts` is `true`. The `.dmg` is for first
+  install; the `.app.tar.gz` is what the in-app updater downloads.
+- **`latest.json`** — the updater feed (assembled in CI), hosted on R2.
 - The `.dmg` contains `Agentic Hub.app`. Linux/Windows bundles are out of scope
   for now (the workflow only runs on macOS).
 
@@ -53,6 +58,77 @@ append the new entry to `CHANGELOG.md`, **replace** `RELEASE.md` with the new
 version's notes (it is published verbatim as the GitHub Release body, so it must
 hold only the current release), then tag `v<new-version>`.
 
+## Auto-update (Tauri updater + Cloudflare R2)
+
+Agentic Hub updates itself with the **built-in Tauri updater** (not Sparkle —
+that's for native Swift apps). The app checks an R2-hosted feed, downloads a
+minisign-signed bundle, verifies it, and relaunches.
+
+### How it works
+
+```
+app (launch / re-open / weekly)
+  -> GET https://pub-96a02606d38546a2a0d158c71c45d99b.r2.dev/agentic-hub/latest.json
+  -> newer version? download .app.tar.gz -> verify signature -> relaunch
+```
+
+- **Trigger cadence (frontend, [src/state/update.ts](src/state/update.ts)):** a
+  check runs on launch, on each app re-open (the `RunEvent::Reopen` Dock click
+  emits `app-reopened`), and on a weekly interval — all throttled to at most
+  once per 7 days via a persisted `lastCheckedAt`. The **App ▸ Check for
+  Updates…** menu item forces an immediate, non-silent check.
+- **Integrity:** Apple notarization + the Tauri **minisign** signature. HTTPS
+  protects transport; the signature protects the payload even if hosting is
+  compromised. The public key is embedded in
+  [`tauri.conf.json`](crates/agentic-hub/tauri.conf.json) (`plugins.updater.pubkey`).
+
+### R2 layout
+
+Bucket `estudio-ehub`, prefix `agentic-hub/`, served via the bucket's public
+`r2.dev` domain:
+
+```
+agentic-hub/latest.json                                (feed; Cache-Control max-age=60)
+agentic-hub/Agentic-Hub-<version>-universal.app.tar.gz (updater payload)
+agentic-hub/Agentic Hub_<version>_universal.dmg        (first-install download)
+```
+
+### latest.json schema
+
+Both arch keys point at the single universal tarball:
+
+```json
+{
+  "version": "0.9.3",
+  "notes": "…RELEASE.md…",
+  "pub_date": "2026-06-24T12:00:00Z",
+  "platforms": {
+    "darwin-aarch64": { "signature": "<sig>", "url": "https://pub-96a02606d38546a2a0d158c71c45d99b.r2.dev/agentic-hub/Agentic-Hub-0.9.3-universal.app.tar.gz" },
+    "darwin-x86_64":  { "signature": "<sig>", "url": "https://pub-96a02606d38546a2a0d158c71c45d99b.r2.dev/agentic-hub/Agentic-Hub-0.9.3-universal.app.tar.gz" }
+  }
+}
+```
+
+### CI sync
+
+`release.yml` (after the build) generates `latest.json` from the `.sig` +
+`RELEASE.md`, then `aws s3 cp`s the tarball, dmg, and feed to R2's
+S3-compatible endpoint. No manual upload step — tag and the feed updates.
+
+### One-time setup (cannot be done by the Cloudflare MCP — it manages buckets, not objects)
+
+1. **Updater keypair** — already generated at `~/.tauri/agentic-hub-updater.key`
+   (public key embedded in `tauri.conf.json`). To regenerate:
+   `pnpm tauri signer generate -w ~/.tauri/agentic-hub-updater.key`.
+2. **R2 API token** — in the Cloudflare dashboard, create an R2 token with
+   object read+write on `estudio-ehub` (gives an S3 access key id + secret).
+3. **Enable the bucket's public `r2.dev` URL** (R2 ▸ bucket ▸ Settings).
+4. **Repo secrets / variables** (`gh secret set` / `gh variable set`):
+   - secret `TAURI_SIGNING_PRIVATE_KEY` — contents of `~/.tauri/agentic-hub-updater.key`
+   - secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the key's password
+   - secret `R2_ACCESS_KEY_ID`, secret `R2_SECRET_ACCESS_KEY`
+   - variable `R2_BUCKET` = `estudio-ehub`
+
 ## Health check
 
 Desktop app — no live URL. "Healthy" means:
@@ -69,6 +145,10 @@ gh run list --workflow release.yml -L 1   # latest release run status
 
 - **`GITHUB_TOKEN`** — provided automatically by GitHub Actions; the workflow
   needs `contents: write` to create the release (already declared).
+- **Updater + R2 (required for release builds):** `TAURI_SIGNING_PRIVATE_KEY`,
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
+  (secrets) and `R2_BUCKET` (variable). See *Auto-update* above. With
+  `createUpdaterArtifacts: true`, a missing signing key fails the build.
 - **No code-signing today.** Builds are unsigned, so first launch needs
   right-click ▸ Open (or System Settings ▸ Privacy & Security ▸ Open Anyway).
   - *Future:* to sign + notarize, add `APPLE_CERTIFICATE`,

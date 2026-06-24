@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [0.9.3] — 2026-06-24
+
+### Added
+
+- **In-app auto-update.** Agentic Hub now updates itself with Tauri's built-in
+  updater. It checks an R2-hosted feed (`latest.json`) on launch, on each app
+  re-open, and weekly — throttled to once per 7 days — and offers a one-click
+  **Install & Relaunch** when a newer minisign-signed release is available. An
+  **App ▸ Check for Updates…** menu item forces an immediate check. The release
+  workflow signs the updater bundle and syncs the `.dmg`, `.app.tar.gz`, and
+  `latest.json` to Cloudflare R2 automatically on tag. See
+  [DEPLOYMENT.md](DEPLOYMENT.md) (Auto-update section).
+
 ## [0.9.2] — 2026-06-22
 
 ### Added

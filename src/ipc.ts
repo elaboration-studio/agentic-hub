@@ -4,6 +4,8 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ApplyProgressEvent,
@@ -348,3 +350,38 @@ export const cancelInstall = (): Promise<void> => invoke("cmd_cancel_install");
 /// different workspace) — re-read it.
 export const onInstallContextChanged = (cb: () => void): Promise<UnlistenFn> =>
   listen("install-context-changed", () => cb());
+
+// ---- App self-update (Tauri updater + R2 feed) ----------------------------
+
+/// One available app update: the version + notes to surface, plus the opaque
+/// plugin handle used to download and install it. Resolved by `checkForUpdate`.
+export interface AvailableUpdate {
+  version: string;
+  notes: string | null;
+  /// Plugin-side update handle. Pass it to `installUpdate`; not for direct use.
+  handle: Update;
+}
+
+/// Check the R2-hosted feed for a newer minisign-signed release. Resolves the
+/// available update (version + notes + install handle), or null when current.
+export const checkForUpdate = async (): Promise<AvailableUpdate | null> => {
+  const update = await checkUpdate();
+  if (!update) return null;
+  return { version: update.version, notes: update.body ?? null, handle: update };
+};
+
+/// Download + install an available update (the plugin verifies its signature),
+/// then relaunch into the new version. Does not return on success.
+export const installUpdate = async (update: AvailableUpdate): Promise<void> => {
+  await update.handle.downloadAndInstall();
+  await relaunch();
+};
+
+/// Fired by Rust when the app is re-opened (Dock click) so the frontend can run
+/// a throttled background update check.
+export const onAppReopened = (cb: () => void): Promise<UnlistenFn> =>
+  listen("app-reopened", () => cb());
+
+/// Fired by the "Check for Updates…" menu item — an explicit, non-silent check.
+export const onMenuCheckUpdates = (cb: () => void): Promise<UnlistenFn> =>
+  listen("menu-check-updates", () => cb());

@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, Wry};
 
 pub const ID_SETTINGS: &str = "settings";
 pub const ID_PALETTE: &str = "command-palette";
+pub const ID_CHECK_UPDATES: &str = "check-updates";
 
 /// Build the full application menu.
 pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
@@ -17,6 +18,13 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let settings_item =
         MenuItem::with_id(app, ID_SETTINGS, "Settings…", true, Some("CmdOrCtrl+,"))?;
     let palette_item = MenuItem::with_id(app, ID_PALETTE, "Command Palette", true, None::<&str>)?;
+    let check_updates_item = MenuItem::with_id(
+        app,
+        ID_CHECK_UPDATES,
+        "Check for Updates…",
+        true,
+        None::<&str>,
+    )?;
 
     let app_menu = Submenu::with_items(
         app,
@@ -24,6 +32,8 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &PredefinedMenuItem::about(app, None, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &check_updates_item,
             &PredefinedMenuItem::separator(app)?,
             &settings_item,
             &PredefinedMenuItem::separator(app)?,
@@ -80,6 +90,13 @@ pub fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             let _ = app.emit("menu-open-config", ());
         }
         ID_PALETTE => crate::palette::toggle_palette(app),
+        ID_CHECK_UPDATES => {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+            let _ = app.emit("menu-check-updates", ());
+        }
         _ => {}
     }
 }

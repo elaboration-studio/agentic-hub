@@ -14,7 +14,7 @@ mod watcher;
 
 use agentic_core::settings::{default_palette_shortcut, Settings};
 use tauri::webview::PageLoadEvent;
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_global_shortcut::ShortcutState;
 use telemetry::TelemetryState;
@@ -50,6 +50,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        // Self-update: the updater checks the R2 feed and swaps the bundle; the
+        // process plugin relaunches into the new version once installed. The
+        // check is driven from the frontend (launch / reopen / weekly).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         // Telemetry (on by default, user can disable in Config). The plugin is
         // always registered (it sends nothing until `track_event` is called);
         // every call is gated on `TelemetryState`, so nothing leaves the machine
@@ -210,6 +215,8 @@ pub fn run() {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
+                // Nudge the frontend to run a throttled update scan on re-open.
+                let _ = app.emit("app-reopened", ());
             }
             // Record app exit (and flush before the process ends) only when the
             // user has opted into telemetry.

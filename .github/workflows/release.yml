@@ -65,7 +65,60 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          # Updater signing — `createUpdaterArtifacts: true` makes `tauri build`
+          # emit `Agentic Hub.app.tar.gz` and its `.sig`. Both secrets are
+          # REQUIRED for a release build; without them the build fails.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --target universal-apple-darwin
+
+      # Assemble the Tauri updater manifest from the signed tarball. Both arch
+      # keys point at the single universal `.app.tar.gz`. Notes come from
+      # RELEASE.md; the staged tarball is renamed to a URL-safe, versioned key.
+      - name: Generate updater manifest (latest.json)
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUNDLE="target/universal-apple-darwin/release/bundle/macos"
+          TARBALL="$BUNDLE/Agentic Hub.app.tar.gz"
+          KEY="Agentic-Hub-${VERSION}-universal.app.tar.gz"
+          URL="https://pub-96a02606d38546a2a0d158c71c45d99b.r2.dev/agentic-hub/${KEY}"
+          SIG="$(cat "$TARBALL.sig")"
+          NOTES="$(cat RELEASE.md)"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cp "$TARBALL" "$KEY"
+          jq -n \
+            --arg v "$VERSION" --arg n "$NOTES" --arg d "$PUB_DATE" \
+            --arg sig "$SIG" --arg url "$URL" \
+            '{version: $v, notes: $n, pub_date: $d, platforms: {
+               "darwin-aarch64": {signature: $sig, url: $url},
+               "darwin-x86_64":  {signature: $sig, url: $url}}}' \
+            > latest.json
+          echo "TARBALL_KEY=$KEY" >> "$GITHUB_ENV"
+
+      # Sync to Cloudflare R2 (S3-compatible) under the agentic-hub/ prefix so
+      # the public r2.dev URL serves the feed + binaries. `latest.json` gets a
+      # short max-age so update checks pick up a new release within ~a minute.
+      - name: Upload release to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 rejects aws-cli v2.23+ default streaming checksums on PUT.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: https://0bddfbb8b8cbf54e867f8c77b55f9cc6.r2.cloudflarestorage.com
+        run: |
+          set -euo pipefail
+          DMG="$(ls target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)"
+          aws s3 cp "$TARBALL_KEY" "s3://$R2_BUCKET/agentic-hub/$TARBALL_KEY" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$DMG" "s3://$R2_BUCKET/agentic-hub/$(basename "$DMG")" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp latest.json "s3://$R2_BUCKET/agentic-hub/latest.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --cache-control "max-age=60"
 
       - name: Publish GitHub Release (draft)
         uses: softprops/action-gh-release@v2
@@ -77,3 +130,5 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
