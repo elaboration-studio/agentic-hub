@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
+  onAppReopened,
   onApplyProgress,
   onHubLocate,
   onHubNavigate,
   onHubWatcherChanged,
+  onMenuCheckUpdates,
   onMenuOpenConfig,
   onSourcesChanged,
   onWorkspaceChanged,
 } from "./ipc";
 import { useManagerStore } from "./state/manager";
+import { UPDATE_CHECK_INTERVAL_MS, useUpdateStore } from "./state/update";
 import { useManagerFiltersStore } from "./state/managerFilters";
 import { useWorkspaceStore } from "./state/workspace";
 import { WORKSPACE_ID_PREFIX, type Route } from "./shared";
@@ -43,7 +47,44 @@ export function App() {
   const refresh = useManagerStore((s) => s.refresh);
   const setProgress = useManagerStore((s) => s.setProgress);
 
+  const updatePhase = useUpdateStore((s) => s.phase);
+  const availableUpdate = useUpdateStore((s) => s.available);
+
   const [route, setRoute] = useState<Route>(routeFromHash);
+
+  // Background update scan: throttled in the store to once per weekly window.
+  // Evaluated on launch, on each app re-open (Dock click), and on a long-session
+  // interval. The "Check for Updates…" menu item forces a non-silent check.
+  useEffect(() => {
+    void useUpdateStore.getState().maybeCheck();
+    const reopen = onAppReopened(() => void useUpdateStore.getState().maybeCheck());
+    const menu = onMenuCheckUpdates(() => void useUpdateStore.getState().check());
+    const interval = window.setInterval(
+      () => void useUpdateStore.getState().maybeCheck(),
+      UPDATE_CHECK_INTERVAL_MS,
+    );
+    return () => {
+      void reopen.then((fn) => fn());
+      void menu.then((fn) => fn());
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  // Prompt to install when a newer signed release is found. The toast persists
+  // until acted on; dismissing it clears the pending update for this session.
+  useEffect(() => {
+    if (updatePhase !== "available" || !availableUpdate) return;
+    toast("Update available", {
+      id: "app-update",
+      description: `Agentic Hub ${availableUpdate.version} is ready to install.`,
+      duration: Infinity,
+      action: {
+        label: "Install & Relaunch",
+        onClick: () => void useUpdateStore.getState().install(),
+      },
+      onDismiss: () => useUpdateStore.getState().dismiss(),
+    });
+  }, [updatePhase, availableUpdate]);
 
   // Global scope owns the manager refresh (scan → inspect). Runs on mount and
   // whenever the user returns to global scope, restoring the editable matrix.
