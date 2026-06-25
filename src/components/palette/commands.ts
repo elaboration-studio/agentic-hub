@@ -16,8 +16,8 @@ import type {
   WorkspaceTarget,
 } from "@/types";
 import { editorApp, enabledTools, originalFile } from "@/shared";
+import { useApplyStore } from "@/state/apply";
 import {
-  applySuite,
   copyText,
   emitHubWatcherChanged,
   openPath,
@@ -382,12 +382,12 @@ export function computeSuiteToolResults(
     .map((t) => ({
       id: `apply:${suiteId}:${t.id}`,
       title: `Apply to ${t.label}`,
-      subtitle: `Full reset · ${suiteName} → ${t.label}`,
+      subtitle: `Full reset · prompts when extras exist · ${suiteName} → ${t.label}`,
       group: "Apply",
-      run: () => applyToTool(suiteId, t.id),
+      run: () => applyToTool(suiteId, t.id, suiteName),
     }));
 }
 
-function applyToTool(suiteId: string, tool: ToolId): Promise<void> {
-  return applySuite(tool, suiteId).then(() => undefined);
+function applyToTool(suiteId: string, tool: ToolId, suiteName: string): Promise<void> {
+  return useApplyStore.getState().request(tool, suiteId, suiteName);
 }

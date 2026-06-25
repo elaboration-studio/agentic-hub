@@ -5,14 +5,13 @@
 import { create } from "zustand";
 import { toast } from "sonner";
 import {
-  applySuite,
   createSuite,
   deleteSuite,
   listSuites,
   setBaseSuite,
   updateSuite,
 } from "../ipc";
-import type { CapabilityItem, SuiteCapabilityRef, SuiteDefinition, ToolId } from "../types";
+import type { CapabilityItem, SuiteCapabilityRef, SuiteDefinition } from "../types";
 import { messageOf } from "../shared";
 
 export interface Draft {
@@ -38,7 +37,6 @@ interface SuitesState {
   setCapabilities: (ids: string[], on: boolean) => void;
   save: (items: CapabilityItem[]) => Promise<void>;
   remove: () => Promise<void>;
-  applySelected: (tool: ToolId) => Promise<void>;
   setBase: (id: string | null) => Promise<void>;
   pruneSelection: () => void;
 }
@@ -148,28 +146,6 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
       await deleteSuite(selectedId);
       set({ selectedId: undefined, draft: undefined });
       await reload();
-    } catch (e) {
-      toast.error(messageOf(e));
-    } finally {
-      set({ busy: false });
-    }
-  },
-
-  applySelected: async (tool) => {
-    const { selectedId } = get();
-    if (!selectedId) return;
-    set({ busy: true });
-    try {
-      const result = await applySuite(tool, selectedId);
-      const ar = result.applyResult;
-      const parts = [`${ar.created} added`, `${ar.removed} removed`];
-      if (result.skippedStale > 0) parts.push(`${result.skippedStale} stale skipped`);
-      if (result.skippedAbsentSource > 0)
-        parts.push(`${result.skippedAbsentSource} from sources not on this machine, preserved`);
-      if (ar.errors.length > 0) parts.push(`${ar.errors.length} error(s)`);
-      const msg = `Applied to ${tool} · ${parts.join(", ")}`;
-      if (ar.errors.length > 0) toast.warning(msg);
-      else toast.success(msg);
     } catch (e) {
       toast.error(messageOf(e));
     } finally {

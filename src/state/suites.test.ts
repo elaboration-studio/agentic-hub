@@ -5,7 +5,6 @@ vi.mock("@/ipc", () => ({
   createSuite: vi.fn(),
   updateSuite: vi.fn(),
   deleteSuite: vi.fn(),
-  applySuite: vi.fn(),
   setBaseSuite: vi.fn(),
 }));
 vi.mock("sonner", () => ({
@@ -13,7 +12,6 @@ vi.mock("sonner", () => ({
 }));
 
 import {
-  applySuite,
   createSuite,
   deleteSuite,
   listSuites,
@@ -21,13 +19,7 @@ import {
   updateSuite,
 } from "@/ipc";
 import { toast } from "sonner";
-import type {
-  ApplyError,
-  ApplySuiteResult,
-  CapabilityItem,
-  SourceRef,
-  SuiteDefinition,
-} from "@/types";
+import type { CapabilityItem, SourceRef, SuiteDefinition } from "@/types";
 import { useSuitesStore } from "./suites";
 
 const mocked = {
@@ -35,7 +27,6 @@ const mocked = {
   createSuite: vi.mocked(createSuite),
   updateSuite: vi.mocked(updateSuite),
   deleteSuite: vi.mocked(deleteSuite),
-  applySuite: vi.mocked(applySuite),
   setBaseSuite: vi.mocked(setBaseSuite),
 };
 
@@ -241,62 +232,7 @@ describe("suites store — persistence", () => {
   });
 });
 
-describe("suites store — apply & prune", () => {
-  it("applySelected toasts a success summary for a clean apply", async () => {
-    const result: ApplySuiteResult = {
-      applyResult: { created: 2, removed: 1, replaced: 0, refreshed: 0, skipped: 0, errors: [] },
-      skippedStale: 0,
-      skippedAbsentSource: 0,
-      suite: makeSuite(),
-    };
-    mocked.applySuite.mockResolvedValue(result);
-    useSuitesStore.setState({ selectedId: "s1" });
-
-    await useSuitesStore.getState().applySelected("cursor");
-
-    expect(mocked.applySuite).toHaveBeenCalledWith("cursor", "s1");
-    expect(toast.success).toHaveBeenCalled();
-    expect(toast.warning).not.toHaveBeenCalled();
-  });
-
-  it("applySelected warns when the apply reports errors", async () => {
-    const result: ApplySuiteResult = {
-      applyResult: {
-        created: 0,
-        removed: 0,
-        replaced: 0,
-        refreshed: 0,
-        skipped: 0,
-        errors: [{ message: "boom" } as ApplyError],
-      },
-      skippedStale: 0,
-      skippedAbsentSource: 0,
-      suite: makeSuite(),
-    };
-    mocked.applySuite.mockResolvedValue(result);
-    useSuitesStore.setState({ selectedId: "s1" });
-
-    await useSuitesStore.getState().applySelected("cursor");
-
-    expect(toast.warning).toHaveBeenCalled();
-  });
-
-  it("applySelected surfaces capabilities preserved from absent sources", async () => {
-    const result: ApplySuiteResult = {
-      applyResult: { created: 1, removed: 0, replaced: 0, refreshed: 0, skipped: 0, errors: [] },
-      skippedStale: 0,
-      skippedAbsentSource: 2,
-      suite: makeSuite(),
-    };
-    mocked.applySuite.mockResolvedValue(result);
-    useSuitesStore.setState({ selectedId: "s1" });
-
-    await useSuitesStore.getState().applySelected("cursor");
-
-    const msg = vi.mocked(toast.success).mock.calls[0]?.[0] as string;
-    expect(msg).toContain("2 from sources not on this machine, preserved");
-  });
-
+describe("suites store — prune", () => {
   it("pruneSelection drops the selection when the selected suite has vanished", () => {
     useSuitesStore.setState({ suites: [makeSuite({ id: "other" })], selectedId: "s1" });
 

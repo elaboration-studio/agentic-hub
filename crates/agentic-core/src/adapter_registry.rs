@@ -185,7 +185,9 @@ impl ResolvedAdapter {
     /// combination is unsupported (OpenClaw hooks).
     pub fn projection_mode_for(&self, kind: CapabilityKind) -> Option<ProjectionMode> {
         use CapabilityKind::{Agent, Command, Hook, Rule, Skill};
-        use ProjectionMode::{CodexAgentToml, FileSync, JsonSection, LinkSync, MarkdownSectionSync};
+        use ProjectionMode::{
+            CodexAgentToml, FileSync, JsonSection, LinkSync, MarkdownSectionSync,
+        };
         match (self.tool_id, kind) {
             (ToolId::Openclaw, Hook | Command) => None,
             (_, Hook) => Some(JsonSection),

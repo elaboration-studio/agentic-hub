@@ -88,8 +88,11 @@ Header
 Behaviors:
 - Dropdown lists all saved suites plus "Manage Suites…" (opens Suite Manager window)
 - "Apply Suite" is enabled only when a suite is selected and a tool tab is focused
-- Clicking "Apply Suite" shows a confirmation: "Reset all {Tool} capabilities to match suite '{Suite}'?"
-- On confirm: full reset and apply through the existing plan/apply pipeline
+- Clicking "Apply Suite" previews extras via `cmd_suite_apply_preview`. When
+  manually enabled capabilities exist outside the effective suite (base +
+  selected), a confirmation lists them: **Remove extras** (full reset) or
+  **Keep extras** (preserve on disk and on future re-syncs). Empty suites still
+  use the existing empty-suite confirm.
 - After apply: staged state clears, inventory refreshes, result summary toast appears
 
 ### Apply flow (user perspective)

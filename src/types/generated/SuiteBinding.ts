@@ -7,4 +7,8 @@ import type { ToolId } from "./ToolId";
  * binding per tool — a full-reset apply makes a tool reflect exactly one
  * suite. See `docs/tech/modules/suite-bindings.md`.
  */
-export type SuiteBinding = { toolId: ToolId, suiteId: string, };
+export type SuiteBinding = { toolId: ToolId, suiteId: string, 
+/**
+ * When true, re-syncs keep manually-enabled items not in the suite.
+ */
+preserveUnmanaged: boolean, };

@@ -94,8 +94,7 @@ fn field(front: &str, key: &str) -> Option<String> {
 fn strip_quotes(s: String) -> String {
     let b = s.as_bytes();
     let quoted = s.len() >= 2
-        && ((b[0] == b'"' && b[s.len() - 1] == b'"')
-            || (b[0] == b'\'' && b[s.len() - 1] == b'\''));
+        && ((b[0] == b'"' && b[s.len() - 1] == b'"') || (b[0] == b'\'' && b[s.len() - 1] == b'\''));
     if quoted {
         s[1..s.len() - 1].to_string()
     } else {
@@ -146,7 +145,10 @@ mod tests {
         let p = parse(&to_toml(md, "reviewer"));
         assert_eq!(p.name, "reviewer");
         assert_eq!(p.description, "");
-        assert_eq!(p.developer_instructions, "# Just a heading\n\nSome instructions.");
+        assert_eq!(
+            p.developer_instructions,
+            "# Just a heading\n\nSome instructions."
+        );
     }
 
     #[test]
@@ -171,6 +173,9 @@ mod tests {
         assert_eq!(to_toml(md, "a"), to_toml(md, "a"));
         // And it round-trips the tricky body intact.
         let p = parse(&to_toml(md, "a"));
-        assert_eq!(p.developer_instructions, "body with \"quotes\" and \\ backslash.");
+        assert_eq!(
+            p.developer_instructions,
+            "body with \"quotes\" and \\ backslash."
+        );
     }
 }

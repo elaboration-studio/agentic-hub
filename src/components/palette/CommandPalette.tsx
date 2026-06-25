@@ -8,6 +8,7 @@ import { useEffect, useRef } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { ChevronLeft, Search } from "lucide-react";
 import { usePaletteStore, type PaletteView } from "@/state/palette";
+import { ApplySuiteConfirmDialog } from "@/components/suites/ApplySuiteConfirmDialog";
 import { MODE_DEFS, searchModeFromShortcut } from "./commands";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -142,6 +143,7 @@ export function CommandPalette() {
   const hasResults = status !== "error" && results.length > 0;
 
   return (
+    <>
     <div className="flex h-full w-full items-start justify-center p-3" onKeyDown={onKeyDown}>
       <div
         ref={panelRef}
@@ -218,5 +220,7 @@ export function CommandPalette() {
         )}
       </div>
     </div>
+    <ApplySuiteConfirmDialog />
+  </>
   );
 }

@@ -562,6 +562,9 @@ pub struct ApplySuiteResult {
 pub struct SuiteBinding {
     pub tool_id: ToolId,
     pub suite_id: String,
+    /// When true, re-syncs keep manually-enabled items not in the suite.
+    #[serde(default)]
+    pub preserve_unmanaged: bool,
 }
 
 /// One `(tool, item)` projection that a suite currently manages, surfaced so the

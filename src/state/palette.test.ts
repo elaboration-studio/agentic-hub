@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const { requestApply } = vi.hoisted(() => ({
+  requestApply: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/state/apply", () => ({
+  useApplyStore: { getState: () => ({ request: requestApply }) },
+}));
+
 vi.mock("@/ipc", () => ({
   loadSettings: vi.fn(),
   scan: vi.fn(),
   listSuites: vi.fn(),
   listWorkspaceTargets: vi.fn(),
   scanWorkspace: vi.fn(),
-  applySuite: vi.fn().mockResolvedValue(undefined),
   emitHubNavigate: vi.fn().mockResolvedValue(undefined),
   emitHubLocate: vi.fn().mockResolvedValue(undefined),
   setWatcherEnabled: vi.fn().mockResolvedValue(undefined),
@@ -15,7 +22,6 @@ vi.mock("@/ipc", () => ({
 }));
 
 import {
-  applySuite,
   listSuites,
   listWorkspaceTargets,
   loadSettings,
@@ -37,7 +43,7 @@ const mocked = {
   listSuites: vi.mocked(listSuites),
   listWorkspaceTargets: vi.mocked(listWorkspaceTargets),
   scanWorkspace: vi.mocked(scanWorkspace),
-  applySuite: vi.mocked(applySuite),
+  requestApply,
 };
 
 function makeTarget(id: string, label: string): WorkspaceTarget {
@@ -262,10 +268,10 @@ describe("palette store — suite flow (suite mode → suite-tools)", () => {
       "Apply to Claude",
       "Apply to Cursor",
     ]);
-    expect(mocked.applySuite).not.toHaveBeenCalled();
+    expect(mocked.requestApply).not.toHaveBeenCalled();
   });
 
-  it("running a tool row applies the suite to that one tool", async () => {
+  it("running a tool row routes through the apply store preview flow", async () => {
     await loadReady();
     usePaletteStore.getState().enterSuite("s1", "Backend");
     const cursorIdx = usePaletteStore
@@ -275,7 +281,7 @@ describe("palette store — suite flow (suite mode → suite-tools)", () => {
     usePaletteStore.getState().setSelected(cursorIdx);
     await usePaletteStore.getState().runSelected();
 
-    expect(mocked.applySuite).toHaveBeenCalledWith("cursor", "s1");
+    expect(mocked.requestApply).toHaveBeenCalledWith("cursor", "s1", "Backend");
   });
 
   it("back from suite-tools returns to the suite search mode, then the root", async () => {

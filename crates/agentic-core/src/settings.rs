@@ -632,7 +632,10 @@ mod tests {
             ),
         );
         let mut s: Settings = serde_json::from_value(value).unwrap();
-        assert!(!s.codex_agents_path_migrated, "marker absent in legacy file");
+        assert!(
+            !s.codex_agents_path_migrated,
+            "marker absent in legacy file"
+        );
         assert_eq!(s.tools.codex.agents_path, expand_tilde("~/.agents/agents"));
 
         // First migration moves the stale shared path into `.codex` and marks

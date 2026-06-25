@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 For narrative release notes, see [RELEASE.md](RELEASE.md).
 
+## [Unreleased]
+
+### Added
+
+- **Suite apply preserve mode:** Applying a suite now previews manually enabled
+  capabilities outside the effective suite and lets you remove or keep them; the
+  choice persists on the tool binding so later suite edits honour it.
+
 ## [0.9.3] — 2026-06-24
 
 ### Added

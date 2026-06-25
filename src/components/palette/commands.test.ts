@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const { requestApply } = vi.hoisted(() => ({
+  requestApply: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/state/apply", () => ({
+  useApplyStore: { getState: () => ({ request: requestApply }) },
+}));
+
 vi.mock("@/ipc", () => ({
   openPath: vi.fn(),
-  applySuite: vi.fn().mockResolvedValue(undefined),
   readCapabilityBody: vi.fn().mockResolvedValue("command body text"),
   copyText: vi.fn().mockResolvedValue(undefined),
   setWatcherEnabled: vi.fn().mockResolvedValue(undefined),
@@ -10,7 +17,6 @@ vi.mock("@/ipc", () => ({
 }));
 
 import {
-  applySuite,
   copyText,
   emitHubWatcherChanged,
   openPath,
@@ -37,7 +43,7 @@ import {
 
 const mocked = {
   openPath: vi.mocked(openPath),
-  applySuite: vi.mocked(applySuite),
+  requestApply,
   readCapabilityBody: vi.mocked(readCapabilityBody),
   copyText: vi.mocked(copyText),
   setWatcherEnabled: vi.mocked(setWatcherEnabled),
@@ -403,9 +409,9 @@ describe("suite-tools view", () => {
     expect(rows.map((r) => r.title)).toEqual(["Apply to Claude"]);
   });
 
-  it("running an apply row applies the suite to that one tool (full reset)", () => {
+  it("running an apply row routes through the apply store preview flow", () => {
     const rows = computeSuiteToolResults(makeSettings(), "", "s1", "Backend");
     rows.find((r) => r.title === "Apply to Cursor")!.run();
-    expect(mocked.applySuite).toHaveBeenCalledWith("cursor", "s1");
+    expect(mocked.requestApply).toHaveBeenCalledWith("cursor", "s1", "Backend");
   });
 });

@@ -335,6 +335,7 @@ tools' on-disk projections are left untouched (delete is not a tool wipe).
 type ApplySuiteInput = {
   toolId: ToolId;
   suiteId: string;
+  preserveUnmanaged?: boolean; // default false — full reset; true keeps extras enabled on disk
 };
 
 type ApplySuiteResult = {
@@ -345,14 +346,19 @@ type ApplySuiteResult = {
 };
 ```
 
-Side effect: records a suite<->tool binding (`record(toolId, suiteId)`,
-upsert per tool) so a later `cmd_update_suite` re-syncs this tool, and
-backfills unqualified refs against the live scan. Both the palette suite-apply
-flow and the Suites page flow through here. The base suite's capabilities are
-unioned into the effective set before apply (`merge_base_caps`); the recorded
-binding is always the **selected** suite, not the base. Refs qualified to a
-source absent on this machine are skipped and preserved — never deleted, never
-mis-resolved onto a same-named local capability.
+Side effect: records a suite<->tool binding (`record(toolId, suiteId, preserveUnmanaged)`,
+upsert per tool) so a later `cmd_update_suite` re-syncs this tool with the same
+preserve flag, and backfills unqualified refs against the live scan. Both the
+palette suite-apply flow and the Suites page flow through here. When manually
+enabled capabilities exist outside the effective suite (base + selected), the UI
+calls `cmd_suite_apply_preview` first and prompts the user to remove or keep
+them before apply.
+
+### `cmd_suite_apply_preview(input: ApplySuiteInput) -> string[]`
+
+Returns item ids currently enabled for `toolId` that are not matched by the
+effective suite (after base merge and in-memory source backfill). Empty → apply
+directly; non-empty → UI confirm dialog.
 
 ### `cmd_set_base_suite(id: string | null) -> ()`
 

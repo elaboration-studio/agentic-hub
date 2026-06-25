@@ -184,6 +184,7 @@ pub fn run() {
             commands::cmd_update_suite,
             commands::cmd_delete_suite,
             commands::cmd_apply_suite,
+            commands::cmd_suite_apply_preview,
             commands::cmd_set_base_suite,
             commands::cmd_suite_ownership,
             commands::cmd_pick_workspace_dir,

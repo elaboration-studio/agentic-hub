@@ -93,12 +93,13 @@ impl SuiteBindingStore {
 
     /// Bind a suite to a tool. Upserts by tool — a tool can only reflect one
     /// suite at a time (full-reset apply), so a fresh apply replaces the prior.
-    pub fn record(&self, tool: ToolId, suite_id: &str) -> Result<()> {
+    pub fn record(&self, tool: ToolId, suite_id: &str, preserve_unmanaged: bool) -> Result<()> {
         let mut file = self.read_file()?;
         file.bindings.retain(|b| b.tool_id != tool);
         file.bindings.push(SuiteBinding {
             tool_id: tool,
             suite_id: suite_id.to_string(),
+            preserve_unmanaged,
         });
         self.write_file(&file)
     }
@@ -145,10 +146,10 @@ mod tests {
     #[test]
     fn record_upserts_per_tool() {
         let (_d, store) = store();
-        store.record(ToolId::Codex, "suite-a").unwrap();
-        store.record(ToolId::Claude, "suite-b").unwrap();
+        store.record(ToolId::Codex, "suite-a", false).unwrap();
+        store.record(ToolId::Claude, "suite-b", false).unwrap();
         // Re-recording the same tool replaces, never duplicates.
-        store.record(ToolId::Codex, "suite-c").unwrap();
+        store.record(ToolId::Codex, "suite-c", true).unwrap();
 
         let bindings = store.read().unwrap();
         assert_eq!(bindings.len(), 2);
@@ -157,14 +158,36 @@ mod tests {
             .find(|b| b.tool_id == ToolId::Codex)
             .unwrap();
         assert_eq!(codex.suite_id, "suite-c");
+        assert!(codex.preserve_unmanaged);
+    }
+
+    #[test]
+    fn record_round_trips_preserve_unmanaged() {
+        let (_d, store) = store();
+        store.record(ToolId::Codex, "suite-a", true).unwrap();
+        let bindings = store.read().unwrap();
+        assert!(bindings[0].preserve_unmanaged);
+        store.record(ToolId::Codex, "suite-a", false).unwrap();
+        let bindings = store.read().unwrap();
+        assert!(!bindings[0].preserve_unmanaged);
+    }
+
+    #[test]
+    fn legacy_binding_without_preserve_deserializes_as_false() {
+        let (_d, store) = store();
+        let json = r#"{"version":1,"bindings":[{"toolId":"codex","suiteId":"suite-a"}]}"#;
+        fs::write(&store.path, json).unwrap();
+        let bindings = store.read().unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert!(!bindings[0].preserve_unmanaged);
     }
 
     #[test]
     fn tools_for_suite_filters_and_orders() {
         let (_d, store) = store();
-        store.record(ToolId::Cursor, "suite-a").unwrap();
-        store.record(ToolId::Codex, "suite-a").unwrap();
-        store.record(ToolId::Claude, "suite-b").unwrap();
+        store.record(ToolId::Cursor, "suite-a", false).unwrap();
+        store.record(ToolId::Codex, "suite-a", false).unwrap();
+        store.record(ToolId::Claude, "suite-b", false).unwrap();
 
         // Returned in ToolId::ALL order (codex before cursor), not insert order.
         assert_eq!(
@@ -181,8 +204,8 @@ mod tests {
     #[test]
     fn drop_suite_removes_only_its_bindings() {
         let (_d, store) = store();
-        store.record(ToolId::Codex, "suite-a").unwrap();
-        store.record(ToolId::Claude, "suite-b").unwrap();
+        store.record(ToolId::Codex, "suite-a", false).unwrap();
+        store.record(ToolId::Claude, "suite-b", false).unwrap();
 
         store.drop_suite("suite-a").unwrap();
 
