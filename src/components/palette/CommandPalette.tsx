@@ -62,7 +62,12 @@ export function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const selectedRef = useRef<HTMLButtonElement>(null);
   const breadcrumb = breadcrumbLabel(view);
+
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
 
   // Fit the transparent window to the panel so no dead space below the card
   // reveals the main window behind it (the "stacked layers" look). The panel's
@@ -189,6 +194,7 @@ export function CommandPalette() {
                   </p>
                 )}
                 <button
+                  ref={i === selectedIndex ? selectedRef : undefined}
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
