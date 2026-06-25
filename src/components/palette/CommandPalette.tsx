@@ -6,24 +6,35 @@
 
 import { useEffect, useRef } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { ChevronLeft, Search } from "lucide-react";
+import { Check, ChevronLeft, Circle, Lock, Search } from "lucide-react";
 import { usePaletteStore, type PaletteView } from "@/state/palette";
-import { MODE_DEFS, searchModeFromShortcut } from "./commands";
+import { useApplyStore } from "@/state/apply";
+import { ApplySuiteConfirmDialog } from "@/components/suites/ApplySuiteConfirmDialog";
+import { MODE_DEFS, searchModeFromShortcut, shouldDismissPaletteAfterRun, type PaletteItem } from "./commands";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { PALETTE_WIDTH, paletteWindowHeight } from "./layout";
+import { PALETTE_WIDTH, paletteContentHeight, paletteWindowHeight } from "./layout";
 
 /// Breadcrumb label for a drill-in view; null at the root (no breadcrumb).
 function breadcrumbLabel(view: PaletteView): string | null {
   if (view.kind === "search") return MODE_DEFS[view.mode].title;
   if (view.kind === "suite-tools") return view.suiteName;
+  if (view.kind === "capability-tools") return view.itemName;
   return null;
 }
 
 function placeholderFor(view: PaletteView): string {
   if (view.kind === "search") return MODE_DEFS[view.mode].placeholder;
   if (view.kind === "suite-tools") return `Apply “${view.suiteName}” to a tool…`;
+  if (view.kind === "capability-tools") return `Toggle “${view.itemName}” for a tool…`;
   return "Search commands or pick an action…";
+}
+
+/// Trailing toggle-state accessory for a capability-tools row.
+function StateIcon({ state }: { state: NonNullable<PaletteItem["state"]> }) {
+  if (state === "locked") return <Lock className="size-3.5 shrink-0 text-muted-foreground" aria-label="Locked by a suite" />;
+  if (state === "on") return <Check className="size-4 shrink-0 text-success" aria-label="Enabled" />;
+  return <Circle className="size-3.5 shrink-0 text-muted-foreground/50" aria-label="Disabled" />;
 }
 
 /// Empty-list message per view. Inside a drill-in mode an empty query is a
@@ -53,22 +64,38 @@ export function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const confirmContentRef = useRef<HTMLDivElement>(null);
+  const selectedRef = useRef<HTMLButtonElement>(null);
+  const pending = useApplyStore((s) => s.pending);
   const breadcrumb = breadcrumbLabel(view);
 
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
+
   // Fit the transparent window to the panel so no dead space below the card
-  // reveals the main window behind it (the "stacked layers" look). The panel's
-  // height is content-driven, so a ResizeObserver re-syncs on every list change.
+  // reveals the main window behind it (the "stacked layers" look). When a suite-
+  // apply confirm overlay is open, grow tall enough that its buttons are not clipped.
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
     const win = getCurrentWindow();
-    const sync = () =>
-      void win.setSize(new LogicalSize(PALETTE_WIDTH, paletteWindowHeight(panel.offsetHeight)));
+    const sync = () => {
+      const confirmHeight =
+        pending && confirmContentRef.current ? confirmContentRef.current.offsetHeight : null;
+      const contentHeight = paletteContentHeight(panel.offsetHeight, confirmHeight);
+      void win.setSize(new LogicalSize(PALETTE_WIDTH, paletteWindowHeight(contentHeight)));
+    };
     sync();
+    const raf = pending ? requestAnimationFrame(sync) : undefined;
     const observer = new ResizeObserver(sync);
     observer.observe(panel);
-    return () => observer.disconnect();
-  }, []);
+    if (confirmContentRef.current) observer.observe(confirmContentRef.current);
+    return () => {
+      if (raf !== undefined) cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [pending]);
 
   // Load on mount, and re-load + reset on every re-summon (window regains
   // focus) so resource edits are picked up and each summon starts clean.
@@ -88,12 +115,16 @@ export function CommandPalette() {
 
   // Run the selected item; dismiss only when it is terminal. Drill-in rows
   // (a suite) set `dismissOnRun: false` so the palette stays open on the
-  // suite-tools view.
+  // suite-tools view. Suite apply also stays open when extras need confirm.
   const runAndHide = (alt = false) => {
     const item = results[selectedIndex];
     const action = alt ? runSelectedAlt() : runSelected();
     void action.then(() => {
-      if (!item || item.dismissOnRun !== false) hide();
+      if (
+        shouldDismissPaletteAfterRun(item, useApplyStore.getState().pending !== null)
+      ) {
+        hide();
+      }
     }, hide);
   };
 
@@ -142,6 +173,7 @@ export function CommandPalette() {
   const hasResults = status !== "error" && results.length > 0;
 
   return (
+    <>
     <div className="flex h-full w-full items-start justify-center p-3" onKeyDown={onKeyDown}>
       <div
         ref={panelRef}
@@ -180,17 +212,19 @@ export function CommandPalette() {
                   </p>
                 )}
                 <button
+                  ref={i === selectedIndex ? selectedRef : undefined}
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
                     i === selectedIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
                   )}
                   onMouseMove={() => setSelected(i)}
-                  onClick={() => {
+                  onClick={(e) => {
                     setSelected(i);
-                    runAndHide();
+                    runAndHide(e.altKey);
                   }}
                 >
+                  {item.state && <StateIcon state={item.state} />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{item.title}</span>
                     {item.subtitle && (
@@ -218,5 +252,7 @@ export function CommandPalette() {
         )}
       </div>
     </div>
+    <ApplySuiteConfirmDialog contentRef={confirmContentRef} />
+  </>
   );
 }

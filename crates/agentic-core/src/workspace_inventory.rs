@@ -687,7 +687,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path();
         // Two installed skills; only one is recorded in skills-lock.json.
-        write(&ws.join(".agents/skills/rust-best-practices/SKILL.md"), "# rust");
+        write(
+            &ws.join(".agents/skills/rust-best-practices/SKILL.md"),
+            "# rust",
+        );
         write(&ws.join(".agents/skills/handwritten/SKILL.md"), "# hand");
         write(
             &ws.join("skills-lock.json"),
@@ -707,7 +710,10 @@ mod tests {
     fn no_lock_file_marks_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let ws = dir.path();
-        write(&ws.join(".agents/skills/rust-best-practices/SKILL.md"), "# rust");
+        write(
+            &ws.join(".agents/skills/rust-best-practices/SKILL.md"),
+            "# rust",
+        );
         let inv = scan_workspace(ws, &WS_TOOLS);
         assert!(inv.locked_skills.is_empty());
     }

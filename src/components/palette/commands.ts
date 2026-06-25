@@ -12,16 +12,18 @@ import type {
   CapabilityItem,
   Settings,
   SuiteDefinition,
+  ToolCapabilityState,
   ToolId,
   WorkspaceTarget,
 } from "@/types";
-import { editorApp, enabledTools, originalFile } from "@/shared";
+import { editorApp, enabledTools, key, originalFile } from "@/shared";
+import { useApplyStore } from "@/state/apply";
 import {
-  applySuite,
   copyText,
   emitHubWatcherChanged,
   openPath,
   readCapabilityBody,
+  revealPath,
   setWatcherEnabled,
   type LocateRequest,
   type NavRoute,
@@ -37,14 +39,28 @@ export interface PaletteItem {
   /// Hub section the row renders under at the root (e.g. "Search", "Go to").
   section?: string;
   run: () => Promise<void> | void;
-  /// Optional alternate action (Alt+Enter). Commands use it to open the source
-  /// file for editing, while plain Enter copies the body to the clipboard.
+  /// Optional alternate action (Alt+Enter). Resource rows use it to open the
+  /// source file for editing (plain Enter drills into the tool toggle panel);
+  /// commands use it the other way around (Enter copies, Alt+Enter edits).
   altRun?: () => Promise<void> | void;
   /// Whether running the item dismisses the palette. Defaults to true.
   /// Navigation/drill-in rows (e.g. a search mode) set this to false to stay open.
   dismissOnRun?: boolean;
   /// Keyboard hint beside the row (e.g. "⌃1" for Ctrl+1).
   shortcut?: string;
+  /// Toggle state accessory for capability-tools rows: a check (on), a hollow
+  /// dot (off), or a lock (suite-managed, non-interactive). Absent on other rows.
+  state?: "on" | "off" | "locked";
+}
+
+/** Whether the palette window should hide after an item's run() completes. */
+export function shouldDismissPaletteAfterRun(
+  item: Pick<PaletteItem, "dismissOnRun"> | undefined,
+  hasPendingApplyConfirm: boolean,
+): boolean {
+  if (hasPendingApplyConfirm) return false;
+  if (!item) return true;
+  return item.dismissOnRun !== false;
 }
 
 /// One drillable palette mode: a kind-scoped search, the explicit cross-kind
@@ -78,8 +94,38 @@ export interface ProviderContext {
   enterMode: (mode: SearchMode) => void;
   /// Drill into the suite-tools view for the given suite.
   enterSuite: (suiteId: string, suiteName: string) => void;
+  /// Drill into the capability-tools view (per-tool toggle panel) for a resource.
+  /// `fromMode` is the search mode the user came from, so Back returns there.
+  enterCapabilityTools: (item: CapabilityItem, fromMode: SearchMode) => void;
   /// Surface an item in the Hub's matrix (global or workspace scope).
   locate: (req: LocateRequest) => void;
+}
+
+/// Suite-managed cell info needed to lock a tool row (structurally compatible
+/// with the manager's `OwnershipInfo`).
+export interface CapabilityOwnership {
+  suiteName: string;
+}
+
+/// Inputs for the capability-tools panel. The store resolves the drilled-in item
+/// and supplies the inspected per-tool state plus the toggle callbacks.
+export interface CapabilityToolsContext {
+  settings: Settings;
+  query: string;
+  itemId: string;
+  itemName: string;
+  /// The resolved item, for the Open/Reveal action rows. Absent if not found.
+  item: CapabilityItem | undefined;
+  /// True once the background inspect has populated `currentMap`/`ownership`.
+  inspected: boolean;
+  /// `key(tool, itemId)` -> live disk state. Empty until inspected.
+  currentMap: Map<string, ToolCapabilityState>;
+  /// `key(tool, itemId)` -> owning suite (locked cells).
+  ownership: Map<string, CapabilityOwnership>;
+  /// Flip one tool for this item and apply immediately.
+  toggleCapability: (tool: ToolId, itemId: string) => Promise<void> | void;
+  /// Enable/disable this item across every (unlocked) enabled tool at once.
+  toggleCapabilityAll: (itemId: string, enable: boolean) => Promise<void> | void;
 }
 
 /// Case-insensitive substring match over a precomposed haystack.
@@ -106,27 +152,27 @@ interface ModeDef {
 export const MODE_DEFS: Record<SearchMode, ModeDef> = {
   all: {
     title: "Search all resources",
-    subtitle: "Skills, agents, rules & hooks across every source",
+    subtitle: "Enter to toggle tools · Alt+Enter to edit",
     placeholder: "Search all resources…",
   },
   skill: {
     title: "Search skills",
-    subtitle: "Open a skill's SKILL.md in your editor",
+    subtitle: "Enter to toggle tools · Alt+Enter to edit SKILL.md",
     placeholder: "Search skills…",
   },
   agent: {
     title: "Search agents",
-    subtitle: "Open an agent file in your editor",
+    subtitle: "Enter to toggle tools · Alt+Enter to edit",
     placeholder: "Search agents…",
   },
   rule: {
     title: "Search rules",
-    subtitle: "Open a rule file in your editor",
+    subtitle: "Enter to toggle tools · Alt+Enter to edit",
     placeholder: "Search rules…",
   },
   hook: {
     title: "Search hooks",
-    subtitle: "Open a hook manifest in your editor",
+    subtitle: "Enter to toggle tools · Alt+Enter to edit the manifest",
     placeholder: "Search hooks…",
   },
   command: {
@@ -246,10 +292,14 @@ export function computeHubResults(ctx: ProviderContext): PaletteItem[] {
   return rows.filter((r) => !q || matches(`${r.section} ${r.title} ${r.subtitle ?? ""}`, q));
 }
 
-// Kind-scoped resource search (null = every non-command kind). Enter opens the
-// original file in the configured editor. Returns nothing on an empty query so
-// the panel does not dump the whole tree.
-function resourceResults(ctx: ProviderContext, kind: CapabilityItem["kind"] | null): PaletteItem[] {
+// Kind-scoped resource search (null = every non-command kind). Enter drills into
+// the per-tool toggle panel; Alt+Enter opens the original file in the editor.
+// Returns nothing on an empty query so the panel does not dump the whole tree.
+function resourceResults(
+  ctx: ProviderContext,
+  kind: CapabilityItem["kind"] | null,
+  fromMode: SearchMode,
+): PaletteItem[] {
   const q = ctx.query.trim();
   if (!q) return [];
   const app = editorApp(ctx.settings);
@@ -261,7 +311,9 @@ function resourceResults(ctx: ProviderContext, kind: CapabilityItem["kind"] | nu
       title: it.name,
       subtitle: it.relativePath,
       group: GROUP_BY_KIND[it.kind],
-      run: () => openPath(originalFile(it), app),
+      dismissOnRun: false,
+      run: () => ctx.enterCapabilityTools(it, fromMode),
+      altRun: () => openPath(originalFile(it), app),
     }));
 }
 
@@ -349,12 +401,12 @@ export function computeSearchResults(ctx: ProviderContext, mode: SearchMode): Pa
   const rows = (() => {
     switch (mode) {
       case "all":
-        return resourceResults(ctx, null);
+        return resourceResults(ctx, null, "all");
       case "skill":
       case "agent":
       case "rule":
       case "hook":
-        return resourceResults(ctx, mode);
+        return resourceResults(ctx, mode, mode);
       case "command":
         return commandResults(ctx);
       case "suite":
@@ -382,12 +434,113 @@ export function computeSuiteToolResults(
     .map((t) => ({
       id: `apply:${suiteId}:${t.id}`,
       title: `Apply to ${t.label}`,
-      subtitle: `Full reset · ${suiteName} → ${t.label}`,
+      subtitle: `Full reset · prompts when extras exist · ${suiteName} → ${t.label}`,
       group: "Apply",
-      run: () => applyToTool(suiteId, t.id),
+      run: () => applyToTool(suiteId, t.id, suiteName),
     }));
 }
 
-function applyToTool(suiteId: string, tool: ToolId): Promise<void> {
-  return applySuite(tool, suiteId).then(() => undefined);
+function applyToTool(suiteId: string, tool: ToolId, suiteName: string): Promise<void> {
+  return useApplyStore.getState().request(tool, suiteId, suiteName);
+}
+
+/// Capability-tools view: per-tool on/off toggles for one resource, applied
+/// inline. The "Tools" section lists an aggregate "all tools" row plus one row
+/// per enabled tool that has a projection target (suite-managed cells render as
+/// locked). The "Actions" section opens or reveals the source file. Both the
+/// aggregate row and the action rows hide while a query is filtering the tools.
+export function computeCapabilityToolResults(ctx: CapabilityToolsContext): PaletteItem[] {
+  const { settings, query, itemId, itemName, item, inspected, currentMap, ownership } = ctx;
+  const q = query.trim();
+  const app = editorApp(settings);
+
+  // Action rows never need the inspect data, so they show immediately.
+  const actionRows: PaletteItem[] =
+    !q && item
+      ? [
+          {
+            id: `capopen:${itemId}`,
+            title: "Open in editor",
+            subtitle: originalFile(item),
+            group: "Action",
+            section: "Actions",
+            run: () => openPath(originalFile(item), app),
+          },
+          {
+            id: `capreveal:${itemId}`,
+            title: "Reveal in Finder",
+            subtitle: item.sourcePath,
+            group: "Action",
+            section: "Actions",
+            run: () => revealPath(originalFile(item)),
+          },
+        ]
+      : [];
+
+  if (!inspected) {
+    return [
+      {
+        id: `captool-loading:${itemId}`,
+        title: "Loading tool states…",
+        group: "Tool",
+        section: "Tools",
+        dismissOnRun: false,
+        run: () => {},
+      },
+      ...actionRows,
+    ];
+  }
+
+  // One row per enabled tool that actually has a projection target for this item
+  // (mirrors the manager's `currentMap.has(k)` gate — e.g. a hook only targets
+  // the tools its manifest opts into).
+  const toolRows: PaletteItem[] = enabledTools(settings)
+    .filter((t) => currentMap.has(key(t.id, itemId)))
+    .filter((t) => !q || matches(`${t.label} ${t.id}`, q))
+    .map((t) => {
+      const k = key(t.id, itemId);
+      const owner = ownership.get(k);
+      const on = currentMap.get(k)?.state === "enabled";
+      return {
+        id: `captool:${itemId}:${t.id}`,
+        title: t.label,
+        subtitle: owner
+          ? `Locked by suite: ${owner.suiteName}`
+          : on
+            ? "Enabled · Enter to disable"
+            : "Disabled · Enter to enable",
+        group: "Tool",
+        section: "Tools",
+        state: owner ? "locked" : on ? "on" : "off",
+        dismissOnRun: false,
+        // Locked cells are non-interactive — a suite binding owns them.
+        run: owner ? () => {} : () => ctx.toggleCapability(t.id, itemId),
+      } satisfies PaletteItem;
+    });
+
+  // Aggregate row: enable everywhere unless every unlocked tool is already on,
+  // in which case it disables everywhere. Hidden while filtering by a query.
+  const togglable = enabledTools(settings).filter(
+    (t) => currentMap.has(key(t.id, itemId)) && !ownership.has(key(t.id, itemId)),
+  );
+  const allOn =
+    togglable.length > 0 &&
+    togglable.every((t) => currentMap.get(key(t.id, itemId))?.state === "enabled");
+  const allRow: PaletteItem[] =
+    !q && togglable.length > 0
+      ? [
+          {
+            id: `captool-all:${itemId}`,
+            title: allOn ? "Disable for all tools" : "Enable for all tools",
+            subtitle: `${itemName} → ${togglable.map((t) => t.label).join(", ")}`,
+            group: "Tool",
+            section: "Tools",
+            state: allOn ? "on" : "off",
+            dismissOnRun: false,
+            run: () => ctx.toggleCapabilityAll(itemId, !allOn),
+          },
+        ]
+      : [];
+
+  return [...allRow, ...toolRows, ...actionRows];
 }

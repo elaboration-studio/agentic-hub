@@ -20,6 +20,7 @@ capability add/remove would silently drift from the tools.
 pub struct SuiteBinding {
     pub tool_id: ToolId,
     pub suite_id: String,
+    pub manual_item_ids: Vec<String>, // ids enabled beyond the effective suite
 }
 ```
 
@@ -34,7 +35,7 @@ dotfile alongside the workspace-target state, kept separate so the two stores
 never contend:
 
 ```json
-{ "version": 1, "bindings": [ { "toolId": "codex", "suiteId": "backend" } ] }
+{ "version": 1, "bindings": [ { "toolId": "codex", "suiteId": "backend", "manualItemIds": ["skill:extra"] } ] }
 ```
 
 Contract (mirrors `WorkspaceTargetStore`):
@@ -44,7 +45,7 @@ Contract (mirrors `WorkspaceTargetStore`):
 - **Malformed file** → `StateParse` error; the file is **never overwritten**,
   so a hand-corrupted file is preserved for inspection.
 
-API: `read()`, `record(tool, suite_id)` (upsert by tool),
+API: `read()`, `get(tool)`, `record(tool, suite_id, manual_item_ids)` (upsert by tool),
 `tools_for_suite(suite_id) -> Vec<ToolId>` (in `ToolId::ALL` order),
 `drop_suite(suite_id)`.
 

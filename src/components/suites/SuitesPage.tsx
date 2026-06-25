@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { onSuiteStoreChanged } from "@/ipc";
 import type { CapabilityItem, CapabilityKind, ToolId } from "@/types";
 import { KIND_LABEL, KIND_ORDER, type ToolDef } from "@/shared";
+import { useApplyStore } from "@/state/apply";
 import { useManagerStore } from "@/state/manager";
 import { useSuitesStore } from "@/state/suites";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,9 @@ export function SuitesPage() {
   const isCreating = useSuitesStore((s) => s.isCreating);
   const draft = useSuitesStore((s) => s.draft);
   const busy = useSuitesStore((s) => s.busy);
+  const applyBusy = useApplyStore((s) => s.busy);
+  const requestApply = useApplyStore((s) => s.request);
+  const runApply = useApplyStore((s) => s.runApply);
   const reload = useSuitesStore((s) => s.reload);
   const startCreate = useSuitesStore((s) => s.startCreate);
   const selectSuite = useSuitesStore((s) => s.selectSuite);
@@ -75,7 +79,6 @@ export function SuitesPage() {
   const setCapabilities = useSuitesStore((s) => s.setCapabilities);
   const save = useSuitesStore((s) => s.save);
   const removeSuite = useSuitesStore((s) => s.remove);
-  const applySelected = useSuitesStore((s) => s.applySelected);
   const setBase = useSuitesStore((s) => s.setBase);
   const pruneSelection = useSuitesStore((s) => s.pruneSelection);
 
@@ -134,16 +137,17 @@ export function SuitesPage() {
 
   const onApply = useCallback(() => {
     const suite = suites.find((s) => s.id === selectedId);
-    if (!suite || suite.capabilities.length === 0) {
+    if (!suite) return;
+    if (suite.capabilities.length === 0) {
       setConfirm({
         title: "Apply empty suite?",
         body: "This suite is empty. Applying disables every capability for the tool. Continue?",
-        onConfirm: () => void applySelected(applyTool),
+        onConfirm: () => void runApply(applyTool, suite.id, false),
       });
       return;
     }
-    void applySelected(applyTool);
-  }, [suites, selectedId, applyTool, applySelected]);
+    void requestApply(applyTool, suite.id, suite.name);
+  }, [suites, selectedId, applyTool, requestApply, runApply]);
 
   const onDelete = useCallback(() => {
     const suite = suites.find((s) => s.id === selectedId);
@@ -228,7 +232,7 @@ export function SuitesPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button onClick={onApply} disabled={busy || availableTools.length === 0}>
+              <Button onClick={onApply} disabled={busy || applyBusy || availableTools.length === 0}>
                 Apply Suite
               </Button>
               {(() => {

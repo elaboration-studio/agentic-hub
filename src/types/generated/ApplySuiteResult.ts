@@ -15,4 +15,9 @@ skippedStale: number,
  * Suite caps whose qualifying source is absent on this machine. Preserved,
  * never deleted; just not applicable to a cross-device clone.
  */
-skippedAbsentSource: number, suite: SuiteDefinition, };
+skippedAbsentSource: number, suite: SuiteDefinition, 
+/**
+ * Item ids enabled beyond the effective suite after this apply (persisted
+ * on the tool binding for the next switch / re-sync).
+ */
+manualItemIds: Array<string>, };

@@ -42,17 +42,17 @@ function AlertDialogOverlay({
   )
 }
 
-function AlertDialogContent({
-  className,
-  size = "default",
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
-  size?: "default" | "sm"
-}) {
+const AlertDialogContent = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+    size?: "default" | "sm"
+  }
+>(function AlertDialogContent({ className, size = "default", ...props }, ref) {
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
+        ref={ref}
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
@@ -63,7 +63,7 @@ function AlertDialogContent({
       />
     </AlertDialogPortal>
   )
-}
+})
 
 function AlertDialogHeader({
   className,

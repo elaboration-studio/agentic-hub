@@ -546,6 +546,9 @@ pub struct ApplySuiteResult {
     /// never deleted; just not applicable to a cross-device clone.
     pub skipped_absent_source: u32,
     pub suite: SuiteDefinition,
+    /// Item ids enabled beyond the effective suite after this apply (persisted
+    /// on the tool binding for the next switch / re-sync).
+    pub manual_item_ids: Vec<String>,
 }
 
 /// The suite currently applied to one tool in global scope. Persisted so a
@@ -562,6 +565,9 @@ pub struct ApplySuiteResult {
 pub struct SuiteBinding {
     pub tool_id: ToolId,
     pub suite_id: String,
+    /// Capabilities the user enabled beyond the bound suite's effective set.
+    #[serde(default)]
+    pub manual_item_ids: Vec<String>,
 }
 
 /// One `(tool, item)` projection that a suite currently manages, surfaced so the

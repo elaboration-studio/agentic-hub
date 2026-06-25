@@ -4,7 +4,7 @@
 //! they stay unit-testable against a tempdir. The shell layer only does payload
 //! marshalling and error mapping. See `docs/tech/modules/tauri-ipc-contract.md`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ use crate::adapter_registry::{self, ProjectionMode, ResolvedAdapter};
 use crate::applier;
 use crate::hook_sync;
 use crate::model::{
-    ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncOutcome,
+    ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncOutcome, LinkState,
     PlannedOperation, RuleSyncOutcome, ScanResult, SuiteBinding, SuiteDefinition, SuiteOwnership,
     SyncHooksResult, SyncRulesResult, ToolCapabilityState, ToolId,
 };
@@ -193,6 +193,84 @@ pub fn sync_hooks(
     }
 }
 
+/// Item ids currently projected as enabled for one tool (links, managed copies,
+/// markdown rules, hooks).
+pub fn enabled_item_ids(
+    items: &[CapabilityItem],
+    settings: &Settings,
+    tool: ToolId,
+) -> HashSet<String> {
+    let adapter = adapter_registry::resolve(settings, tool);
+    let manifests = hook_sync::load_manifests(items);
+    let mut ids: HashSet<String> = planner::inspect_tool(items, &adapter)
+        .into_iter()
+        .filter(|s| s.state == LinkState::Enabled)
+        .map(|s| s.item_id)
+        .collect();
+    for s in hook_sync::inspect_hooks(items, &manifests, &adapter) {
+        if s.state == LinkState::Enabled {
+            ids.insert(s.item_id);
+        }
+    }
+    ids
+}
+
+/// Item ids matched by a suite's capability refs against the scanned items.
+pub fn suite_matched_ids(items: &[CapabilityItem], suite: &SuiteDefinition) -> HashSet<String> {
+    items
+        .iter()
+        .filter(|it| suite.capabilities.iter().any(|r| r.matches_item(it)))
+        .map(|it| it.id.clone())
+        .collect()
+}
+
+/// Enabled ids minus those matched by the effective suite, sorted.
+pub fn manual_extras_from_enabled(
+    enabled: &HashSet<String>,
+    effective: &SuiteDefinition,
+    items: &[CapabilityItem],
+) -> Vec<String> {
+    let matched = suite_matched_ids(items, effective);
+    let mut extras: Vec<String> = enabled
+        .iter()
+        .filter(|id| !matched.contains(*id))
+        .cloned()
+        .collect();
+    extras.sort();
+    extras
+}
+
+/// Manual extras that would be lost when switching to `new_effective`.
+/// Computes `enabled_now − prior_effective` (when a suite was already bound),
+/// then keeps ids not covered by the new suite. First apply (no prior
+/// effective) treats everything enabled outside the new suite as manual.
+pub fn suite_apply_manual_extras(
+    prior_effective: Option<&SuiteDefinition>,
+    new_effective: &SuiteDefinition,
+    items: &[CapabilityItem],
+    settings: &Settings,
+    tool: ToolId,
+) -> Vec<String> {
+    let enabled = enabled_item_ids(items, settings, tool);
+    let new_matched = suite_matched_ids(items, new_effective);
+
+    let live_manual: HashSet<String> = match prior_effective {
+        None => manual_extras_from_enabled(&enabled, new_effective, items)
+            .into_iter()
+            .collect(),
+        Some(prev) => manual_extras_from_enabled(&enabled, prev, items)
+            .into_iter()
+            .collect(),
+    };
+
+    let mut extras: Vec<String> = live_manual
+        .into_iter()
+        .filter(|id| !new_matched.contains(id) && items.iter().any(|it| it.id == *id))
+        .collect();
+    extras.sort();
+    extras
+}
+
 /// Apply a suite to one tool as a full reset: every scanned item gets a desired
 /// state (`true` iff a suite ref resolves to it, source-aware), then the
 /// existing plan/apply + rule + hook sync pipeline runs. References whose source
@@ -206,14 +284,14 @@ pub fn apply_suite(
     settings: &Settings,
     tool: ToolId,
     suite: &SuiteDefinition,
+    manual_to_preserve: &[&str],
 ) -> ApplySuiteResult {
+    let preserve: HashSet<&str> = manual_to_preserve.iter().copied().collect();
     let desired: HashMap<String, bool> = items
         .iter()
         .map(|it| {
-            (
-                it.id.clone(),
-                suite.capabilities.iter().any(|r| r.matches_item(it)),
-            )
+            let in_suite = suite.capabilities.iter().any(|r| r.matches_item(it));
+            (it.id.clone(), in_suite || preserve.contains(it.id.as_str()))
         })
         .collect();
 
@@ -239,11 +317,15 @@ pub fn apply_suite(
         }
     }
 
+    let enabled_after = enabled_item_ids(items, settings, tool);
+    let manual_item_ids = manual_extras_from_enabled(&enabled_after, suite, items);
+
     ApplySuiteResult {
         apply_result,
         skipped_stale,
         skipped_absent_source,
         suite: suite.clone(),
+        manual_item_ids,
     }
 }
 
@@ -256,10 +338,17 @@ pub fn apply_suite_to_tools(
     settings: &Settings,
     suite: &SuiteDefinition,
     tools: &[ToolId],
+    manual_by_tool: &HashMap<ToolId, Vec<String>>,
 ) -> Vec<ApplySuiteResult> {
     tools
         .iter()
-        .map(|&tool| apply_suite(items, settings, tool, suite))
+        .map(|&tool| {
+            let manual: Vec<&str> = manual_by_tool
+                .get(&tool)
+                .map(|ids| ids.iter().map(String::as_str).collect())
+                .unwrap_or_default();
+            apply_suite(items, settings, tool, suite, &manual)
+        })
         .collect()
 }
 
@@ -377,6 +466,7 @@ mod tests {
         let bindings = vec![SuiteBinding {
             tool_id: ToolId::Codex,
             suite_id: "ed".into(),
+            manual_item_ids: vec![],
         }];
 
         let own = suite_ownership(&scanned.items, &bindings, &suites, Some(&base));
@@ -405,6 +495,7 @@ mod tests {
         let bindings = vec![SuiteBinding {
             tool_id: ToolId::Codex,
             suite_id: "ed".into(),
+            manual_item_ids: vec![],
         }];
 
         let own = suite_ownership(&scanned.items, &bindings, &suites, Some(&base));
@@ -457,7 +548,7 @@ mod tests {
             created_at: "t".into(),
             updated_at: "t".into(),
         };
-        apply_suite(&scanned.items, &settings, ToolId::Codex, &both);
+        apply_suite(&scanned.items, &settings, ToolId::Codex, &both, &[]);
         let before = inspect(&scanned.items, &settings);
         assert_eq!(
             before
@@ -473,7 +564,7 @@ mod tests {
             capabilities: vec!["skill:keep".into(), "skill:gone".into()],
             ..both
         };
-        let result = apply_suite(&scanned.items, &settings, ToolId::Codex, &only_keep);
+        let result = apply_suite(&scanned.items, &settings, ToolId::Codex, &only_keep, &[]);
         assert_eq!(result.skipped_stale, 1, "skill:gone not in scan");
 
         let after = inspect(&scanned.items, &settings);
@@ -525,6 +616,7 @@ mod tests {
             &settings,
             ToolId::Claude,
             &suite("both", &["skill:keep", "skill:drop"]),
+            &[],
         );
         let copy = settings.tools.claude.skills_path.join("drop");
         assert!(copy.exists(), "drop projected before re-apply");
@@ -539,6 +631,7 @@ mod tests {
             &settings,
             ToolId::Claude,
             &suite("only-keep", &["skill:keep"]),
+            &[],
         );
         assert!(!copy.exists(), "drop's managed copy cleaned on re-apply");
         assert_eq!(
@@ -563,6 +656,7 @@ mod tests {
             &settings,
             ToolId::Codex,
             &suite("a-only", &["rule:a.mdc"]),
+            &[],
         );
         let written = fs::read_to_string(&instr).unwrap();
         assert!(written.contains("### a.mdc"), "suite rule listed");
@@ -574,6 +668,7 @@ mod tests {
             &settings,
             ToolId::Codex,
             &suite("b-only", &["rule:b.mdc"]),
+            &[],
         );
         let written = fs::read_to_string(&instr).unwrap();
         assert!(written.contains("### b.mdc"), "new suite rule listed");
@@ -596,6 +691,7 @@ mod tests {
             &settings,
             ToolId::Cursor,
             &suite("with-cmd", &["command:review/code-review.md"]),
+            &[],
         );
         assert_eq!(
             enabled_ids(&settings, &scanned.items, ToolId::Cursor),
@@ -616,6 +712,7 @@ mod tests {
             &settings,
             ToolId::Cursor,
             &suite("empty", &[]),
+            &[],
         );
         assert!(
             enabled_ids(&settings, &scanned.items, ToolId::Cursor).is_empty(),
@@ -641,6 +738,7 @@ mod tests {
             &settings,
             ToolId::Claude,
             &suite("with-hook", &["hook:fmt"]),
+            &[],
         );
         assert_eq!(
             enabled_ids(&settings, &scanned.items, ToolId::Claude),
@@ -654,6 +752,7 @@ mod tests {
             &settings,
             ToolId::Claude,
             &suite("empty", &[]),
+            &[],
         );
         assert!(
             enabled_ids(&settings, &scanned.items, ToolId::Claude).is_empty(),
@@ -678,6 +777,7 @@ mod tests {
             &settings,
             ToolId::Codex,
             &suite("all", &["skill:a", "skill:b", "rule:r.mdc"]),
+            &[],
         );
         assert_eq!(
             enabled_ids(&settings, &scanned.items, ToolId::Codex).len(),
@@ -689,6 +789,7 @@ mod tests {
             &settings,
             ToolId::Codex,
             &suite("empty", &[]),
+            &[],
         );
         assert!(
             enabled_ids(&settings, &scanned.items, ToolId::Codex).is_empty(),
@@ -711,14 +812,14 @@ mod tests {
         let scanned = scan(&settings);
 
         let only = suite("keep", &["skill:keep"]);
-        apply_suite(&scanned.items, &settings, ToolId::Claude, &only);
+        apply_suite(&scanned.items, &settings, ToolId::Claude, &only, &[]);
         let copy = settings.tools.claude.skills_path.join("keep/SKILL.md");
         assert_eq!(fs::read_to_string(&copy).unwrap(), "# v1");
 
         // Edit the source, then re-apply the same suite: the copy refreshes.
         write(&root.path().join("skills/keep/SKILL.md"), "# v2 fresh");
         let rescanned = scan(&settings);
-        let result = apply_suite(&rescanned.items, &settings, ToolId::Claude, &only);
+        let result = apply_suite(&rescanned.items, &settings, ToolId::Claude, &only, &[]);
         assert!(result.apply_result.errors.is_empty());
         assert_eq!(
             fs::read_to_string(&copy).unwrap(),
@@ -740,6 +841,7 @@ mod tests {
             &settings,
             &suite("s", &["skill:a"]),
             &[ToolId::Codex, ToolId::Claude],
+            &HashMap::new(),
         );
         assert_eq!(results.len(), 2);
         assert_eq!(
@@ -777,7 +879,7 @@ mod tests {
             created_at: "t".into(),
             updated_at: "t".into(),
         };
-        let result = apply_suite(&scanned.items, &settings, ToolId::Codex, &suite);
+        let result = apply_suite(&scanned.items, &settings, ToolId::Codex, &suite, &[]);
         assert_eq!(result.skipped_absent_source, 1, "source not present here");
         assert_eq!(result.skipped_stale, 0);
         // skill:a exists locally but under a different source, so the absent-source
@@ -807,7 +909,7 @@ mod tests {
             created_at: "t".into(),
             updated_at: "t".into(),
         };
-        let r = apply_suite(&scanned.items, &settings, ToolId::Codex, &qualified);
+        let r = apply_suite(&scanned.items, &settings, ToolId::Codex, &qualified, &[]);
         assert_eq!(r.skipped_absent_source, 0);
         assert_eq!(r.skipped_stale, 0);
         assert_eq!(
@@ -817,7 +919,7 @@ mod tests {
 
         // A legacy bare ref (source: None) still matches by id alone.
         let bare = suite("b", &["skill:a"]);
-        let r2 = apply_suite(&scanned.items, &settings, ToolId::Codex, &bare);
+        let r2 = apply_suite(&scanned.items, &settings, ToolId::Codex, &bare, &[]);
         assert_eq!(r2.skipped_stale, 0);
         assert_eq!(
             enabled_ids(&settings, &scanned.items, ToolId::Codex),
@@ -875,12 +977,127 @@ mod tests {
             created_at: "t".into(),
             updated_at: "t".into(),
         };
-        let r = apply_suite(&scanned.items, &settings, ToolId::Codex, &suite);
+        let r = apply_suite(&scanned.items, &settings, ToolId::Codex, &suite, &[]);
         // B is present but its skill:dup is shadowed, so nothing resolves: stale,
         // not absent, and A's skill:dup is never mis-enabled.
         assert!(enabled_ids(&settings, &scanned.items, ToolId::Codex).is_empty());
         assert_eq!(r.skipped_absent_source, 0);
         assert_eq!(r.skipped_stale, 1);
+    }
+
+    #[test]
+    fn suite_apply_manual_extras_ignores_old_suite_items() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/keep/SKILL.md"), "# keep");
+        write(&root.path().join("skills/extra/SKILL.md"), "# extra");
+        write(&root.path().join("skills/new/SKILL.md"), "# new");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("keep-only", &["skill:keep"]),
+            &[],
+        );
+        // User manually enabled `extra` via the Manager (disk updated; binding still empty).
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("keep-only", &["skill:keep"]),
+            &["skill:extra"],
+        );
+        let prior_effective = suite("keep-only", &["skill:keep"]);
+        let new_suite = suite("new-only", &["skill:new"]);
+        assert_eq!(
+            suite_apply_manual_extras(
+                Some(&prior_effective),
+                &new_suite,
+                &scanned.items,
+                &settings,
+                ToolId::Codex,
+            ),
+            vec!["skill:extra"]
+        );
+    }
+
+    #[test]
+    fn suite_apply_manual_extras_finds_manager_additions_with_empty_binding_manual_ids() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/a/SKILL.md"), "# a");
+        write(&root.path().join("skills/x1/SKILL.md"), "# x1");
+        write(&root.path().join("skills/x2/SKILL.md"), "# x2");
+        write(&root.path().join("skills/b/SKILL.md"), "# b");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("suite-a", &["skill:a"]),
+            &[],
+        );
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("suite-a", &["skill:a"]),
+            &["skill:x1", "skill:x2"],
+        );
+        let prior = suite("suite-a", &["skill:a"]);
+        let next = suite("suite-b", &["skill:b"]);
+        assert_eq!(
+            suite_apply_manual_extras(
+                Some(&prior),
+                &next,
+                &scanned.items,
+                &settings,
+                ToolId::Codex,
+            ),
+            vec!["skill:x1", "skill:x2"]
+        );
+    }
+
+    #[test]
+    fn apply_suite_manual_preserve_keeps_only_manual_extras() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/keep/SKILL.md"), "# keep");
+        write(&root.path().join("skills/extra/SKILL.md"), "# extra");
+        write(&root.path().join("skills/new/SKILL.md"), "# new");
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("keep-only", &["skill:keep"]),
+            &["skill:extra"],
+        );
+        let new_suite = suite("new-only", &["skill:new"]);
+        let result = apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &new_suite,
+            &["skill:extra"],
+        );
+        assert_eq!(result.manual_item_ids, vec!["skill:extra"]);
+        let mut enabled = enabled_ids(&settings, &scanned.items, ToolId::Codex);
+        enabled.sort();
+        assert_eq!(enabled, vec!["skill:extra", "skill:new"]);
+
+        apply_suite(&scanned.items, &settings, ToolId::Codex, &new_suite, &[]);
+        assert_eq!(
+            enabled_ids(&settings, &scanned.items, ToolId::Codex),
+            vec!["skill:new"]
+        );
     }
 
     #[test]

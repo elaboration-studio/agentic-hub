@@ -17,3 +17,16 @@ export const PALETTE_FRAME = 12;
 export function paletteWindowHeight(panelHeight: number): number {
   return Math.ceil(panelHeight) + PALETTE_FRAME * 2;
 }
+
+/// Vertical breathing room around a centered overlay confirm dialog.
+export const PALETTE_CONFIRM_MARGIN = 48;
+
+/// Content height when a suite-apply confirm overlay is open: at least the
+/// panel, or tall enough to show the centered dialog without clipping buttons.
+export function paletteContentHeight(
+  panelHeight: number,
+  confirmHeight: number | null,
+): number {
+  if (confirmHeight == null || confirmHeight <= 0) return panelHeight;
+  return Math.max(panelHeight, confirmHeight + PALETTE_CONFIRM_MARGIN);
+}

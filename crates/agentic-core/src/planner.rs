@@ -928,7 +928,10 @@ mod tests {
         let parsed: toml::Table =
             toml::from_str(&fs::read_to_string(&target).unwrap()).expect("valid TOML");
         assert_eq!(parsed["name"].as_str(), Some("cto"));
-        assert_eq!(parsed["description"].as_str(), Some("Chief Technology Officer."));
+        assert_eq!(
+            parsed["description"].as_str(),
+            Some("Chief Technology Officer.")
+        );
         assert!(parsed["developer_instructions"]
             .as_str()
             .unwrap()

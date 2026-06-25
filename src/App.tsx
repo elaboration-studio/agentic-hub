@@ -20,6 +20,7 @@ import { Header } from "./components/layout/Header";
 import { ActionBar } from "./components/layout/ActionBar";
 import { ManagerView } from "./components/manager/ManagerView";
 import { ConflictDialog } from "./components/manager/ConflictDialog";
+import { ApplySuiteConfirmDialog } from "./components/suites/ApplySuiteConfirmDialog";
 import { ConfigPage } from "./components/config/ConfigPage";
 import { SuitesPage } from "./components/suites/SuitesPage";
 import { ResourcesPage } from "./components/resources/ResourcesPage";
@@ -199,6 +200,7 @@ export function App() {
         </main>
         {route === "manager" && scope === "global" && pending > 0 && <ActionBar />}
         <ConflictDialog />
+        <ApplySuiteConfirmDialog />
       </div>
       <Toaster />
     </TooltipProvider>

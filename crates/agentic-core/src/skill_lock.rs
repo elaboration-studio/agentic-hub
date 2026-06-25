@@ -84,7 +84,10 @@ mod tests {
         assert_eq!(rust.source, "apollographql/skills");
         assert_eq!(rust.source_type, "github");
         assert_eq!(
-            lock.skills.get("vercel-react-best-practices").unwrap().source,
+            lock.skills
+                .get("vercel-react-best-practices")
+                .unwrap()
+                .source,
             "vercel-labs/agent-skills"
         );
     }

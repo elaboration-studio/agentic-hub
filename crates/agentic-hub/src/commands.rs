@@ -500,6 +500,20 @@ pub struct UpdateSuiteInput {
     pub changes: SuiteUpdateInput,
 }
 
+/// Resolve the effective suite for a bound suite id (selected ∪ base).
+fn effective_for_suite_id(
+    store: &SuiteStore,
+    suite_id: &str,
+    base: Option<&SuiteDefinition>,
+    items: &[CapabilityItem],
+) -> IpcResult<SuiteDefinition> {
+    let mut suite = store
+        .get(suite_id)?
+        .ok_or_else(|| IpcError::new("suite_not_found", "Bound suite no longer exists"))?;
+    SuiteStore::backfill_sources(&mut suite, items);
+    Ok(api::merge_base_caps(&suite, base))
+}
+
 /// Re-apply each binding as a base-merged full reset, serialized against the
 /// watcher so the two never write the same dirs. Each binding's selected suite
 /// is resolved fresh and unioned with the current base.
@@ -514,7 +528,21 @@ fn resync_bindings(
         for b in bindings {
             if let Ok(Some(selected)) = store.get(&b.suite_id) {
                 let effective = api::merge_base_caps(&selected, base.as_ref());
-                api::apply_suite(&scanned.items, settings, b.tool_id, &effective);
+                let enabled = api::enabled_item_ids(&scanned.items, settings, b.tool_id);
+                let manual = api::manual_extras_from_enabled(&enabled, &effective, &scanned.items);
+                let manual_refs: Vec<&str> = manual.iter().map(String::as_str).collect();
+                let result = api::apply_suite(
+                    &scanned.items,
+                    settings,
+                    b.tool_id,
+                    &effective,
+                    &manual_refs,
+                );
+                let _ = SuiteBindingStore::new().record(
+                    b.tool_id,
+                    &b.suite_id,
+                    result.manual_item_ids,
+                );
             }
         }
     });
@@ -536,12 +564,9 @@ pub async fn cmd_update_suite(
         binding_store.read()?
     } else {
         binding_store
-            .tools_for_suite(&suite.id)?
+            .read()?
             .into_iter()
-            .map(|tool_id| SuiteBinding {
-                tool_id,
-                suite_id: suite.id.clone(),
-            })
+            .filter(|b| b.suite_id == suite.id)
             .collect()
     };
     if !to_resync.is_empty() {
@@ -570,6 +595,8 @@ pub async fn cmd_delete_suite(app: AppHandle, id: String) -> IpcResult<()> {
 pub struct ApplySuiteInput {
     pub tool_id: ToolId,
     pub suite_id: String,
+    #[serde(default)]
+    pub preserve_manual: bool,
 }
 
 #[tauri::command]
@@ -592,14 +619,77 @@ pub async fn cmd_apply_suite(
     // Union the base suite's capabilities so its rules/skills are always present.
     let base = store.base()?;
     let effective = api::merge_base_caps(&suite, base.as_ref());
-    let result = api::apply_suite(&scanned.items, &settings, input.tool_id, &effective);
+    let binding_store = SuiteBindingStore::new();
+    let prior = binding_store.get(input.tool_id)?;
+    let prior_effective = match prior.as_ref() {
+        Some(b) => Some(effective_for_suite_id(
+            &store,
+            &b.suite_id,
+            base.as_ref(),
+            &scanned.items,
+        )?),
+        None => None,
+    };
+    let manual_to_preserve: Vec<String> = if input.preserve_manual {
+        api::suite_apply_manual_extras(
+            prior_effective.as_ref(),
+            &effective,
+            &scanned.items,
+            &settings,
+            input.tool_id,
+        )
+    } else {
+        vec![]
+    };
+    let manual_refs: Vec<&str> = manual_to_preserve.iter().map(String::as_str).collect();
+    let result = api::apply_suite(
+        &scanned.items,
+        &settings,
+        input.tool_id,
+        &effective,
+        &manual_refs,
+    );
     // Bind this tool to the selected suite (not the base) so a later capability
     // edit re-syncs it.
-    let _ = SuiteBindingStore::new().record(input.tool_id, &input.suite_id);
+    let _ = binding_store.record(
+        input.tool_id,
+        &input.suite_id,
+        result.manual_item_ids.clone(),
+    );
     // Tool projections + suite ownership changed — nudge the manager (this window
     // or the main window when applied from the palette) to re-scan and re-lock.
     let _ = app.emit("sources-changed", ());
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn cmd_suite_apply_preview(input: ApplySuiteInput) -> IpcResult<Vec<String>> {
+    let settings = Settings::load()?;
+    let store = SuiteStore::with_path(settings.resolved_suites_path());
+    let mut suite = store
+        .get(&input.suite_id)?
+        .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
+    let scanned = api::scan(&settings);
+    SuiteStore::backfill_sources(&mut suite, &scanned.items);
+    let base = store.base()?;
+    let effective = api::merge_base_caps(&suite, base.as_ref());
+    let prior = SuiteBindingStore::new().get(input.tool_id)?;
+    let prior_effective = match prior.as_ref() {
+        Some(b) => Some(effective_for_suite_id(
+            &store,
+            &b.suite_id,
+            base.as_ref(),
+            &scanned.items,
+        )?),
+        None => None,
+    };
+    Ok(api::suite_apply_manual_extras(
+        prior_effective.as_ref(),
+        &effective,
+        &scanned.items,
+        &settings,
+        input.tool_id,
+    ))
 }
 
 #[tauri::command]

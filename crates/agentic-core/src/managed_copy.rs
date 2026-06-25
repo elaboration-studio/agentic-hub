@@ -353,9 +353,19 @@ mod tests {
         std::fs::write(&source, "---\nname: cto\n---\nbody").unwrap();
         let target = root.join("cto.toml");
 
-        write_managed_content(b"name = \"cto\"\n", &target, &root, "agent:cto.md", &source, true)
-            .unwrap();
-        assert_eq!(std::fs::read_to_string(&target).unwrap(), "name = \"cto\"\n");
+        write_managed_content(
+            b"name = \"cto\"\n",
+            &target,
+            &root,
+            "agent:cto.md",
+            &source,
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "name = \"cto\"\n"
+        );
         assert!(!target.with_extension("agentic.tmp").exists());
         let entry = read_entry(&root, &target).unwrap();
         // The manifest tracks the markdown source (for stale detection), even

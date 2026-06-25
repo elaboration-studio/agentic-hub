@@ -21,7 +21,10 @@ use agentic_core::skill_source::{
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, Manager, Position, State, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 
 use crate::error::IpcError;
 use crate::watcher::WatcherState;
@@ -83,18 +86,56 @@ pub struct InstallState(pub Mutex<Option<Child>>);
 
 /// Build the install window. Idempotent: returns the existing window if it was
 /// already created. Decorated + resizable (unlike the borderless palette).
+/// Parented to the main window so macOS keeps it on the same Space/desktop.
 fn build_install_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Some(win) = app.get_webview_window(INSTALL_LABEL) {
         return Ok(win);
     }
-    WebviewWindowBuilder::new(app, INSTALL_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Install Skills")
-        .inner_size(INSTALL_WIDTH, INSTALL_HEIGHT)
-        .min_inner_size(560.0, 420.0)
-        .resizable(true)
-        .visible(false)
-        .center()
-        .build()
+    let mut builder =
+        WebviewWindowBuilder::new(app, INSTALL_LABEL, WebviewUrl::App("index.html".into()))
+            .title("Install Skills")
+            .inner_size(INSTALL_WIDTH, INSTALL_HEIGHT)
+            .min_inner_size(560.0, 420.0)
+            .resizable(true)
+            .visible(false);
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main)?;
+    }
+    builder.build()
+}
+
+/// Show and focus the install window, centered over the main window when possible.
+fn show_install_window(app: &AppHandle, win: &WebviewWindow) {
+    center_over_main(app, win);
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
+/// Place `win` centered over the main window in logical coordinates so it lands
+/// on the same monitor and Space as the hub.
+fn center_over_main(app: &AppHandle, win: &WebviewWindow) {
+    let Some(main) = app.get_webview_window("main") else {
+        let _ = win.center();
+        return;
+    };
+    let Ok(main_pos) = main.outer_position() else {
+        let _ = win.center();
+        return;
+    };
+    let Ok(main_size) = main.outer_size() else {
+        let _ = win.center();
+        return;
+    };
+    let Ok(inst_size) = win.outer_size() else {
+        let _ = win.center();
+        return;
+    };
+    let scale = main.scale_factor().unwrap_or(1.0);
+    let x = main_pos.x as f64 / scale
+        + (main_size.width as f64 / scale - inst_size.width as f64 / scale) / 2.0;
+    let y = main_pos.y as f64 / scale
+        + (main_size.height as f64 / scale - inst_size.height as f64 / scale) / 2.0;
+    let _ = win.set_position(Position::Logical(LogicalPosition { x, y }));
 }
 
 /// Open (or focus) the install window for `workspace_id`. Stores the context the
@@ -128,8 +169,7 @@ pub async fn cmd_open_install_window(
 
     let win = build_install_window(&app)
         .map_err(|e| IpcError::new("window_build_failed", e.to_string()))?;
-    let _ = win.show();
-    let _ = win.set_focus();
+    show_install_window(&app, &win);
     if existed {
         let _ = win.emit("install-context-changed", ());
     }
@@ -175,8 +215,7 @@ pub async fn cmd_open_update_window(
 
     let win = build_install_window(&app)
         .map_err(|e| IpcError::new("window_build_failed", e.to_string()))?;
-    let _ = win.show();
-    let _ = win.set_focus();
+    show_install_window(&app, &win);
     if existed {
         let _ = win.emit("install-context-changed", ());
     }

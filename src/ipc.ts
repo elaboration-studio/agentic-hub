@@ -103,6 +103,11 @@ export const rescanResync = (): Promise<void> => invoke("cmd_rescan_resync");
 export const onSourcesChanged = (cb: () => void): Promise<UnlistenFn> =>
   listen("sources-changed", () => cb());
 
+/// Emit `sources-changed` from the frontend (the palette's inline toggle) so the
+/// main window refreshes its matrix without waiting on the file watcher — which
+/// may be paused. The main window only refreshes when it has no pending edits.
+export const emitSourcesChanged = (): Promise<void> => emit("sources-changed");
+
 export const scan = (sources: SourceConfig[]): Promise<ScanResult> =>
   invoke("cmd_scan", { input: { sources } });
 
@@ -212,8 +217,15 @@ export const deleteSuite = (id: string): Promise<void> =>
 export const applySuite = (
   toolId: ToolId,
   suiteId: string,
+  preserveManual = false,
 ): Promise<ApplySuiteResult> =>
-  invoke("cmd_apply_suite", { input: { toolId, suiteId } });
+  invoke("cmd_apply_suite", { input: { toolId, suiteId, preserveManual } });
+
+export const suiteApplyPreview = (
+  toolId: ToolId,
+  suiteId: string,
+): Promise<string[]> =>
+  invoke("cmd_suite_apply_preview", { input: { toolId, suiteId } });
 
 // Mark the single base suite (its capabilities union into every applied suite),
 // or clear it with `null`. Re-applies every bound tool.
