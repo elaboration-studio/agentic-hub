@@ -13,6 +13,17 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 - **Suite apply preserve mode:** Applying a suite now previews manually enabled
   capabilities outside the effective suite and lets you remove or keep them; the
   choice persists on the tool binding so later suite edits honour it.
+- **Inline per-tool toggle in the command palette.** Selecting a skill, agent,
+  rule, or hook now drills into a sub-panel that lists your enabled tools (Codex,
+  Claude, Cursor…) with live on/off state — toggle a tool to enable or disable
+  the capability for it **immediately**, no Manager round-trip or Apply step. The
+  panel stays open for quick multi-tool edits and adds **Enable/Disable for all
+  tools**, **Open in editor**, and **Reveal in Finder** rows; suite-managed cells
+  are locked. **Alt+Enter / Alt+Click** still opens the source file. Each toggle
+  reuses the manager's `plan → apply → syncRules → syncHooks` pipeline with the
+  complete desired map (so other enabled rules/hooks are never dropped) and
+  refreshes the main window's matrix. See
+  [docs/features/command-palette.md](docs/features/command-palette.md).
 
 ## [0.9.3] — 2026-06-24
 

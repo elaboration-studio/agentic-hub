@@ -6,11 +6,11 @@
 
 import { useEffect, useRef } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { ChevronLeft, Search } from "lucide-react";
+import { Check, ChevronLeft, Circle, Lock, Search } from "lucide-react";
 import { usePaletteStore, type PaletteView } from "@/state/palette";
 import { useApplyStore } from "@/state/apply";
 import { ApplySuiteConfirmDialog } from "@/components/suites/ApplySuiteConfirmDialog";
-import { MODE_DEFS, searchModeFromShortcut, shouldDismissPaletteAfterRun } from "./commands";
+import { MODE_DEFS, searchModeFromShortcut, shouldDismissPaletteAfterRun, type PaletteItem } from "./commands";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PALETTE_WIDTH, paletteWindowHeight } from "./layout";
@@ -19,13 +19,22 @@ import { PALETTE_WIDTH, paletteWindowHeight } from "./layout";
 function breadcrumbLabel(view: PaletteView): string | null {
   if (view.kind === "search") return MODE_DEFS[view.mode].title;
   if (view.kind === "suite-tools") return view.suiteName;
+  if (view.kind === "capability-tools") return view.itemName;
   return null;
 }
 
 function placeholderFor(view: PaletteView): string {
   if (view.kind === "search") return MODE_DEFS[view.mode].placeholder;
   if (view.kind === "suite-tools") return `Apply “${view.suiteName}” to a tool…`;
+  if (view.kind === "capability-tools") return `Toggle “${view.itemName}” for a tool…`;
   return "Search commands or pick an action…";
+}
+
+/// Trailing toggle-state accessory for a capability-tools row.
+function StateIcon({ state }: { state: NonNullable<PaletteItem["state"]> }) {
+  if (state === "locked") return <Lock className="size-3.5 shrink-0 text-muted-foreground" aria-label="Locked by a suite" />;
+  if (state === "on") return <Check className="size-4 shrink-0 text-success" aria-label="Enabled" />;
+  return <Circle className="size-3.5 shrink-0 text-muted-foreground/50" aria-label="Disabled" />;
 }
 
 /// Empty-list message per view. Inside a drill-in mode an empty query is a
@@ -55,7 +64,12 @@ export function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const selectedRef = useRef<HTMLButtonElement>(null);
   const breadcrumb = breadcrumbLabel(view);
+
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
 
   // Fit the transparent window to the panel so no dead space below the card
   // reveals the main window behind it (the "stacked layers" look). The panel's
@@ -187,17 +201,19 @@ export function CommandPalette() {
                   </p>
                 )}
                 <button
+                  ref={i === selectedIndex ? selectedRef : undefined}
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors",
                     i === selectedIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
                   )}
                   onMouseMove={() => setSelected(i)}
-                  onClick={() => {
+                  onClick={(e) => {
                     setSelected(i);
-                    runAndHide();
+                    runAndHide(e.altKey);
                   }}
                 >
+                  {item.state && <StateIcon state={item.state} />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{item.title}</span>
                     {item.subtitle && (

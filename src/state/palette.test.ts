@@ -19,19 +19,35 @@ vi.mock("@/ipc", () => ({
   setWatcherEnabled: vi.fn().mockResolvedValue(undefined),
   emitHubWatcherChanged: vi.fn().mockResolvedValue(undefined),
   showMain: vi.fn().mockResolvedValue(undefined),
+  inspect: vi.fn().mockResolvedValue({ states: [], adapterStatuses: [] }),
+  suiteOwnership: vi.fn().mockResolvedValue([]),
+  plan: vi.fn().mockResolvedValue([]),
+  apply: vi.fn().mockResolvedValue({ created: 0, removed: 0, replaced: 0, errors: [] }),
+  syncRules: vi.fn().mockResolvedValue({}),
+  syncHooks: vi.fn().mockResolvedValue({}),
+  emitSourcesChanged: vi.fn().mockResolvedValue(undefined),
 }));
 
 import {
+  apply,
+  emitSourcesChanged,
+  inspect,
   listSuites,
   listWorkspaceTargets,
   loadSettings,
+  plan,
   scan,
   scanWorkspace,
+  suiteOwnership,
+  syncHooks,
+  syncRules,
 } from "@/ipc";
 import type {
   CapabilityItem,
   Settings,
   SuiteDefinition,
+  ToolCapabilityState,
+  ToolId,
   ToolSettings,
   WorkspaceTarget,
 } from "@/types";
@@ -44,7 +60,43 @@ const mocked = {
   listWorkspaceTargets: vi.mocked(listWorkspaceTargets),
   scanWorkspace: vi.mocked(scanWorkspace),
   requestApply,
+  inspect: vi.mocked(inspect),
+  suiteOwnership: vi.mocked(suiteOwnership),
+  plan: vi.mocked(plan),
+  apply: vi.mocked(apply),
+  syncRules: vi.mocked(syncRules),
+  syncHooks: vi.mocked(syncHooks),
+  emitSourcesChanged: vi.mocked(emitSourcesChanged),
 };
+
+// Flush queued microtasks so the background inspect kicked off by load()/drill-in
+// has resolved before assertions.
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+function inspectState(tool: ToolId, itemId: string, on: boolean): ToolCapabilityState {
+  return {
+    tool,
+    itemId,
+    targetPath: `/${tool}/${itemId}`,
+    state: on ? "enabled" : "disabled",
+    currentLinkTarget: on ? `/shared/${itemId}` : null,
+  };
+}
+
+function makeKindItem(id: string, kind: CapabilityItem["kind"]): CapabilityItem {
+  return {
+    id,
+    kind,
+    name: id.slice(id.indexOf(":") + 1),
+    sourcePath: `/shared/${kind}s/${id}`,
+    relativePath: id.slice(id.indexOf(":") + 1),
+    sourceId: "default",
+    sourceLabel: "Default",
+    source: { relHome: "~/.agentic", folder: ".agentic" },
+    valid: true,
+    validationErrors: [],
+  };
+}
 
 function makeTarget(id: string, label: string): WorkspaceTarget {
   return { id, label, dir: `/repos/${label}`, lastUsedAt: "t" };
@@ -124,6 +176,15 @@ async function loadReady(suites: SuiteDefinition[] = [makeSuite("s1", "Backend")
 beforeEach(() => {
   vi.clearAllMocks();
   usePaletteStore.setState(usePaletteStore.getInitialState(), true);
+  // Re-establish default resolutions (clearAllMocks wipes call history; keep the
+  // pipeline mocks benign unless a test overrides them).
+  mocked.inspect.mockResolvedValue({ states: [], adapterStatuses: [] });
+  mocked.suiteOwnership.mockResolvedValue([]);
+  mocked.plan.mockResolvedValue([]);
+  mocked.apply.mockResolvedValue({ created: 0, removed: 0, replaced: 0, refreshed: 0, skipped: 0, errors: [] });
+  mocked.syncRules.mockResolvedValue({ outcome: "unchanged", errors: [] } as never);
+  mocked.syncHooks.mockResolvedValue({ outcome: "unchanged", notes: [], errors: [] } as never);
+  mocked.emitSourcesChanged.mockResolvedValue(undefined);
 });
 
 describe("palette store — loading", () => {
@@ -308,6 +369,146 @@ describe("palette store — suite flow (suite mode → suite-tools)", () => {
     const s = usePaletteStore.getState();
     expect(s.view).toEqual({ kind: "root" });
     expect(s.query).toBe("");
+  });
+});
+
+describe("palette store — capability-tools (inline per-tool toggle)", () => {
+  it("inspects per-tool state in the background and populates currentMap", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [] });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
+    mocked.inspect.mockResolvedValue({
+      states: [inspectState("claude", "skill:tdd", true)],
+      adapterStatuses: [],
+    });
+
+    await usePaletteStore.getState().load();
+    await flush();
+
+    const s = usePaletteStore.getState();
+    expect(s.inspected).toBe(true);
+    expect(s.currentMap.get("claude::skill:tdd")?.state).toBe("enabled");
+  });
+
+  it("drilling into a resource shows per-tool toggle rows reflecting state", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [] });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
+    mocked.inspect.mockResolvedValue({
+      states: [
+        inspectState("codex", "skill:tdd", false),
+        inspectState("claude", "skill:tdd", true),
+        inspectState("cursor", "skill:tdd", false),
+      ],
+      adapterStatuses: [],
+    });
+
+    await usePaletteStore.getState().load();
+    await flush();
+
+    usePaletteStore.getState().enterMode("skill");
+    usePaletteStore.getState().setQuery("tdd");
+    const row = usePaletteStore.getState().results.find((r) => r.id === "resource:skill:tdd")!;
+    expect(row.dismissOnRun).toBe(false);
+    await row.run();
+
+    const s = usePaletteStore.getState();
+    expect(s.view).toMatchObject({ kind: "capability-tools", itemId: "skill:tdd", fromMode: "skill" });
+    const toolRows = s.results.filter((r) => r.group === "Tool" && !r.id.startsWith("captool-all"));
+    expect(toolRows.map((r) => [r.title, r.state])).toEqual([
+      ["Codex", "off"],
+      ["Claude", "on"],
+      ["Cursor", "off"],
+    ]);
+  });
+
+  it("toggleCapability passes the COMPLETE desired map so other rules survive", async () => {
+    // The footgun: syncRules/syncHooks rewrite the whole managed block, so a
+    // single toggle must carry every other enabled item as still-enabled.
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({
+      items: [
+        makeKindItem("rule:a", "rule"),
+        makeKindItem("rule:b", "rule"),
+        makeKindItem("rule:c", "rule"),
+      ],
+      errors: [],
+    });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
+    mocked.inspect.mockResolvedValue({
+      states: [
+        inspectState("claude", "rule:a", true),
+        inspectState("claude", "rule:b", true),
+        inspectState("claude", "rule:c", false),
+      ],
+      adapterStatuses: [],
+    });
+
+    await usePaletteStore.getState().load();
+    await flush();
+    await usePaletteStore.getState().toggleCapability("claude", "rule:c");
+
+    // Every sync carries a:true, b:true (preserved) and c:true (the flip).
+    const desired = { "rule:a": true, "rule:b": true, "rule:c": true };
+    expect(mocked.syncRules).toHaveBeenCalledWith("claude", expect.any(Array), desired);
+    expect(mocked.syncHooks).toHaveBeenCalledWith("claude", expect.any(Array), desired);
+    expect(mocked.emitSourcesChanged).toHaveBeenCalled();
+  });
+
+  it("toggleCapability applies the plan ops and re-inspects to reconcile", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [] });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
+    mocked.inspect.mockResolvedValue({
+      states: [inspectState("claude", "skill:tdd", false)],
+      adapterStatuses: [],
+    });
+    mocked.plan.mockResolvedValue([{ kind: "create" } as never]);
+
+    await usePaletteStore.getState().load();
+    await flush();
+    mocked.inspect.mockClear();
+    await usePaletteStore.getState().toggleCapability("claude", "skill:tdd");
+
+    expect(mocked.plan).toHaveBeenCalledWith("claude", expect.any(Array), { "skill:tdd": true });
+    expect(mocked.apply).toHaveBeenCalled();
+    // Reconcile re-inspects so the panel shows what actually landed.
+    expect(mocked.inspect).toHaveBeenCalled();
+  });
+
+  it("toggleCapability is a no-op on a suite-locked cell", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [] });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
+    mocked.inspect.mockResolvedValue({
+      states: [inspectState("claude", "skill:tdd", true)],
+      adapterStatuses: [],
+    });
+    mocked.suiteOwnership.mockResolvedValue([
+      { tool: "claude", itemId: "skill:tdd", suiteId: "s1", suiteName: "Backend", fromBase: false },
+    ]);
+
+    await usePaletteStore.getState().load();
+    await flush();
+    await usePaletteStore.getState().toggleCapability("claude", "skill:tdd");
+
+    expect(mocked.plan).not.toHaveBeenCalled();
+    expect(mocked.syncRules).not.toHaveBeenCalled();
+  });
+
+  it("back from capability-tools returns to the originating search mode", async () => {
+    await loadReady([]);
+    await flush();
+    usePaletteStore.getState().enterCapabilityTools(makeKindItem("agent:bot", "agent"), "agent");
+    expect(usePaletteStore.getState().view.kind).toBe("capability-tools");
+
+    usePaletteStore.getState().back();
+    expect(usePaletteStore.getState().view).toEqual({ kind: "search", mode: "agent" });
   });
 });
 
