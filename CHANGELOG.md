@@ -8,11 +8,10 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-06-26
+
 ### Added
 
-- **Suite apply preserve mode:** Applying a suite now previews manually enabled
-  capabilities outside the effective suite and lets you remove or keep them; the
-  choice persists on the tool binding so later suite edits honour it.
 - **Inline per-tool toggle in the command palette.** Selecting a skill, agent,
   rule, or hook now drills into a sub-panel that lists your enabled tools (Codex,
   Claude, Cursor…) with live on/off state — toggle a tool to enable or disable
@@ -24,6 +23,19 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
   complete desired map (so other enabled rules/hooks are never dropped) and
   refreshes the main window's matrix. See
   [docs/features/command-palette.md](docs/features/command-palette.md).
+- **Suite apply preserve mode:** Applying a suite previews manually enabled
+  capabilities outside the effective suite and lets you remove or keep them.
+- **Main window state persistence.** The hub remembers window size, position,
+  and maximized state across launches.
+
+### Changed
+
+- **Suite apply manual extras:** Switching suites now tracks manually added
+  capabilities separately from the previous suite's owned items. Preview shows
+  only true manual extras; "Keep manually added" applies
+  `new_suite ∪ base ∪ manual_extras` and persists them on the binding.
+- **Command palette polish.** Keyboard navigation scrolls the selected row into
+  view; the palette dismisses cleanly after suite apply confirmation.
 
 ## [0.9.3] — 2026-06-24
 

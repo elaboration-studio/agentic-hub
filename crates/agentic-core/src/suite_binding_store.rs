@@ -93,15 +93,20 @@ impl SuiteBindingStore {
 
     /// Bind a suite to a tool. Upserts by tool — a tool can only reflect one
     /// suite at a time (full-reset apply), so a fresh apply replaces the prior.
-    pub fn record(&self, tool: ToolId, suite_id: &str, preserve_unmanaged: bool) -> Result<()> {
+    pub fn record(&self, tool: ToolId, suite_id: &str, manual_item_ids: Vec<String>) -> Result<()> {
         let mut file = self.read_file()?;
         file.bindings.retain(|b| b.tool_id != tool);
         file.bindings.push(SuiteBinding {
             tool_id: tool,
             suite_id: suite_id.to_string(),
-            preserve_unmanaged,
+            manual_item_ids,
         });
         self.write_file(&file)
+    }
+
+    /// Binding for one tool, if any.
+    pub fn get(&self, tool: ToolId) -> Result<Option<SuiteBinding>> {
+        Ok(self.read()?.into_iter().find(|b| b.tool_id == tool))
     }
 
     /// Tools currently bound to this suite, in `ToolId::ALL` order.
@@ -146,10 +151,12 @@ mod tests {
     #[test]
     fn record_upserts_per_tool() {
         let (_d, store) = store();
-        store.record(ToolId::Codex, "suite-a", false).unwrap();
-        store.record(ToolId::Claude, "suite-b", false).unwrap();
+        store.record(ToolId::Codex, "suite-a", vec![]).unwrap();
+        store.record(ToolId::Claude, "suite-b", vec![]).unwrap();
         // Re-recording the same tool replaces, never duplicates.
-        store.record(ToolId::Codex, "suite-c", true).unwrap();
+        store
+            .record(ToolId::Codex, "suite-c", vec!["skill:extra".into()])
+            .unwrap();
 
         let bindings = store.read().unwrap();
         assert_eq!(bindings.len(), 2);
@@ -158,38 +165,47 @@ mod tests {
             .find(|b| b.tool_id == ToolId::Codex)
             .unwrap();
         assert_eq!(codex.suite_id, "suite-c");
-        assert!(codex.preserve_unmanaged);
+        assert_eq!(codex.manual_item_ids, vec!["skill:extra"]);
     }
 
     #[test]
-    fn record_round_trips_preserve_unmanaged() {
+    fn record_round_trips_manual_item_ids() {
         let (_d, store) = store();
-        store.record(ToolId::Codex, "suite-a", true).unwrap();
+        store
+            .record(
+                ToolId::Codex,
+                "suite-a",
+                vec!["skill:a".into(), "rule:b".into()],
+            )
+            .unwrap();
         let bindings = store.read().unwrap();
-        assert!(bindings[0].preserve_unmanaged);
-        store.record(ToolId::Codex, "suite-a", false).unwrap();
-        let bindings = store.read().unwrap();
-        assert!(!bindings[0].preserve_unmanaged);
+        assert_eq!(bindings[0].manual_item_ids, vec!["skill:a", "rule:b"]);
+        store.record(ToolId::Codex, "suite-a", vec![]).unwrap();
+        assert!(store
+            .get(ToolId::Codex)
+            .unwrap()
+            .unwrap()
+            .manual_item_ids
+            .is_empty());
     }
 
     #[test]
-    fn legacy_binding_without_preserve_deserializes_as_false() {
+    fn legacy_binding_without_manual_deserializes_as_empty() {
         let (_d, store) = store();
         let json = r#"{"version":1,"bindings":[{"toolId":"codex","suiteId":"suite-a"}]}"#;
         fs::write(&store.path, json).unwrap();
         let bindings = store.read().unwrap();
         assert_eq!(bindings.len(), 1);
-        assert!(!bindings[0].preserve_unmanaged);
+        assert!(bindings[0].manual_item_ids.is_empty());
     }
 
     #[test]
     fn tools_for_suite_filters_and_orders() {
         let (_d, store) = store();
-        store.record(ToolId::Cursor, "suite-a", false).unwrap();
-        store.record(ToolId::Codex, "suite-a", false).unwrap();
-        store.record(ToolId::Claude, "suite-b", false).unwrap();
+        store.record(ToolId::Cursor, "suite-a", vec![]).unwrap();
+        store.record(ToolId::Codex, "suite-a", vec![]).unwrap();
+        store.record(ToolId::Claude, "suite-b", vec![]).unwrap();
 
-        // Returned in ToolId::ALL order (codex before cursor), not insert order.
         assert_eq!(
             store.tools_for_suite("suite-a").unwrap(),
             vec![ToolId::Codex, ToolId::Cursor]
@@ -204,8 +220,8 @@ mod tests {
     #[test]
     fn drop_suite_removes_only_its_bindings() {
         let (_d, store) = store();
-        store.record(ToolId::Codex, "suite-a", false).unwrap();
-        store.record(ToolId::Claude, "suite-b", false).unwrap();
+        store.record(ToolId::Codex, "suite-a", vec![]).unwrap();
+        store.record(ToolId::Claude, "suite-b", vec![]).unwrap();
 
         store.drop_suite("suite-a").unwrap();
 

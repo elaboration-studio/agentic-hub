@@ -9,6 +9,6 @@ import type { ToolId } from "./ToolId";
  */
 export type SuiteBinding = { toolId: ToolId, suiteId: string, 
 /**
- * When true, re-syncs keep manually-enabled items not in the suite.
+ * Capabilities the user enabled beyond the bound suite's effective set.
  */
-preserveUnmanaged: boolean, };
+manualItemIds: Array<string>, };

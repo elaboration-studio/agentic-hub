@@ -217,9 +217,9 @@ export const deleteSuite = (id: string): Promise<void> =>
 export const applySuite = (
   toolId: ToolId,
   suiteId: string,
-  preserveUnmanaged = false,
+  preserveManual = false,
 ): Promise<ApplySuiteResult> =>
-  invoke("cmd_apply_suite", { input: { toolId, suiteId, preserveUnmanaged } });
+  invoke("cmd_apply_suite", { input: { toolId, suiteId, preserveManual } });
 
 export const suiteApplyPreview = (
   toolId: ToolId,

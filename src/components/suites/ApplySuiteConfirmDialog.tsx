@@ -36,13 +36,14 @@ export function ApplySuiteConfirmDialog({ contentRef }: ApplySuiteConfirmDialogP
     <AlertDialog open={!!pending} onOpenChange={(o) => !o && cancel()}>
       <AlertDialogContent ref={contentRef}>
         <AlertDialogHeader>
-          <AlertDialogTitle>Remove manually enabled capabilities?</AlertDialogTitle>
+          <AlertDialogTitle>Keep manually added capabilities?</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2">
               <p>
-                Applying &ldquo;{pending?.suiteName}&rdquo; to {pending?.tool} would remove{" "}
-                {labels.length} capabilit{labels.length === 1 ? "y" : "ies"} you enabled outside
-                this suite:
+                Applying &ldquo;{pending?.suiteName}&rdquo; to {pending?.tool} replaces the
+                current suite. These {labels.length} item
+                {labels.length === 1 ? " was" : "s were"} added manually and are not in the new
+                suite:
               </p>
               <ul className="max-h-40 list-disc overflow-auto pl-5 text-sm">
                 {labels.map((label) => (
@@ -55,9 +56,9 @@ export function ApplySuiteConfirmDialog({ contentRef }: ApplySuiteConfirmDialogP
         <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <Button variant="outline" onClick={() => void confirm(false)}>
-            Remove extras
+            Fully clean and override
           </Button>
-          <Button onClick={() => void confirm(true)}>Keep extras</Button>
+          <Button onClick={() => void confirm(true)}>Keep manually added</Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

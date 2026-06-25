@@ -18,7 +18,7 @@ interface ApplyState {
   request: (tool: ToolId, suiteId: string, suiteName: string) => Promise<void>;
   confirm: (preserve: boolean) => Promise<void>;
   cancel: () => void;
-  runApply: (tool: ToolId, suiteId: string, preserveUnmanaged: boolean) => Promise<void>;
+  runApply: (tool: ToolId, suiteId: string, preserveManual: boolean) => Promise<void>;
 }
 
 function toastApplyResult(tool: ToolId, result: ApplySuiteResult) {
@@ -62,10 +62,10 @@ export const useApplyStore = create<ApplyState>((set, get) => ({
 
   cancel: () => set({ pending: null }),
 
-  runApply: async (tool, suiteId, preserveUnmanaged) => {
+  runApply: async (tool, suiteId, preserveManual) => {
     set({ busy: true });
     try {
-      const result = await applySuite(tool, suiteId, preserveUnmanaged);
+      const result = await applySuite(tool, suiteId, preserveManual);
       toastApplyResult(tool, result);
     } catch (e) {
       toast.error(messageOf(e));

@@ -21,7 +21,10 @@ use agentic_core::skill_source::{
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, LogicalPosition, Manager, Position, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, Manager, Position, State, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 
 use crate::error::IpcError;
 use crate::watcher::WatcherState;
@@ -88,12 +91,13 @@ fn build_install_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Some(win) = app.get_webview_window(INSTALL_LABEL) {
         return Ok(win);
     }
-    let mut builder = WebviewWindowBuilder::new(app, INSTALL_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Install Skills")
-        .inner_size(INSTALL_WIDTH, INSTALL_HEIGHT)
-        .min_inner_size(560.0, 420.0)
-        .resizable(true)
-        .visible(false);
+    let mut builder =
+        WebviewWindowBuilder::new(app, INSTALL_LABEL, WebviewUrl::App("index.html".into()))
+            .title("Install Skills")
+            .inner_size(INSTALL_WIDTH, INSTALL_HEIGHT)
+            .min_inner_size(560.0, 420.0)
+            .resizable(true)
+            .visible(false);
     if let Some(main) = app.get_webview_window("main") {
         builder = builder.parent(&main)?;
     }

@@ -335,7 +335,7 @@ tools' on-disk projections are left untouched (delete is not a tool wipe).
 type ApplySuiteInput = {
   toolId: ToolId;
   suiteId: string;
-  preserveUnmanaged?: boolean; // default false — full reset; true keeps extras enabled on disk
+  preserveManual?: boolean; // default false — full reset; true keeps tracked manual extras
 };
 
 type ApplySuiteResult = {
@@ -346,19 +346,19 @@ type ApplySuiteResult = {
 };
 ```
 
-Side effect: records a suite<->tool binding (`record(toolId, suiteId, preserveUnmanaged)`,
-upsert per tool) so a later `cmd_update_suite` re-syncs this tool with the same
-preserve flag, and backfills unqualified refs against the live scan. Both the
-palette suite-apply flow and the Suites page flow through here. When manually
-enabled capabilities exist outside the effective suite (base + selected), the UI
-calls `cmd_suite_apply_preview` first and prompts the user to remove or keep
-them before apply.
+Side effect: records a suite<->tool binding (`record(toolId, suiteId, manualItemIds)`,
+upsert per tool) so a later `cmd_update_suite` re-syncs this tool with the stored
+manual set, and backfills unqualified refs against the live scan. Both the
+palette suite-apply flow and the Suites page flow through here. When tracked
+manual extras exist outside the effective suite (base + selected), the UI
+calls `cmd_suite_apply_preview` first and prompts the user to fully override or
+keep manually added items before apply.
 
 ### `cmd_suite_apply_preview(input: ApplySuiteInput) -> string[]`
 
-Returns item ids currently enabled for `toolId` that are not matched by the
-effective suite (after base merge and in-memory source backfill). Empty → apply
-directly; non-empty → UI confirm dialog.
+Returns tracked manual item ids for `toolId` that are still enabled and not in
+the effective suite (after base merge and in-memory source backfill). Empty →
+apply directly; non-empty → UI confirm dialog.
 
 ### `cmd_set_base_suite(id: string | null) -> ()`
 

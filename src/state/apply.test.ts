@@ -23,6 +23,7 @@ function makeResult(overrides: Partial<ApplySuiteResult> = {}): ApplySuiteResult
     applyResult: { created: 1, removed: 0, replaced: 0, refreshed: 0, skipped: 0, errors: [] },
     skippedStale: 0,
     skippedAbsentSource: 0,
+    manualItemIds: [],
     suite: {
       id: "s1",
       name: "Suite",

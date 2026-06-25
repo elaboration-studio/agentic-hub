@@ -88,11 +88,12 @@ Header
 Behaviors:
 - Dropdown lists all saved suites plus "Manage Suites…" (opens Suite Manager window)
 - "Apply Suite" is enabled only when a suite is selected and a tool tab is focused
-- Clicking "Apply Suite" previews extras via `cmd_suite_apply_preview`. When
-  manually enabled capabilities exist outside the effective suite (base +
-  selected), a confirmation lists them: **Remove extras** (full reset) or
-  **Keep extras** (preserve on disk and on future re-syncs). Empty suites still
-  use the existing empty-suite confirm.
+- Clicking "Apply Suite" previews tracked manual extras via `cmd_suite_apply_preview`. When
+  manually added capabilities exist outside the effective suite (base +
+  selected), a confirmation lists them: **Fully clean and override** or
+  **Keep manually added** (applies `new_suite ∪ base ∪ manual_extras` and
+  persists the manual set on the binding). Empty suites still use the existing
+  empty-suite confirm.
 - After apply: staged state clears, inventory refreshes, result summary toast appears
 
 ### Apply flow (user perspective)
