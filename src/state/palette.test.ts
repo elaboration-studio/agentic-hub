@@ -128,6 +128,7 @@ function makeSettings(): Settings {
     paletteShortcut: "Cmd+Alt+A",
     skills: { enabled: false, favoritesPath: null },
     telemetry: { enabled: false },
+    mainWindow: null,
     tools: {
       codex: toolSettings(true),
       claude: toolSettings(true),

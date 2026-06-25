@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 
 type ApplySuiteConfirmDialogProps = {
   /** When set, the dialog content is measured so the palette window can grow. */
-  contentRef?: RefObject<HTMLDivElement | null>;
+  contentRef?: RefObject<HTMLDivElement>;
 };
 
 export function ApplySuiteConfirmDialog({ contentRef }: ApplySuiteConfirmDialogProps = {}) {

@@ -82,6 +82,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     paletteShortcut: "Cmd+Alt+A",
     skills: { enabled: false, favoritesPath: null },
     telemetry: { enabled: false },
+    mainWindow: null,
     tools: {
       codex: toolSettings(overrides.codex ?? true),
       claude: toolSettings(overrides.claude ?? false),
