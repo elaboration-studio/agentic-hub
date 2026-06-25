@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "Agentic Hub",
-        "width": 1100,
-        "height": 720,
+        "width": 1280,
+        "height": 860,
         "minWidth": 880,
         "minHeight": 560,
         "visible": false,

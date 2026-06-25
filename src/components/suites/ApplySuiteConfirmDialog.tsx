@@ -1,5 +1,5 @@
 // App-level confirm when applying a suite would remove manually-enabled extras.
-import { useMemo } from "react";
+import { useMemo, type RefObject } from "react";
 import { useApplyStore } from "@/state/apply";
 import { useManagerStore } from "@/state/manager";
 import { usePaletteStore } from "@/state/palette";
@@ -14,7 +14,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 
-export function ApplySuiteConfirmDialog() {
+type ApplySuiteConfirmDialogProps = {
+  /** When set, the dialog content is measured so the palette window can grow. */
+  contentRef?: RefObject<HTMLDivElement | null>;
+};
+
+export function ApplySuiteConfirmDialog({ contentRef }: ApplySuiteConfirmDialogProps = {}) {
   const pending = useApplyStore((s) => s.pending);
   const confirm = useApplyStore((s) => s.confirm);
   const cancel = useApplyStore((s) => s.cancel);
@@ -29,7 +34,7 @@ export function ApplySuiteConfirmDialog() {
 
   return (
     <AlertDialog open={!!pending} onOpenChange={(o) => !o && cancel()}>
-      <AlertDialogContent>
+      <AlertDialogContent ref={contentRef}>
         <AlertDialogHeader>
           <AlertDialogTitle>Remove manually enabled capabilities?</AlertDialogTitle>
           <AlertDialogDescription asChild>

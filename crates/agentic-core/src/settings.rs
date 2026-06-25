@@ -180,6 +180,24 @@ fn default_openstandard() -> ToolSettings {
     ToolSettings::defaults_for(ToolId::Openstandard)
 }
 
+/// Last-known main window size and position in logical pixels. Restored on
+/// launch; updated when the user hides the main window.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MainWindowState {
+    pub width: u32,
+    pub height: u32,
+    #[serde(default)]
+    pub x: Option<i32>,
+    #[serde(default)]
+    pub y: Option<i32>,
+}
+
 /// Global settings persisted at `~/.agentic-hub/config.json`.
 #[cfg_attr(
     feature = "ts-export",
@@ -231,6 +249,9 @@ pub struct Settings {
     /// Anonymous usage telemetry (Aptabase). Defaults to enabled.
     #[serde(default)]
     pub telemetry: TelemetryConfig,
+    /// Last main-window geometry; `None` uses `tauri.conf.json` defaults.
+    #[serde(default)]
+    pub main_window: Option<MainWindowState>,
     pub tools: ToolsSettings,
 }
 
@@ -375,6 +396,7 @@ impl Default for Settings {
             palette_shortcut: default_palette_shortcut(),
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
+            main_window: None,
             tools: ToolsSettings::default(),
         }
     }
@@ -567,6 +589,7 @@ impl Settings {
             palette_shortcut: default_palette_shortcut(),
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
+            main_window: None,
             tools: ToolsSettings {
                 codex: tool("codex"),
                 claude: tool("claude"),

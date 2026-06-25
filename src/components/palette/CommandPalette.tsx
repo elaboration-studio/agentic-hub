@@ -13,7 +13,7 @@ import { ApplySuiteConfirmDialog } from "@/components/suites/ApplySuiteConfirmDi
 import { MODE_DEFS, searchModeFromShortcut, shouldDismissPaletteAfterRun, type PaletteItem } from "./commands";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { PALETTE_WIDTH, paletteWindowHeight } from "./layout";
+import { PALETTE_WIDTH, paletteContentHeight, paletteWindowHeight } from "./layout";
 
 /// Breadcrumb label for a drill-in view; null at the root (no breadcrumb).
 function breadcrumbLabel(view: PaletteView): string | null {
@@ -64,7 +64,9 @@ export function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const confirmContentRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
+  const pending = useApplyStore((s) => s.pending);
   const breadcrumb = breadcrumbLabel(view);
 
   useEffect(() => {
@@ -72,19 +74,28 @@ export function CommandPalette() {
   }, [selectedIndex]);
 
   // Fit the transparent window to the panel so no dead space below the card
-  // reveals the main window behind it (the "stacked layers" look). The panel's
-  // height is content-driven, so a ResizeObserver re-syncs on every list change.
+  // reveals the main window behind it (the "stacked layers" look). When a suite-
+  // apply confirm overlay is open, grow tall enough that its buttons are not clipped.
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
     const win = getCurrentWindow();
-    const sync = () =>
-      void win.setSize(new LogicalSize(PALETTE_WIDTH, paletteWindowHeight(panel.offsetHeight)));
+    const sync = () => {
+      const confirmHeight =
+        pending && confirmContentRef.current ? confirmContentRef.current.offsetHeight : null;
+      const contentHeight = paletteContentHeight(panel.offsetHeight, confirmHeight);
+      void win.setSize(new LogicalSize(PALETTE_WIDTH, paletteWindowHeight(contentHeight)));
+    };
     sync();
+    const raf = pending ? requestAnimationFrame(sync) : undefined;
     const observer = new ResizeObserver(sync);
     observer.observe(panel);
-    return () => observer.disconnect();
-  }, []);
+    if (confirmContentRef.current) observer.observe(confirmContentRef.current);
+    return () => {
+      if (raf !== undefined) cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [pending]);
 
   // Load on mount, and re-load + reset on every re-summon (window regains
   // focus) so resource edits are picked up and each summon starts clean.
@@ -241,7 +252,7 @@ export function CommandPalette() {
         )}
       </div>
     </div>
-    <ApplySuiteConfirmDialog />
+    <ApplySuiteConfirmDialog contentRef={confirmContentRef} />
   </>
   );
 }

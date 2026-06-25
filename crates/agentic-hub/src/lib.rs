@@ -7,6 +7,7 @@
 mod commands;
 mod error;
 mod install_window;
+mod main_window;
 mod menu;
 mod palette;
 mod telemetry;
@@ -120,6 +121,7 @@ pub fn run() {
                 let _ =
                     palette::register_palette_shortcut(app.handle(), &default_palette_shortcut());
             }
+            main_window::restore_main_window(app.handle(), &settings);
             Ok(())
         })
         // Closing the window hides it instead of quitting: the app keeps running
@@ -144,7 +146,8 @@ pub fn run() {
                 return;
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+                if window.label() == main_window::MAIN_LABEL {
+                    main_window::persist_main_window(window.app_handle());
                     // Hide the whole application (NSApp hide:), not just the
                     // window. App-level hide lets Cmd+Tab and the Dock icon
                     // re-activate and restore the window the macOS-native way.
@@ -219,11 +222,12 @@ pub fn run() {
                 // Nudge the frontend to run a throttled update scan on re-open.
                 let _ = app.emit("app-reopened", ());
             }
-            // Record app exit (and flush before the process ends) only when the
-            // user has opted into telemetry.
-            RunEvent::Exit if app.state::<TelemetryState>().enabled() => {
-                let _ = app.track_event("app_exited", None);
-                app.flush_events_blocking();
+            RunEvent::Exit => {
+                main_window::persist_main_window(app);
+                if app.state::<TelemetryState>().enabled() {
+                    let _ = app.track_event("app_exited", None);
+                    app.flush_events_blocking();
+                }
             }
             _ => {}
         });
