@@ -47,6 +47,16 @@ export interface PaletteItem {
   shortcut?: string;
 }
 
+/** Whether the palette window should hide after an item's run() completes. */
+export function shouldDismissPaletteAfterRun(
+  item: Pick<PaletteItem, "dismissOnRun"> | undefined,
+  hasPendingApplyConfirm: boolean,
+): boolean {
+  if (hasPendingApplyConfirm) return false;
+  if (!item) return true;
+  return item.dismissOnRun !== false;
+}
+
 /// One drillable palette mode: a kind-scoped search, the explicit cross-kind
 /// "all" search, the suite-apply flow, or a locate scope (global/workspace).
 export type SearchMode =

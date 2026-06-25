@@ -8,8 +8,9 @@ import { useEffect, useRef } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { ChevronLeft, Search } from "lucide-react";
 import { usePaletteStore, type PaletteView } from "@/state/palette";
+import { useApplyStore } from "@/state/apply";
 import { ApplySuiteConfirmDialog } from "@/components/suites/ApplySuiteConfirmDialog";
-import { MODE_DEFS, searchModeFromShortcut } from "./commands";
+import { MODE_DEFS, searchModeFromShortcut, shouldDismissPaletteAfterRun } from "./commands";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PALETTE_WIDTH, paletteWindowHeight } from "./layout";
@@ -89,12 +90,16 @@ export function CommandPalette() {
 
   // Run the selected item; dismiss only when it is terminal. Drill-in rows
   // (a suite) set `dismissOnRun: false` so the palette stays open on the
-  // suite-tools view.
+  // suite-tools view. Suite apply also stays open when extras need confirm.
   const runAndHide = (alt = false) => {
     const item = results[selectedIndex];
     const action = alt ? runSelectedAlt() : runSelected();
     void action.then(() => {
-      if (!item || item.dismissOnRun !== false) hide();
+      if (
+        shouldDismissPaletteAfterRun(item, useApplyStore.getState().pending !== null)
+      ) {
+        hide();
+      }
     }, hide);
   };
 

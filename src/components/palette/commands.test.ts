@@ -37,6 +37,7 @@ import {
   computeSearchResults,
   computeSuiteToolResults,
   searchModeFromShortcut,
+  shouldDismissPaletteAfterRun,
   type ProviderContext,
   type WorkspaceInventoryEntry,
 } from "./commands";
@@ -413,5 +414,23 @@ describe("suite-tools view", () => {
     const rows = computeSuiteToolResults(makeSettings(), "", "s1", "Backend");
     rows.find((r) => r.title === "Apply to Cursor")!.run();
     expect(mocked.requestApply).toHaveBeenCalledWith("cursor", "s1", "Backend");
+  });
+});
+
+describe("shouldDismissPaletteAfterRun", () => {
+  it("keeps the palette open when suite apply needs confirmation", () => {
+    expect(shouldDismissPaletteAfterRun({ dismissOnRun: undefined }, true)).toBe(false);
+  });
+
+  it("dismisses terminal rows when no apply confirm is pending", () => {
+    expect(shouldDismissPaletteAfterRun({ dismissOnRun: undefined }, false)).toBe(true);
+  });
+
+  it("respects dismissOnRun false for drill-in rows", () => {
+    expect(shouldDismissPaletteAfterRun({ dismissOnRun: false }, false)).toBe(false);
+  });
+
+  it("dismisses when the selected item is missing", () => {
+    expect(shouldDismissPaletteAfterRun(undefined, false)).toBe(true);
   });
 });
