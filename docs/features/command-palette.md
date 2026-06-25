@@ -3,7 +3,7 @@
 Status: Implemented
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-06-10
+Last Updated: 2026-06-25
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [ARCHITECTURE.permissions.md](../../ARCHITECTURE.permissions.md)
 Related Docs: [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md), [docs/features/open-files.md](./open-files.md), [docs/tech/modules/suite-bindings.md](../tech/modules/suite-bindings.md)
 
@@ -46,8 +46,10 @@ slice of resources I mean instead of getting one global mixed result list.
 - **Search modes** (one drill-in view per kind, breadcrumb `‹ Search skills`,
   Backspace on an empty query steps back):
   - `all` / `skill` / `agent` / `rule` / `hook` — match by name, relative path,
-    or source; Enter opens the original file in the configured editor — reusing
-    the same opener path as the manager row menu.
+    or source; **Enter drills into the capability-tools view** (toggle the
+    resource on/off per tool, inline — below); **Alt+Enter (or Alt+Click) opens
+    the original file** in the configured editor — reusing the same opener path
+    as the manager row menu.
   - `command` — slash-command prompts. **Enter copies the command body to the
     clipboard** (for standalone paste into any tool); **Alt+Enter opens the
     source file** for editing. The body is read through
@@ -69,6 +71,18 @@ slice of resources I mean instead of getting one global mixed result list.
   pick one tool to apply the suite to as a full reset (clean + replace every
   resource for that tool). The applied tool is bound to the suite so a later
   capability edit re-syncs it (see [suite-bindings.md](../tech/modules/suite-bindings.md)).
+- **Capability-tools view** (inline per-tool toggle): drilling into a skill /
+  agent / rule / hook from a search mode opens a sub-panel that lists the user's
+  enabled tools, each showing on/off state. Toggling a tool row applies the
+  change **immediately** through the same `plan → apply → syncRules → syncHooks`
+  pipeline the manager uses — no Manager round-trip, no Apply button — and the
+  palette stays open so several tools can be flipped in a row. The panel also
+  offers an **Enable/Disable for all tools** aggregate row plus **Open in editor**
+  and **Reveal in Finder** action rows. Suite-managed cells render **locked** and
+  do not toggle. Each toggle builds the *complete* desired map from the inspected
+  state of every item — so `syncRules`/`syncHooks` (which rewrite the whole
+  managed block) never drop the other enabled rules/hooks — then emits
+  `sources-changed` so the main window's matrix refreshes.
 - Native top menus: App (About, Settings `Cmd+,`, Hide, Quit), Edit, View
   (Command Palette), Window. `Cmd+,` routes the main window to Config.
 - A Config panel to edit the shortcut (validated, re-registered on save).
@@ -93,9 +107,10 @@ flowchart TD
   hub --> gotoMode["Go-to mode -> locate rows"]
   hub --> nav["nav -> emit hub-navigate + cmd_show_main"]
   hub --> watch["toggle watching -> cmd_set_watcher_enabled + hub-watcher-changed"]
-  searchMode --> resource["resource -> cmd_open_path(original, editor)"]
+  searchMode --> resource["resource -> Enter: enterCapabilityTools; Alt+Enter: cmd_open_path"]
   searchMode --> command["command -> Enter: copy body; Alt+Enter: cmd_open_path"]
   searchMode --> suite["suite row -> enterSuite (suite-tools view)"]
+  resource --> captool["tool row -> plan/apply/syncRules/syncHooks + emit sources-changed"]
   gotoMode --> locateRow["locate row -> emit hub-locate + cmd_show_main"]
   suite --> applyRow["tool row -> cmd_apply_suite(tool, suite) + record binding"]
   blur["blur / Esc"] --> hide["hide palette"]
@@ -124,10 +139,14 @@ flowchart TD
   window label is `palette`, else `<App/>`. `usePaletteStore` loads settings +
   scans + lists suites + scans every remembered workspace inventory on summon
   (`Promise.allSettled`, so one unreadable project never breaks summon), holds the
-  query/selection and a `view` (`root`, `search` with a mode, or `suite-tools`),
-  and derives results from the registry in `components/palette/commands.ts`:
-  `computeHubResults` (root sections), `computeSearchResults` (one mode), and
-  `computeSuiteToolResults`. Hub rows carry a `section` label rendered as muted
+  query/selection and a `view` (`root`, `search` with a mode, `suite-tools`, or
+  `capability-tools`), and derives results from the registry in
+  `components/palette/commands.ts`: `computeHubResults` (root sections),
+  `computeSearchResults` (one mode), `computeSuiteToolResults`, and
+  `computeCapabilityToolResults` (per-tool toggle rows). On summon the store also
+  fires a background `inspect` + `suiteOwnership` to populate the per-tool state
+  the capability-tools view reads; toggle actions `await` that inspect before
+  building the desired map. Hub rows carry a `section` label rendered as muted
   group headers; search-mode rows also show `⌃1`…`⌃7` shortcut hints and accept
   Ctrl+1…Ctrl+7 from any palette view to jump between modes. Drill-in rows set
   `dismissOnRun: false` and call `enterMode` /
@@ -162,9 +181,16 @@ flowchart TD
 - [ ] The configured shortcut (default `Cmd+Alt+A`) toggles the palette from any app.
 - [ ] Summoning lands on the categorized hub (Search / Go to / Navigate / Actions);
       typing at the root filters hub rows only — no resource results.
-- [ ] Entering a search mode scopes results to that kind; Enter opens the original
-      file in the configured editor (commands copy; Alt+Enter edits); the palette
-      then hides. "Search all resources" is the only cross-kind search.
+- [ ] Entering a search mode scopes results to that kind; for skills/agents/rules/
+      hooks **Enter drills into the capability-tools view** and **Alt+Enter (or
+      Alt+Click) opens the original file**; commands copy on Enter / edit on
+      Alt+Enter. "Search all resources" is the only cross-kind search.
+- [ ] In the capability-tools view, each enabled tool shows the resource's on/off
+      state; toggling a tool applies immediately and the palette stays open with
+      the row state updated; a suite-managed cell is locked and does not toggle;
+      "Enable/Disable for all tools" flips every unlocked tool; toggling one rule/
+      hook never removes the other enabled rules/hooks; the main window's matrix
+      reflects the change.
 - [ ] Go to workspace locates an inventory item in Manager + Workspace scope;
       Go to global locates a shared resource in Manager + Global scope — both
       highlight the row in the matrix without opening a file.
@@ -184,6 +210,10 @@ flowchart TD
   feature + `macOSPrivateApi: true` for transparency.
 - New `Settings.paletteShortcut` + `agentic_core::settings::is_valid_shortcut`.
 - New IPC commands `cmd_toggle_palette` / `cmd_show_main`; events `menu-open-config`
-  / `hub-navigate` / `hub-locate` (scoped) / `hub-watcher-changed`.
+  / `hub-navigate` / `hub-locate` (scoped) / `hub-watcher-changed` / `sources-changed`
+  (emitted from the frontend via `emitSourcesChanged` after an inline toggle).
+- The capability-tools toggle reuses the manager's pipeline IPC — `cmd_inspect`,
+  `cmd_suite_ownership`, `cmd_plan`, `cmd_apply`, `cmd_sync_rules`, `cmd_sync_hooks`,
+  and `cmd_reveal_path` — with no new backend commands.
 - New `palette` window + `capabilities/palette.json`.
-- `src/components/palette/*`, `src/state/palette.ts`, shared `originalFile`/`editorApp`.
+- `src/components/palette/*`, `src/state/palette.ts`, shared `originalFile`/`editorApp`/`key`.

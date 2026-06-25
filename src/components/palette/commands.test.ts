@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/ipc", () => ({
   openPath: vi.fn(),
+  revealPath: vi.fn(),
   applySuite: vi.fn().mockResolvedValue(undefined),
   readCapabilityBody: vi.fn().mockResolvedValue("command body text"),
   copyText: vi.fn().mockResolvedValue(undefined),
@@ -15,28 +16,35 @@ import {
   emitHubWatcherChanged,
   openPath,
   readCapabilityBody,
+  revealPath,
   setWatcherEnabled,
 } from "@/ipc";
 import type {
   CapabilityItem,
   Settings,
   SuiteDefinition,
+  ToolCapabilityState,
   ToolId,
   ToolSettings,
   WorkspaceTarget,
 } from "@/types";
+import { key } from "@/shared";
 import {
   SEARCH_MODES,
+  computeCapabilityToolResults,
   computeHubResults,
   computeSearchResults,
   computeSuiteToolResults,
   searchModeFromShortcut,
+  type CapabilityOwnership,
+  type CapabilityToolsContext,
   type ProviderContext,
   type WorkspaceInventoryEntry,
 } from "./commands";
 
 const mocked = {
   openPath: vi.mocked(openPath),
+  revealPath: vi.mocked(revealPath),
   applySuite: vi.mocked(applySuite),
   readCapabilityBody: vi.mocked(readCapabilityBody),
   copyText: vi.mocked(copyText),
@@ -147,7 +155,34 @@ function ctx(overrides: Partial<ProviderContext> = {}): ProviderContext {
     navigate: vi.fn(),
     enterMode: vi.fn(),
     enterSuite: vi.fn(),
+    enterCapabilityTools: vi.fn(),
     locate: vi.fn(),
+    ...overrides,
+  };
+}
+
+function state(tool: ToolId, itemId: string, on: boolean): ToolCapabilityState {
+  return {
+    tool,
+    itemId,
+    targetPath: `/${tool}/${itemId}`,
+    state: on ? "enabled" : "disabled",
+    currentLinkTarget: on ? `/shared/${itemId}` : null,
+  };
+}
+
+function capCtx(overrides: Partial<CapabilityToolsContext> = {}): CapabilityToolsContext {
+  return {
+    settings: makeSettings(),
+    query: "",
+    itemId: "skill:tdd",
+    itemName: "tdd",
+    item: makeItem("skill:tdd", "tdd"),
+    inspected: true,
+    currentMap: new Map<string, ToolCapabilityState>(),
+    ownership: new Map<string, CapabilityOwnership>(),
+    toggleCapability: vi.fn(),
+    toggleCapabilityAll: vi.fn(),
     ...overrides,
   };
 }
@@ -217,9 +252,9 @@ describe("root hub", () => {
     const rows = computeHubResults(ctx({ items, query: "tdd" }));
     expect(rows).toEqual([]);
 
-    // "skills" matches the skill mode row and the all-resources subtitle.
+    // "skills" matches the skill mode row by title.
     const skillRows = computeHubResults(ctx({ items, query: "skills" }));
-    expect(skillRows.map((r) => r.title)).toEqual(["Search all resources", "Search skills"]);
+    expect(skillRows.map((r) => r.title)).toEqual(["Search skills"]);
   });
 
   it("a search-mode row drills in (does not dismiss) and calls enterMode", () => {
@@ -272,16 +307,32 @@ describe("root hub", () => {
 });
 
 describe("search modes — resources", () => {
-  it("a kind mode returns only that kind and opens the original file", () => {
+  it("a kind mode returns only that kind; Enter drills in, Alt+Enter opens the file", () => {
     const items = [
       makeItem("skill:review", "review"),
       makeItem("agent:review-bot", "review-bot", "agent"),
     ];
-    const rows = computeSearchResults(ctx({ items, query: "review" }), "skill");
+    const enterCapabilityTools = vi.fn();
+    const rows = computeSearchResults(ctx({ items, query: "review", enterCapabilityTools }), "skill");
 
     expect(rows.map((r) => r.id)).toEqual(["resource:skill:review"]);
+    // Enter drills into the per-tool toggle panel (stays open), no file opened.
+    expect(rows[0].dismissOnRun).toBe(false);
     rows[0].run();
+    expect(enterCapabilityTools).toHaveBeenCalledWith(items[0], "skill");
+    expect(mocked.openPath).not.toHaveBeenCalled();
+
+    // Alt+Enter opens the original file in the editor.
+    rows[0].altRun!();
     expect(mocked.openPath).toHaveBeenCalledWith("/shared/skills/review/SKILL.md", undefined);
+  });
+
+  it("the all mode drills in with the 'all' fromMode so Back returns there", () => {
+    const items = [makeItem("rule:style", "style", "rule")];
+    const enterCapabilityTools = vi.fn();
+    const rows = computeSearchResults(ctx({ items, query: "style", enterCapabilityTools }), "all");
+    rows[0].run();
+    expect(enterCapabilityTools).toHaveBeenCalledWith(items[0], "all");
   });
 
   it("the all mode searches every non-command kind", () => {
@@ -407,5 +458,103 @@ describe("suite-tools view", () => {
     const rows = computeSuiteToolResults(makeSettings(), "", "s1", "Backend");
     rows.find((r) => r.title === "Apply to Cursor")!.run();
     expect(mocked.applySuite).toHaveBeenCalledWith("cursor", "s1");
+  });
+});
+
+describe("capability-tools view", () => {
+  // Only tools with a projection target (a currentMap entry) get a row.
+  const fullMap = new Map<string, ToolCapabilityState>([
+    [key("codex", "skill:tdd"), state("codex", "skill:tdd", true)],
+    [key("claude", "skill:tdd"), state("claude", "skill:tdd", false)],
+    [key("cursor", "skill:tdd"), state("cursor", "skill:tdd", false)],
+  ]);
+
+  it("shows a loading row (plus action rows) until inspected", () => {
+    const rows = computeCapabilityToolResults(capCtx({ inspected: false }));
+    expect(rows.map((r) => r.title)).toEqual([
+      "Loading tool states…",
+      "Open in editor",
+      "Reveal in Finder",
+    ]);
+  });
+
+  it("lists one row per projectable enabled tool with on/off state", () => {
+    const rows = computeCapabilityToolResults(capCtx({ currentMap: fullMap }));
+    const toolRows = rows.filter((r) => r.group === "Tool" && !r.id.startsWith("captool-all"));
+    expect(toolRows.map((r) => [r.title, r.state])).toEqual([
+      ["Codex", "on"],
+      ["Claude", "off"],
+      ["Cursor", "off"],
+    ]);
+  });
+
+  it("excludes tools without a projection target (e.g. a hook's non-targets)", () => {
+    const partial = new Map<string, ToolCapabilityState>([
+      [key("claude", "hook:x"), state("claude", "hook:x", true)],
+    ]);
+    const rows = computeCapabilityToolResults(
+      capCtx({ itemId: "hook:x", itemName: "x", item: makeItem("hook:x", "x", "hook"), currentMap: partial }),
+    );
+    const toolRows = rows.filter((r) => r.group === "Tool" && !r.id.startsWith("captool-all"));
+    expect(toolRows.map((r) => r.title)).toEqual(["Claude"]);
+  });
+
+  it("toggling a tool row calls toggleCapability for that tool", () => {
+    const toggleCapability = vi.fn();
+    const rows = computeCapabilityToolResults(capCtx({ currentMap: fullMap, toggleCapability }));
+    const claude = rows.find((r) => r.title === "Claude")!;
+    expect(claude.dismissOnRun).toBe(false);
+    claude.run();
+    expect(toggleCapability).toHaveBeenCalledWith("claude", "skill:tdd");
+  });
+
+  it("renders a locked row that does not toggle when a suite owns the cell", () => {
+    const toggleCapability = vi.fn();
+    const ownership = new Map<string, CapabilityOwnership>([
+      [key("codex", "skill:tdd"), { suiteName: "Backend" }],
+    ]);
+    const rows = computeCapabilityToolResults(
+      capCtx({ currentMap: fullMap, ownership, toggleCapability }),
+    );
+    const codex = rows.find((r) => r.title === "Codex")!;
+    expect(codex.state).toBe("locked");
+    codex.run();
+    expect(toggleCapability).not.toHaveBeenCalled();
+  });
+
+  it("the aggregate row enables for all when not every tool is on", () => {
+    const toggleCapabilityAll = vi.fn();
+    const rows = computeCapabilityToolResults(capCtx({ currentMap: fullMap, toggleCapabilityAll }));
+    const all = rows.find((r) => r.id.startsWith("captool-all"))!;
+    expect(all.title).toBe("Enable for all tools");
+    all.run();
+    expect(toggleCapabilityAll).toHaveBeenCalledWith("skill:tdd", true);
+  });
+
+  it("the aggregate row disables for all when every unlocked tool is already on", () => {
+    const allOn = new Map<string, ToolCapabilityState>([
+      [key("codex", "skill:tdd"), state("codex", "skill:tdd", true)],
+      [key("claude", "skill:tdd"), state("claude", "skill:tdd", true)],
+      [key("cursor", "skill:tdd"), state("cursor", "skill:tdd", true)],
+    ]);
+    const toggleCapabilityAll = vi.fn();
+    const rows = computeCapabilityToolResults(capCtx({ currentMap: allOn, toggleCapabilityAll }));
+    const all = rows.find((r) => r.id.startsWith("captool-all"))!;
+    expect(all.title).toBe("Disable for all tools");
+    all.run();
+    expect(toggleCapabilityAll).toHaveBeenCalledWith("skill:tdd", false);
+  });
+
+  it("the action rows open and reveal the original file", () => {
+    const rows = computeCapabilityToolResults(capCtx({ currentMap: fullMap }));
+    rows.find((r) => r.title === "Open in editor")!.run();
+    expect(mocked.openPath).toHaveBeenCalledWith("/shared/skills/tdd/SKILL.md", undefined);
+    rows.find((r) => r.title === "Reveal in Finder")!.run();
+    expect(mocked.revealPath).toHaveBeenCalledWith("/shared/skills/tdd/SKILL.md");
+  });
+
+  it("hides the aggregate and action rows while filtering by a query", () => {
+    const rows = computeCapabilityToolResults(capCtx({ currentMap: fullMap, query: "claude" }));
+    expect(rows.map((r) => r.title)).toEqual(["Claude"]);
   });
 });
