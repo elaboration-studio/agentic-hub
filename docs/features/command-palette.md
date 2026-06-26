@@ -3,7 +3,7 @@
 Status: Implemented
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-06-25
+Last Updated: 2026-06-26
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [ARCHITECTURE.permissions.md](../../ARCHITECTURE.permissions.md)
 Related Docs: [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md), [docs/features/open-files.md](./open-files.md), [docs/tech/modules/suite-bindings.md](../tech/modules/suite-bindings.md)
 
@@ -51,10 +51,13 @@ slice of resources I mean instead of getting one global mixed result list.
     the original file** in the configured editor — reusing the same opener path
     as the manager row menu.
   - `command` — slash-command prompts. **Enter copies the command body to the
-    clipboard** (for standalone paste into any tool); **Alt+Enter opens the
-    source file** for editing. The body is read through
-    `cmd_read_capability_body` (allowlist-gated, same as the opener) and written
-    via the clipboard-manager plugin. See [commands.md](./commands.md).
+    clipboard** (for standalone paste into any tool). When **Paste into focused
+    app** is enabled in Config (macOS only), Enter also posts Cmd+V to the
+    frontmost app after the palette hides — Alfred-style direct paste, gated on
+    Accessibility permission. **Alt+Enter opens the source file** for editing.
+    The body is read through `cmd_read_capability_body` (allowlist-gated, same
+    as the opener) and written via the clipboard-manager plugin; paste uses
+    `cmd_paste_to_frontmost`. See [commands.md](./commands.md).
   - `suite` — match suites by name/description; Enter drills into the existing
     suite-tools view (below).
 - **Go-to modes** (locate, never open):

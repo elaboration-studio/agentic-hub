@@ -130,6 +130,17 @@ export const revealPath = (path: string): Promise<void> =>
 export const readCapabilityBody = (path: string): Promise<string> =>
   invoke("cmd_read_capability_body", { input: { path } });
 
+/// Outcome of attempting to paste into the frontmost app after a palette copy.
+export interface PasteOutcome {
+  pasted: boolean;
+  needsPermission: boolean;
+}
+
+/// Hide the palette and simulate Cmd+V into the frontmost app (macOS,
+/// Accessibility-gated). No-op on other platforms.
+export const pasteToFrontmost = (): Promise<PasteOutcome> =>
+  invoke("cmd_paste_to_frontmost");
+
 /// Write text to the system clipboard via the clipboard-manager plugin.
 export const copyText = (text: string): Promise<void> =>
   writeText(text);

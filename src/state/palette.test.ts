@@ -126,6 +126,7 @@ function makeSettings(): Settings {
     codexAgentsPathMigrated: true,
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
+    pasteIntoFocused: false,
     skills: { enabled: false, favoritesPath: null },
     telemetry: { enabled: false },
     mainWindow: null,

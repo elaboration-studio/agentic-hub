@@ -1,6 +1,6 @@
 [package]
 name = "agentic-hub"
-version = "0.9.4"
+version = "0.9.5"
 description = "Tauri 2.x desktop shell for Agentic Hub. Thin #[tauri::command] wrappers over agentic-core."
 edition.workspace = true
 license.workspace = true
@@ -46,5 +46,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
 # float over other apps' full-screen Spaces (standard NSWindow cannot — see
 # tauri#11488). Encapsulates the objc FFI, keeping this crate `unsafe`-free.
 [target.'cfg(target_os = "macos")'.dependencies]
+enigo = "0.3.0"
+macos-accessibility-client = "0.0.2"
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 ts-rs = { version = "10", optional = true }

@@ -57,6 +57,11 @@ editor: EditorPref,
  */
 paletteShortcut: string, 
 /**
+ * When on, the palette pastes a command body into the focused app (macOS,
+ * needs Accessibility permission) instead of only copying. Defaults off.
+ */
+pasteIntoFocused: boolean, 
+/**
  * Opt-in skills.sh public source config. Defaults to disabled.
  */
 skills: SkillsConfig, 

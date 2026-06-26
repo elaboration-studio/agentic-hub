@@ -1,6 +1,6 @@
 [package]
 name = "agentic-core"
-version = "0.9.4"
+version = "0.9.5"
 description = "Pure domain crate for Agentic Hub: scan/plan/apply/sync over the shared agentic root. No Tauri dependency."
 edition.workspace = true
 license.workspace = true

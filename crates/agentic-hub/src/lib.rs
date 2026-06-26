@@ -10,6 +10,7 @@ mod install_window;
 mod main_window;
 mod menu;
 mod palette;
+mod paste;
 mod telemetry;
 mod watcher;
 
@@ -174,6 +175,7 @@ pub fn run() {
             commands::cmd_open_path,
             commands::cmd_reveal_path,
             commands::cmd_read_capability_body,
+            commands::cmd_paste_to_frontmost,
             commands::cmd_open_url,
             commands::cmd_add_source,
             commands::cmd_remove_source,

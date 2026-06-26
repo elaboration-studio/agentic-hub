@@ -52,6 +52,7 @@ export function ConfigPage() {
       <SourcesPanel {...props} />
       <EditorPanel {...props} />
       <ShortcutPanel {...props} />
+      <PastePanel {...props} />
       <SuiteFilePanel {...props} />
       <SkillsSourcePanel {...props} />
       <ToolsPanel {...props} />
@@ -198,6 +199,46 @@ function ShortcutPanel({ settings, onChanged }: PanelProps) {
             Reset to default
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PastePanel({ settings, onChanged }: PanelProps) {
+  const [busy, setBusy] = useState(false);
+
+  const persist = useCallback(
+    async (next: boolean) => {
+      setBusy(true);
+      try {
+        await saveSettings({ ...settings, pasteIntoFocused: next });
+        onChanged();
+      } catch (e) {
+        toast.error(messageOf(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [settings, onChanged],
+  );
+
+  return (
+    <Card className="p-4">
+      <CardHeader className="flex-row items-center justify-between p-0">
+        <CardTitle className={sectionTitle}>Paste into focused app</CardTitle>
+        <Switch
+          checked={settings.pasteIntoFocused}
+          disabled={busy}
+          onCheckedChange={(v) => void persist(v)}
+          aria-label="Paste command bodies directly into the focused app"
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 p-0">
+        <p className={hint}>
+          macOS only. When on, choosing a command in the palette copies its body and also pastes
+          it into the app you were using (Alfred-style). Requires Accessibility permission for
+          Agentic Hub in System Settings → Privacy &amp; Security → Accessibility.
+        </p>
       </CardContent>
     </Card>
   );

@@ -32,6 +32,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::error::IpcError;
+use crate::paste::{self, PasteOutcome};
 use crate::palette;
 use crate::watcher::{self, WatcherState};
 
@@ -265,6 +266,13 @@ pub async fn cmd_read_capability_body(input: ReadBodyInput) -> IpcResult<String>
         ));
     }
     std::fs::read_to_string(&path).map_err(|e| IpcError::new("read_failed", e.to_string()))
+}
+
+/// After the palette copies a command body, simulate Cmd+V into the frontmost
+/// app (macOS, Accessibility-gated). Marshalling-only — logic lives in [`paste`].
+#[tauri::command]
+pub async fn cmd_paste_to_frontmost(app: AppHandle) -> IpcResult<PasteOutcome> {
+    Ok(paste::paste_to_frontmost(&app))
 }
 
 #[derive(Debug, Deserialize)]

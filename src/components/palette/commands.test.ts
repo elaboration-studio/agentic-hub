@@ -13,6 +13,7 @@ vi.mock("@/ipc", () => ({
   revealPath: vi.fn(),
   readCapabilityBody: vi.fn().mockResolvedValue("command body text"),
   copyText: vi.fn().mockResolvedValue(undefined),
+  pasteToFrontmost: vi.fn().mockResolvedValue({ pasted: true, needsPermission: false }),
   setWatcherEnabled: vi.fn().mockResolvedValue(undefined),
   emitHubWatcherChanged: vi.fn().mockResolvedValue(undefined),
 }));
@@ -21,6 +22,7 @@ import {
   copyText,
   emitHubWatcherChanged,
   openPath,
+  pasteToFrontmost,
   readCapabilityBody,
   revealPath,
   setWatcherEnabled,
@@ -55,6 +57,7 @@ const mocked = {
   requestApply,
   readCapabilityBody: vi.mocked(readCapabilityBody),
   copyText: vi.mocked(copyText),
+  pasteToFrontmost: vi.mocked(pasteToFrontmost),
   setWatcherEnabled: vi.mocked(setWatcherEnabled),
   emitHubWatcherChanged: vi.mocked(emitHubWatcherChanged),
 };
@@ -83,6 +86,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     codexAgentsPathMigrated: true,
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
+    pasteIntoFocused: false,
     skills: { enabled: false, favoritesPath: null },
     telemetry: { enabled: false },
     mainWindow: null,
@@ -369,7 +373,18 @@ describe("search modes — commands", () => {
     await row.run();
     expect(mocked.readCapabilityBody).toHaveBeenCalledWith("/shared/commands/git/commit.md");
     expect(mocked.copyText).toHaveBeenCalledWith("command body text");
+    expect(mocked.pasteToFrontmost).not.toHaveBeenCalled();
     expect(mocked.openPath).not.toHaveBeenCalled();
+  });
+
+  it("Enter also pastes when pasteIntoFocused is enabled", async () => {
+    const settings = { ...makeSettings(), pasteIntoFocused: true };
+    const items = [makeCommand("command:git/commit.md", "commit", "git/commit.md")];
+    const row = computeSearchResults(ctx({ settings, items, query: "commit" }), "command")[0];
+
+    await row.run();
+    expect(mocked.copyText).toHaveBeenCalledWith("command body text");
+    expect(mocked.pasteToFrontmost).toHaveBeenCalled();
   });
 
   it("Alt+Enter opens the source file for editing", async () => {
