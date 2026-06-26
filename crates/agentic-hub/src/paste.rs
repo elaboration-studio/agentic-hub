@@ -65,9 +65,13 @@ mod imp {
         }
 
         palette::hide_palette(app);
-        thread::spawn(|| {
+        let app = app.clone();
+        thread::spawn(move || {
             thread::sleep(PASTE_DELAY);
-            simulate_cmd_v();
+            // enigo's keycode lookup calls macOS Text Input Source APIs
+            // (`TSMGetInputSourceProperty`) that assert they run on the main
+            // thread; off-thread execution traps via `dispatch_assert_queue`.
+            let _ = app.run_on_main_thread(simulate_cmd_v);
         });
 
         PasteOutcome {
