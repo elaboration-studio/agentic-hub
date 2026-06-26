@@ -43,8 +43,9 @@ mod imp {
     }
 
     fn simulate_cmd_v() {
-        let Ok(mut enigo) = Enigo::new(&Settings::default()) else {
-            return;
+        let mut enigo = match Enigo::new(&Settings::default()) {
+            Ok(e) => e,
+            Err(_) => return,
         };
         let _ = enigo.key(Key::Meta, Press);
         let _ = enigo.key(Key::Unicode('v'), Click);
@@ -54,7 +55,8 @@ mod imp {
     /// Hide the palette, then post Cmd+V to the frontmost app after a short delay
     /// so focus can return from the non-activating panel.
     pub fn paste_to_frontmost(app: &AppHandle) -> PasteOutcome {
-        if !accessibility_trusted(false) {
+        let trusted = accessibility_trusted(false);
+        if !trusted {
             let _ = accessibility_trusted(true);
             return PasteOutcome {
                 pasted: false,
