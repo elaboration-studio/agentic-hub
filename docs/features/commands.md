@@ -3,7 +3,7 @@
 Status: Implemented
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-06-08
+Last Updated: 2026-06-26
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.projection.md](../../ARCHITECTURE.projection.md)
 Related Docs: [docs/features/command-palette.md](./command-palette.md), [docs/tech/reference/tool-adapter-matrix.md](../tech/reference/tool-adapter-matrix.md)
 
@@ -20,7 +20,9 @@ standalone via copy-to-clipboard for tools that don't.
 
 As a user, I want to keep my slash-command prompts in `~/.agentic/commands/`,
 organize them in folders, enable them per tool from the Hub, and summon any one
-from the palette — Enter to copy it for a quick paste, Alt+Enter to edit it.
+from the palette — Enter to copy it for a quick paste (or paste directly into
+the focused app when **Paste into focused app** is on — macOS, Config), Alt+Enter
+to edit it.
 
 ## Scope
 

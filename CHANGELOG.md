@@ -8,6 +8,19 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.9.5] — 2026-06-26
+
+### Added
+
+- **Paste into focused app (macOS).** Opt in from Config → **Paste into focused
+  app**. When enabled, choosing a command in the palette copies its body *and*
+  pastes it into the app you were using (Alfred-style) — summon the palette,
+  pick a slash command, hit Enter, and the prompt lands in your chat without
+  a manual Cmd+V. Requires Accessibility permission for Agentic Hub in System
+  Settings → Privacy & Security → Accessibility; the palette shows a toast if
+  permission is missing. Off by default; clipboard-only behavior is unchanged
+  when the toggle is off.
+
 ## [0.9.4] — 2026-06-26
 
 ### Added
