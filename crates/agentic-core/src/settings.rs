@@ -243,6 +243,10 @@ pub struct Settings {
     /// `Cmd+Alt+A`.
     #[serde(default = "default_palette_shortcut")]
     pub palette_shortcut: String,
+    /// When on, the palette pastes a command body into the focused app (macOS,
+    /// needs Accessibility permission) instead of only copying. Defaults off.
+    #[serde(default)]
+    pub paste_into_focused: bool,
     /// Opt-in skills.sh public source config. Defaults to disabled.
     #[serde(default)]
     pub skills: SkillsConfig,
@@ -394,6 +398,7 @@ impl Default for Settings {
             codex_agents_path_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
+            paste_into_focused: false,
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
             main_window: None,
@@ -587,6 +592,7 @@ impl Settings {
             codex_agents_path_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
+            paste_into_focused: false,
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
             main_window: None,
@@ -881,6 +887,36 @@ mod tests {
     fn palette_shortcut_defaults_to_cmd_alt_a() {
         let s = Settings::default();
         assert_eq!(s.palette_shortcut, "Cmd+Alt+A");
+    }
+
+    #[test]
+    fn paste_into_focused_defaults_off_and_roundtrips() {
+        let s = Settings::default();
+        assert!(!s.paste_into_focused);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let configured = Settings {
+            paste_into_focused: true,
+            ..Settings::default()
+        };
+        configured.save_to(&path).unwrap();
+        let reloaded = Settings::load_from(&path).unwrap();
+        assert!(reloaded.paste_into_focused);
+    }
+
+    #[test]
+    fn legacy_config_without_paste_into_focused_defaults_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("pasteIntoFocused");
+        fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
+        let loaded = Settings::load_from(&path).unwrap();
+        assert!(!loaded.paste_into_focused, "absent field defaults to off");
     }
 
     #[test]

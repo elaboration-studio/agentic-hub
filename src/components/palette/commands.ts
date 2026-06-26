@@ -8,6 +8,7 @@
 // suite-tools view, where each row applies the suite to one tool as a full
 // reset. New commands drop in as additional hub rows.
 
+import { toast } from "sonner";
 import type {
   CapabilityItem,
   Settings,
@@ -22,6 +23,7 @@ import {
   copyText,
   emitHubWatcherChanged,
   openPath,
+  pasteToFrontmost,
   readCapabilityBody,
   revealPath,
   setWatcherEnabled,
@@ -268,7 +270,13 @@ function watchingRow(settings: Settings): PaletteItem {
 export function computeHubResults(ctx: ProviderContext): PaletteItem[] {
   const q = ctx.query.trim();
   const rows: PaletteItem[] = [
-    ...SEARCH_MODES.map((m, i) => modeRow(m, "Search", ctx.enterMode, i + 1)),
+    ...SEARCH_MODES.map((m, i) => {
+      const row = modeRow(m, "Search", ctx.enterMode, i + 1);
+      if (m === "command") {
+        return { ...row, subtitle: commandEnterHint(ctx.settings.pasteIntoFocused) };
+      }
+      return row;
+    }),
     ...GOTO_MODES.map((m) => modeRow(m, "Go to", ctx.enterMode)),
     ...NAV_TARGETS.map((n) => ({
       id: `nav:${n.route}`,
@@ -318,11 +326,19 @@ function resourceResults(
 }
 
 // Command search — slash-command prompts. Enter copies the command body to the
-// clipboard (standalone use); Alt+Enter opens the source file for editing.
+// clipboard (standalone use); when paste-into-focused is on, also posts Cmd+V
+// into the frontmost app. Alt+Enter opens the source file for editing.
+function commandEnterHint(pasteIntoFocused: boolean): string {
+  return pasteIntoFocused
+    ? "Enter pastes the body · Alt+Enter edits"
+    : "Enter copies the body · Alt+Enter edits";
+}
+
 function commandResults(ctx: ProviderContext): PaletteItem[] {
   const q = ctx.query.trim();
   if (!q) return [];
   const app = editorApp(ctx.settings);
+  const enterHint = commandEnterHint(ctx.settings.pasteIntoFocused);
   return ctx.items
     .filter((it) => it.kind === "command")
     .filter((it) => matches(`${it.name} ${it.relativePath} ${it.sourceLabel}`, q))
@@ -331,11 +347,19 @@ function commandResults(ctx: ProviderContext): PaletteItem[] {
       return {
         id: `command:${it.id}`,
         title: it.name,
-        subtitle: `${it.relativePath} · Enter to copy, Alt+Enter to edit`,
+        subtitle: `${it.relativePath} · ${enterHint}`,
         group: GROUP_BY_KIND.command,
         run: async () => {
           const body = await readCapabilityBody(file);
           await copyText(body);
+          if (ctx.settings.pasteIntoFocused) {
+            const outcome = await pasteToFrontmost();
+            if (outcome.needsPermission) {
+              toast.message(
+                "Grant Accessibility access to Agentic Hub in System Settings to paste directly.",
+              );
+            }
+          }
         },
         altRun: () => openPath(file, app),
       };
