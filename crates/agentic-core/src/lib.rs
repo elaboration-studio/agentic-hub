@@ -14,6 +14,7 @@ pub mod cli_tools;
 pub mod codex_agent;
 pub mod error;
 pub mod hook_sync;
+pub mod kiro_hook_sync;
 pub mod managed_copy;
 pub mod model;
 pub mod open_targets;

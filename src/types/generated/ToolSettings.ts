@@ -5,6 +5,11 @@
  */
 export type ToolSettings = { enabled: boolean, skillsPath: string, agentsPath: string, rulesPath: string, instructionsPath: string | null, hooksEnabled: boolean, hooksFile: string | null, 
 /**
+ * Per-hook JSON directory (Kiro `~/.kiro/hooks/`). `None` for tools that
+ * use a single `hooks_file` instead.
+ */
+hooksDir: string | null, 
+/**
  * Directory holding slash-command prompts (`commands`/`prompts`). `None`
  * when the tool has no command concept (OpenClaw). Injected for configs
  * written before this field existed, so legacy files load without failing.

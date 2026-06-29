@@ -2,9 +2,9 @@
 
 Status: Stable
 Mode: Detailed
-Last Updated: 2026-06-15
+Last Updated: 2026-06-29
 Depends On: [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md)
-Related Docs: [docs/tech/modules/claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md), [docs/tech/modules/openclaw-tool-adapter.md](../modules/openclaw-tool-adapter.md), [docs/tech/modules/rule-projection-sync.md](../modules/rule-projection-sync.md), [docs/tech/modules/workspace-inventory.md](../modules/workspace-inventory.md)
+Related Docs: [docs/tech/modules/claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md), [docs/tech/modules/kiro-tool-adapter.md](../modules/kiro-tool-adapter.md), [docs/tech/modules/openclaw-tool-adapter.md](../modules/openclaw-tool-adapter.md), [docs/tech/modules/rule-projection-sync.md](../modules/rule-projection-sync.md), [docs/tech/modules/workspace-inventory.md](../modules/workspace-inventory.md)
 
 ## Purpose
 
@@ -74,14 +74,15 @@ OpenClaw is **not supported** in workspace scope.
 
 Workspace scope is **read-only inventory** (`workspace_inventory`): it scans these per-tool dirs and reports what each tool already has. It never writes. The "scan source" column is the directory/file each tool actually reads.
 
-| Aspect | Codex | Claude Code | Cursor |
-|--------|-------|-------------|--------|
-| Skills scan source | `<ws>/.agents/skills` | `<ws>/.claude/skills` | `<ws>/.cursor/skills` + `<ws>/.agents/skills` |
-| Agents scan source | `<ws>/.codex/agents/*.toml` | `<ws>/.claude/agents/*.md` | `<ws>/.cursor/agents` + `<ws>/.agents/agents` |
-| Rules scan source | (in `AGENTS.md`) | (in `CLAUDE.md`) | `<ws>/.cursor/rules/*.mdc` |
-| Commands scan source | `<ws>/.codex/prompts/**/*.md` | `<ws>/.claude/commands/**/*.md` | `<ws>/.cursor/commands/**/*.md` |
-| Instructions scan source | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | `<ws>/AGENTS.md` |
-| Skill nesting | nested | nested | nested (recursive) |
+| Aspect | Codex | Claude Code | Cursor | Kiro |
+|--------|-------|-------------|--------|------|
+| Skills scan source | `<ws>/.agents/skills` | `<ws>/.claude/skills` | `<ws>/.cursor/skills` + `<ws>/.agents/skills` | `<ws>/.kiro/skills` |
+| Agents scan source | `<ws>/.codex/agents/*.toml` | `<ws>/.claude/agents/*.md` | `<ws>/.cursor/agents` + `<ws>/.agents/agents` | `<ws>/.kiro/agents/*.md` |
+| Rules scan source | (in `AGENTS.md`) | (in `CLAUDE.md`) | `<ws>/.cursor/rules/*.mdc` | `<ws>/.kiro/steering/*.md` |
+| Hooks scan source | `<ws>/.codex/hooks.json` | (in `settings.json`) | `<ws>/.cursor/hooks.json` | `<ws>/.kiro/hooks/*.json` |
+| Commands scan source | `<ws>/.codex/prompts/**/*.md` | `<ws>/.claude/commands/**/*.md` | `<ws>/.cursor/commands/**/*.md` | _none_ |
+| Instructions scan source | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | `<ws>/AGENTS.md` | _none_ |
+| Skill nesting | nested | nested | nested (recursive) | nested |
 
 Notes:
 - **Codex agents are TOML** (`.codex/agents/*.toml`), distinct from Claude/Cursor markdown agents — the scanner matches `*.toml` for Codex, `*.md` otherwise.
@@ -203,4 +204,23 @@ If a developer asks "where does enabling skill X for tool Y go?", the answer sho
 ## Open questions
 
 - Should we ever expose `skillLayout` and `agentLayout` as user-configurable settings? Decision: no in v1; layout is tool-intrinsic
-- Should we eventually support a sixth tool (Aider, Continue, etc.)? Adding one is mostly: pick a tool id, add settings defaults, declare layout + projection mode, regression-test the planner. The `OpenStandard` addition (the open-standard `~/.agents` root as its own column) is the worked example.
+- Should we eventually support a seventh tool (Aider, Continue, etc.)? Adding one is mostly: pick a tool id, add settings defaults, declare layout + projection mode, regression-test the planner. **Kiro** (2026-06-29) and **OpenStandard** are the worked examples.
+
+## Kiro (global scope)
+
+| Aspect | Kiro |
+|--------|------|
+| Tool id | `kiro` |
+| Default `enabled` | `false` |
+| `skillsPath` | `~/.kiro/skills` |
+| `agentsPath` | `~/.kiro/agents` |
+| `rulesPath` | `~/.kiro/steering` |
+| `hooksDir` | `~/.kiro/hooks` |
+| Skill projection | symlink (nested) |
+| Agent projection | symlink (**flat** `.md`) |
+| Rule projection | symlink under steering (not managed block) |
+| Hook projection | `kiro_hook_file` — one v1 JSON per hook id |
+| Commands | not supported |
+| Hook targets | opt-in via `"targets": ["kiro"]` |
+
+See [kiro-tool-adapter.md](../modules/kiro-tool-adapter.md).

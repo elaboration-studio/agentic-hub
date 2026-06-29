@@ -39,11 +39,12 @@ Persisted at `~/.agentic-hub/state.json`:
 
 `adapter_registry::create_workspace_adapter(tool, ws)` provides the paths:
 
-| Tool | skill dirs | agent dirs (ext) | `rules_path` (scanned) | `instructions_path` |
-|------|------------|------------------|------------------------|---------------------|
-| Codex | `<ws>/.agents/skills` | `<ws>/.codex/agents` (`*.toml`) | — | `<ws>/AGENTS.md` |
-| Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` (`*.md`) | — | `<ws>/CLAUDE.md` |
-| Cursor | `<ws>/.cursor/skills` **+ `<ws>/.agents/skills`** | `<ws>/.cursor/agents` **+ `<ws>/.agents/agents`** (`*.md`) | `<ws>/.cursor/rules` | `<ws>/AGENTS.md` |
+| Tool | skill dirs | agent dirs (ext) | `rules_path` (scanned) | hooks | `instructions_path` |
+|------|------------|------------------|------------------------|-------|---------------------|
+| Codex | `<ws>/.agents/skills` | `<ws>/.codex/agents` (`*.toml`) | — | `<ws>/.codex/hooks.json` | `<ws>/AGENTS.md` |
+| Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` (`*.md`) | — | (in `settings.json`) | `<ws>/CLAUDE.md` |
+| Cursor | `<ws>/.cursor/skills` **+ `<ws>/.agents/skills`** | `<ws>/.cursor/agents` **+ `<ws>/.agents/agents`** (`*.md`) | `<ws>/.cursor/rules` | `<ws>/.cursor/hooks.json` | `<ws>/AGENTS.md` |
+| Kiro | `<ws>/.kiro/skills` | `<ws>/.kiro/agents` (`*.md`) | `<ws>/.kiro/steering` | `<ws>/.kiro/hooks/*.json` | — |
 
 Verified against the 2026 tool docs:
 

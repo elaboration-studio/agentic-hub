@@ -71,6 +71,7 @@ function toolSettings(enabled: boolean): ToolSettings {
     instructionsPath: null,
     hooksEnabled: false,
     hooksFile: null,
+    hooksDir: null,
     commandsPath: enabled ? "/commands" : null,
   };
 }
@@ -96,6 +97,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
       cursor: toolSettings(overrides.cursor ?? true),
       openclaw: toolSettings(overrides.openclaw ?? false),
       openstandard: toolSettings(overrides.openstandard ?? false),
+      kiro: toolSettings(overrides.kiro ?? false),
     },
   };
 }

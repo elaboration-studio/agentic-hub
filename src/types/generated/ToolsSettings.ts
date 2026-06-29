@@ -6,4 +6,8 @@ export type ToolsSettings = { codex: ToolSettings, claude: ToolSettings, cursor:
  * Injected for configs written before this tool existed, so legacy files
  * load instead of failing with a missing-field parse error.
  */
-openstandard: ToolSettings, };
+openstandard: ToolSettings, 
+/**
+ * Injected for configs written before this tool existed.
+ */
+kiro: ToolSettings, };

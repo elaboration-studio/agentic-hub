@@ -407,11 +407,13 @@ mod tests {
         write(&root.path().join("skills/a/SKILL.md"), "# a");
         let mut settings = Settings::sandboxed(root.path(), tools.path());
         settings.tools.openclaw.enabled = false;
+        settings.tools.kiro.enabled = false;
 
         let scanned = api::scan(&settings);
         let known: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
         let outcomes = reconcile_all(&scanned.items, &settings, &known);
         assert!(!outcomes.iter().any(|o| o.tool == ToolId::Openclaw));
+        assert!(!outcomes.iter().any(|o| o.tool == ToolId::Kiro));
         assert_eq!(outcomes.len(), 4, "codex + claude + cursor + openstandard");
     }
 }

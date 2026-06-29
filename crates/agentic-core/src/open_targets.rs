@@ -28,6 +28,7 @@ pub fn is_openable(candidate: &Path, settings: &Settings, workspace_dirs: &[Path
         &settings.tools.cursor,
         &settings.tools.openclaw,
         &settings.tools.openstandard,
+        &settings.tools.kiro,
     ] {
         collect_tool_targets(tool, &mut dir_roots, &mut exact_files);
     }
@@ -81,6 +82,9 @@ fn collect_tool_targets(tool: &ToolSettings, dirs: &mut Vec<PathBuf>, files: &mu
     }
     if let Some(p) = &tool.hooks_file {
         files.push(p.clone());
+    }
+    if let Some(p) = &tool.hooks_dir {
+        dirs.push(p.clone());
     }
 }
 

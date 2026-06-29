@@ -27,6 +27,8 @@ pub enum ProjectionMode {
     CodexAgentToml,
     MarkdownSectionSync,
     JsonSection,
+    /// One Kiro v1 hook JSON file per hook id under `hooks_dir`.
+    KiroHookFile,
 }
 
 /// A tool's resolved, canonical-path adapter for global scope.
@@ -40,6 +42,8 @@ pub struct ResolvedAdapter {
     pub instructions_path: Option<PathBuf>,
     pub hooks_enabled: bool,
     pub hooks_file: Option<PathBuf>,
+    /// Per-hook JSON directory (Kiro). `None` when hooks use `hooks_file`.
+    pub hooks_dir: Option<PathBuf>,
     /// Slash-command directory. `None` when the tool has no command concept
     /// (OpenClaw).
     pub commands_path: Option<PathBuf>,
@@ -52,6 +56,7 @@ fn tool_settings(settings: &Settings, tool: ToolId) -> &ToolSettings {
         ToolId::Cursor => &settings.tools.cursor,
         ToolId::Openclaw => &settings.tools.openclaw,
         ToolId::Openstandard => &settings.tools.openstandard,
+        ToolId::Kiro => &settings.tools.kiro,
     }
 }
 
@@ -67,6 +72,7 @@ pub fn resolve(settings: &Settings, tool: ToolId) -> ResolvedAdapter {
         instructions_path: ts.instructions_path.clone(),
         hooks_enabled: ts.hooks_enabled,
         hooks_file: ts.hooks_file.clone(),
+        hooks_dir: ts.hooks_dir.clone(),
         // Fall back to the per-tool default so configs written before
         // `commands_path` existed still project commands (OpenClaw stays None).
         commands_path: ts
@@ -82,7 +88,8 @@ pub fn resolve_all(settings: &Settings) -> Vec<ResolvedAdapter> {
 }
 
 /// Tools supported in workspace scope. OpenClaw and OpenStandard are global-only.
-pub const WORKSPACE_TOOL_IDS: [ToolId; 3] = [ToolId::Codex, ToolId::Claude, ToolId::Cursor];
+pub const WORKSPACE_TOOL_IDS: [ToolId; 4] =
+    [ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro];
 
 /// Materialize a workspace-scoped adapter rooted at `ws`. Paths are hard-coded
 /// per tool (v1). OpenClaw and OpenStandard are unsupported and return a
@@ -103,6 +110,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: Some(j("AGENTS.md")),
             hooks_enabled: true,
             hooks_file: Some(j(".codex/hooks.json")),
+            hooks_dir: None,
             commands_path: Some(j(".codex/prompts")),
         },
         ToolId::Claude => ResolvedAdapter {
@@ -114,6 +122,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: Some(j("CLAUDE.md")),
             hooks_enabled: true,
             hooks_file: Some(j(".claude/settings.json")),
+            hooks_dir: None,
             commands_path: Some(j(".claude/commands")),
         },
         ToolId::Cursor => ResolvedAdapter {
@@ -128,7 +137,20 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: Some(j("AGENTS.md")),
             hooks_enabled: true,
             hooks_file: Some(j(".cursor/hooks.json")),
+            hooks_dir: None,
             commands_path: Some(j(".cursor/commands")),
+        },
+        ToolId::Kiro => ResolvedAdapter {
+            tool_id: tool,
+            enabled: true,
+            skills_path: j(".kiro/skills"),
+            agents_path: j(".kiro/agents"),
+            rules_path: j(".kiro/steering"),
+            instructions_path: None,
+            hooks_enabled: true,
+            hooks_file: None,
+            hooks_dir: Some(j(".kiro/hooks")),
+            commands_path: None,
         },
         ToolId::Openclaw => ResolvedAdapter {
             tool_id: tool,
@@ -139,6 +161,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: None,
             hooks_enabled: false,
             hooks_file: None,
+            hooks_dir: None,
             commands_path: None,
         },
         ToolId::Openstandard => ResolvedAdapter {
@@ -150,6 +173,7 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             instructions_path: None,
             hooks_enabled: false,
             hooks_file: None,
+            hooks_dir: None,
             commands_path: None,
         },
     }
@@ -176,7 +200,7 @@ impl ResolvedAdapter {
         use CapabilityKind::{Agent, Skill};
         match (self.tool_id, kind) {
             (ToolId::Claude, Skill) => Layout::Flat,
-            (ToolId::Cursor | ToolId::Codex, Agent) => Layout::Flat,
+            (ToolId::Cursor | ToolId::Codex | ToolId::Kiro, Agent) => Layout::Flat,
             _ => Layout::Nested,
         }
     }
@@ -186,10 +210,12 @@ impl ResolvedAdapter {
     pub fn projection_mode_for(&self, kind: CapabilityKind) -> Option<ProjectionMode> {
         use CapabilityKind::{Agent, Command, Hook, Rule, Skill};
         use ProjectionMode::{
-            CodexAgentToml, FileSync, JsonSection, LinkSync, MarkdownSectionSync,
+            CodexAgentToml, FileSync, JsonSection, KiroHookFile, LinkSync, MarkdownSectionSync,
         };
         match (self.tool_id, kind) {
             (ToolId::Openclaw, Hook | Command) => None,
+            (ToolId::Kiro, Hook) => Some(KiroHookFile),
+            (ToolId::Kiro, Command) => None,
             (_, Hook) => Some(JsonSection),
             (ToolId::Cursor, Agent) => Some(FileSync),
             // Codex loads only `*.toml` subagents (name/description/
@@ -201,7 +227,7 @@ impl ResolvedAdapter {
             (ToolId::Claude, Skill | Command) => Some(FileSync),
             (_, Command) => Some(LinkSync),
             (_, Skill | Agent) => Some(LinkSync),
-            (ToolId::Cursor, Rule) => Some(LinkSync),
+            (ToolId::Cursor | ToolId::Kiro, Rule) => Some(LinkSync),
             (_, Rule) => Some(MarkdownSectionSync),
         }
     }
@@ -485,6 +511,63 @@ mod tests {
             target.ends_with("agents/team/reviewer.md"),
             "claude preserves agent nesting: {target:?}"
         );
+    }
+
+    #[test]
+    fn kiro_projection_modes_and_layout() {
+        let s = Settings::default();
+        let kiro = resolve(&s, ToolId::Kiro);
+        assert!(!kiro.enabled);
+        assert_eq!(
+            kiro.projection_mode_for(CapabilityKind::Skill),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            kiro.projection_mode_for(CapabilityKind::Agent),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            kiro.projection_mode_for(CapabilityKind::Rule),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            kiro.projection_mode_for(CapabilityKind::Hook),
+            Some(ProjectionMode::KiroHookFile)
+        );
+        assert_eq!(kiro.projection_mode_for(CapabilityKind::Command), None);
+        assert_eq!(kiro.layout_for(CapabilityKind::Agent), Layout::Flat);
+        assert!(kiro.skills_path.ends_with(".kiro/skills"));
+        assert!(kiro.rules_path.ends_with(".kiro/steering"));
+        assert!(kiro
+            .hooks_dir
+            .as_ref()
+            .unwrap()
+            .ends_with(".kiro/hooks"));
+        assert!(kiro.hooks_file.is_none());
+
+        let agent = item(CapabilityKind::Agent, "team/reviewer.md");
+        let target = kiro.target_path_for(&agent).unwrap();
+        assert!(
+            target.ends_with(Path::new(".kiro/agents/reviewer.md")),
+            "{target:?}"
+        );
+    }
+
+    #[test]
+    fn workspace_adapter_kiro_paths() {
+        let ws = Path::new("/ws");
+        let kiro = create_workspace_adapter(ToolId::Kiro, ws);
+        assert!(kiro.enabled);
+        assert_eq!(kiro.skills_path, ws.join(".kiro/skills"));
+        assert_eq!(kiro.agents_path, ws.join(".kiro/agents"));
+        assert_eq!(kiro.rules_path, ws.join(".kiro/steering"));
+        assert_eq!(kiro.hooks_dir, Some(ws.join(".kiro/hooks")));
+        assert!(kiro.commands_path.is_none());
+    }
+
+    #[test]
+    fn workspace_tool_ids_includes_kiro() {
+        assert!(WORKSPACE_TOOL_IDS.contains(&ToolId::Kiro));
     }
 
     #[test]

@@ -151,6 +151,10 @@ pub struct ToolSettings {
     pub instructions_path: Option<PathBuf>,
     pub hooks_enabled: bool,
     pub hooks_file: Option<PathBuf>,
+    /// Per-hook JSON directory (Kiro `~/.kiro/hooks/`). `None` for tools that
+    /// use a single `hooks_file` instead.
+    #[serde(default)]
+    pub hooks_dir: Option<PathBuf>,
     /// Directory holding slash-command prompts (`commands`/`prompts`). `None`
     /// when the tool has no command concept (OpenClaw). Injected for configs
     /// written before this field existed, so legacy files load without failing.
@@ -174,10 +178,17 @@ pub struct ToolsSettings {
     /// load instead of failing with a missing-field parse error.
     #[serde(default = "default_openstandard")]
     pub openstandard: ToolSettings,
+    /// Injected for configs written before this tool existed.
+    #[serde(default = "default_kiro")]
+    pub kiro: ToolSettings,
 }
 
 fn default_openstandard() -> ToolSettings {
     ToolSettings::defaults_for(ToolId::Openstandard)
+}
+
+fn default_kiro() -> ToolSettings {
+    ToolSettings::defaults_for(ToolId::Kiro)
 }
 
 /// Last-known main window size and position in logical pixels. Restored on
@@ -309,7 +320,7 @@ pub fn default_commands_path(tool: ToolId) -> Option<PathBuf> {
         ToolId::Claude => Some(expand_tilde("~/.claude/commands")),
         ToolId::Cursor => Some(expand_tilde("~/.cursor/commands")),
         ToolId::Openstandard => Some(expand_tilde("~/.agents/commands")),
-        ToolId::Openclaw => None,
+        ToolId::Openclaw | ToolId::Kiro => None,
     }
 }
 
@@ -324,6 +335,7 @@ impl ToolSettings {
                 instructions_path: Some(expand_tilde("~/.codex/AGENTS.md")),
                 hooks_enabled: true,
                 hooks_file: Some(expand_tilde("~/.codex/hooks.json")),
+                hooks_dir: None,
                 commands_path: default_commands_path(ToolId::Codex),
             },
             ToolId::Claude => ToolSettings {
@@ -334,6 +346,7 @@ impl ToolSettings {
                 instructions_path: Some(expand_tilde("~/.claude/CLAUDE.md")),
                 hooks_enabled: true,
                 hooks_file: Some(expand_tilde("~/.claude/settings.json")),
+                hooks_dir: None,
                 commands_path: default_commands_path(ToolId::Claude),
             },
             ToolId::Cursor => ToolSettings {
@@ -344,6 +357,7 @@ impl ToolSettings {
                 instructions_path: None,
                 hooks_enabled: true,
                 hooks_file: Some(expand_tilde("~/.cursor/hooks.json")),
+                hooks_dir: None,
                 commands_path: default_commands_path(ToolId::Cursor),
             },
             ToolId::Openclaw => ToolSettings {
@@ -355,6 +369,7 @@ impl ToolSettings {
                 instructions_path: Some(expand_tilde("~/.openclaw/workspace/SOUL.md")),
                 hooks_enabled: false,
                 hooks_file: None,
+                hooks_dir: None,
                 commands_path: default_commands_path(ToolId::Openclaw),
             },
             ToolId::Openstandard => ToolSettings {
@@ -366,7 +381,19 @@ impl ToolSettings {
                 instructions_path: Some(expand_tilde("~/.agents/AGENTS.md")),
                 hooks_enabled: true,
                 hooks_file: Some(expand_tilde("~/.agents/hooks.json")),
+                hooks_dir: None,
                 commands_path: default_commands_path(ToolId::Openstandard),
+            },
+            ToolId::Kiro => ToolSettings {
+                enabled: false,
+                skills_path: expand_tilde("~/.kiro/skills"),
+                agents_path: expand_tilde("~/.kiro/agents"),
+                rules_path: expand_tilde("~/.kiro/steering"),
+                instructions_path: None,
+                hooks_enabled: true,
+                hooks_file: None,
+                hooks_dir: Some(expand_tilde("~/.kiro/hooks")),
+                commands_path: None,
             },
         }
     }
@@ -380,6 +407,7 @@ impl Default for ToolsSettings {
             cursor: ToolSettings::defaults_for(ToolId::Cursor),
             openclaw: ToolSettings::defaults_for(ToolId::Openclaw),
             openstandard: ToolSettings::defaults_for(ToolId::Openstandard),
+            kiro: ToolSettings::defaults_for(ToolId::Kiro),
         }
     }
 }
@@ -579,7 +607,22 @@ impl Settings {
                 instructions_path: Some(base.join("INSTRUCTIONS.md")),
                 hooks_enabled: true,
                 hooks_file: Some(base.join("hooks.json")),
+                hooks_dir: None,
                 commands_path: Some(base.join("commands")),
+            }
+        };
+        let kiro_tool = || {
+            let base = tools_dir.join("kiro");
+            ToolSettings {
+                enabled: true,
+                skills_path: base.join("skills"),
+                agents_path: base.join("agents"),
+                rules_path: base.join("steering"),
+                instructions_path: None,
+                hooks_enabled: true,
+                hooks_file: None,
+                hooks_dir: Some(base.join("hooks")),
+                commands_path: None,
             }
         };
         Settings {
@@ -602,6 +645,7 @@ impl Settings {
                 cursor: tool("cursor"),
                 openclaw: tool("openclaw"),
                 openstandard: tool("openstandard"),
+                kiro: kiro_tool(),
             },
         }
     }
@@ -717,6 +761,18 @@ mod tests {
         assert!(s.tools.cursor.enabled);
         assert!(!s.tools.openclaw.enabled);
         assert!(s.tools.openstandard.enabled);
+        assert!(!s.tools.kiro.enabled);
+        assert!(s.tools.kiro.skills_path.ends_with(".kiro/skills"));
+        assert!(s.tools.kiro.rules_path.ends_with(".kiro/steering"));
+        assert!(s
+            .tools
+            .kiro
+            .hooks_dir
+            .as_ref()
+            .unwrap()
+            .ends_with(".kiro/hooks"));
+        assert!(s.tools.kiro.commands_path.is_none());
+        assert!(s.tools.kiro.instructions_path.is_none());
         // Codex is self-contained under `.codex`; the open-standard `.agents`
         // root is owned by the OpenStandard tool.
         assert!(s.tools.codex.skills_path.ends_with(".codex/skills"));
@@ -881,6 +937,12 @@ mod tests {
             .openstandard
             .skills_path
             .ends_with(".agents/skills"));
+        assert!(!loaded.tools.kiro.enabled);
+        assert!(loaded
+            .tools
+            .kiro
+            .skills_path
+            .ends_with(".kiro/skills"));
     }
 
     #[test]

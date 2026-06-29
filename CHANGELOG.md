@@ -8,6 +8,12 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Kiro tool adapter.** Project shared skills, agents, steering rules, and hooks
+  into `~/.kiro/` when enabled in Config (off by default). Hooks require
+  `"targets": ["kiro"]`. Workspace inventory scans project `.kiro/` dirs.
+
 ## [0.9.5] — 2026-06-26
 
 ### Added

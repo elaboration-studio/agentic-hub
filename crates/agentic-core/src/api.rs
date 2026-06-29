@@ -77,7 +77,7 @@ pub fn inspect(items: &[CapabilityItem], settings: &Settings) -> InspectResult {
                     unavailable_reason: None,
                 });
                 states.extend(planner::inspect_tool(items, &adapter));
-                states.extend(hook_sync::inspect_hooks(items, &manifests, &adapter));
+                states.extend(inspect_hooks_for_adapter(items, &manifests, &adapter));
             }
         }
     }
@@ -179,7 +179,7 @@ pub fn sync_hooks(
         .filter(|(_, m)| m.effective_targets().contains(&tool))
         .collect();
 
-    match hook_sync::sync_json_hooks(&adapter, &enabled) {
+    match sync_hooks_for_adapter(&adapter, &enabled) {
         Ok((outcome, notes)) => SyncHooksResult {
             outcome,
             notes,
@@ -190,6 +190,39 @@ pub fn sync_hooks(
             notes: vec![],
             errors: vec![e],
         },
+    }
+}
+
+fn sync_hooks_for_adapter(
+    adapter: &ResolvedAdapter,
+    enabled: &[(&CapabilityItem, &hook_sync::HookManifest)],
+) -> Result<(HookSyncOutcome, Vec<String>), crate::model::HookSyncError> {
+    use crate::adapter_registry::ProjectionMode;
+    use crate::model::CapabilityKind;
+
+    match adapter.projection_mode_for(CapabilityKind::Hook) {
+        Some(ProjectionMode::KiroHookFile) => crate::kiro_hook_sync::sync_kiro_hooks(adapter, enabled),
+        Some(ProjectionMode::JsonSection) => hook_sync::sync_json_hooks(adapter, enabled),
+        _ => Ok((HookSyncOutcome::NoOp, vec![])),
+    }
+}
+
+fn inspect_hooks_for_adapter(
+    items: &[CapabilityItem],
+    manifests: &HashMap<String, hook_sync::HookManifest>,
+    adapter: &ResolvedAdapter,
+) -> Vec<ToolCapabilityState> {
+    use crate::adapter_registry::ProjectionMode;
+    use crate::model::CapabilityKind;
+
+    match adapter.projection_mode_for(CapabilityKind::Hook) {
+        Some(ProjectionMode::KiroHookFile) => {
+            crate::kiro_hook_sync::inspect_kiro_hooks(items, manifests, adapter)
+        }
+        Some(ProjectionMode::JsonSection) => {
+            hook_sync::inspect_hooks(items, manifests, adapter)
+        }
+        _ => vec![],
     }
 }
 
@@ -207,7 +240,7 @@ pub fn enabled_item_ids(
         .filter(|s| s.state == LinkState::Enabled)
         .map(|s| s.item_id)
         .collect();
-    for s in hook_sync::inspect_hooks(items, &manifests, &adapter) {
+    for s in inspect_hooks_for_adapter(items, &manifests, &adapter) {
         if s.state == LinkState::Enabled {
             ids.insert(s.item_id);
         }
@@ -1107,12 +1140,13 @@ mod tests {
         write(&dir.path().join("skills/a/SKILL.md"), "# a");
         let mut settings = Settings::sandboxed(dir.path(), tools.path());
         settings.tools.openclaw.enabled = false;
+        settings.tools.kiro.enabled = false;
 
         let scanned = scan(&settings);
         let result = inspect(&scanned.items, &settings);
 
         // One status per tool.
-        assert_eq!(result.adapter_statuses.len(), 5);
+        assert_eq!(result.adapter_statuses.len(), 6);
         let openclaw = result
             .adapter_statuses
             .iter()
@@ -1120,9 +1154,16 @@ mod tests {
             .unwrap();
         assert!(!openclaw.available);
         assert!(openclaw.unavailable_reason.is_some());
+        let kiro = result
+            .adapter_statuses
+            .iter()
+            .find(|s| s.tool == ToolId::Kiro)
+            .unwrap();
+        assert!(!kiro.available);
 
         // Disabled tool produces no states; enabled tools each inspect the skill.
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Openclaw));
+        assert!(!result.states.iter().any(|s| s.tool == ToolId::Kiro));
         assert!(result
             .states
             .iter()

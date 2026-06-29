@@ -37,7 +37,7 @@ pub enum HookCanonicalEvent {
 }
 
 impl HookCanonicalEvent {
-    fn pascal(self) -> &'static str {
+    pub(crate) fn pascal(self) -> &'static str {
         use HookCanonicalEvent::*;
         match self {
             PreToolUse => "PreToolUse",

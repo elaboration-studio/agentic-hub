@@ -56,8 +56,8 @@ fn inspect_item(item: &CapabilityItem, adapter: &ResolvedAdapter) -> Option<Tool
             let (state, current) = inspect_symlink(item, &target);
             (target, state, current)
         }
-        // Hooks are filtered out above; no other kind resolves to JsonSection.
-        ProjectionMode::JsonSection => return None,
+        // Hooks are filtered out above; handled by hook_sync / kiro_hook_sync.
+        ProjectionMode::JsonSection | ProjectionMode::KiroHookFile => return None,
     };
 
     Some(ToolCapabilityState {

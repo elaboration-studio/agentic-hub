@@ -166,6 +166,8 @@ fn skills_agent_id(tool: ToolId) -> &'static str {
         // OpenStandard is global-only; skills.sh install is workspace-only, so
         // this arm is effectively unreachable. It maps to its raw id.
         ToolId::Openstandard => "openstandard",
+        // Kiro has no skills.sh agent mapping; workspace install targets other tools.
+        ToolId::Kiro => "kiro",
     }
 }
 

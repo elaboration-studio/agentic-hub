@@ -12,6 +12,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::adapter_registry::create_workspace_adapter;
+use crate::adapter_registry::ResolvedAdapter;
 use crate::model::{
     CapabilityItem, CapabilityKind, LinkState, ScanError, SourceRef, ToolCapabilityState, ToolId,
 };
@@ -125,8 +126,8 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
             );
         }
         // Codex/Claude rules live in their managed instruction block, not a
-        // rules dir; only Cursor keeps per-file rules under `.cursor/rules`.
-        if tool == ToolId::Cursor {
+        // rules dir; Cursor and Kiro keep per-file rules under their rules path.
+        if tool == ToolId::Cursor || tool == ToolId::Kiro {
             collect_files(
                 &adapter.rules_path,
                 CapabilityKind::Rule,
@@ -134,6 +135,9 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
                 &mut found,
                 &mut errors,
             );
+        }
+        if tool == ToolId::Kiro {
+            collect_kiro_hooks(&adapter, &mut found, &mut errors);
         }
         // Slash-command prompts: nested `.md` under the tool's commands dir
         // (`.cursor/commands`, `.claude/commands`, `.codex/prompts`). Read-only.
@@ -232,6 +236,61 @@ fn workspace_source_ref(ws: &Path) -> SourceRef {
     SourceRef {
         rel_home: tildify(ws),
         folder,
+    }
+}
+
+/// Inventory Kiro hook JSON files under `.kiro/hooks/*.json`.
+fn collect_kiro_hooks(adapter: &ResolvedAdapter, out: &mut Vec<Found>, errors: &mut Vec<ScanError>) {
+    let Some(dir) = adapter.hooks_dir.as_ref() else {
+        return;
+    };
+    if !dir.is_dir() {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            errors.push(ScanError {
+                path: dir.to_path_buf(),
+                message: e.to_string(),
+            });
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let name = fs::read_to_string(&path)
+            .ok()
+            .and_then(|content| {
+                serde_json::from_str::<serde_json::Value>(&content).ok()
+            })
+            .and_then(|v| {
+                v.get("hooks")
+                    .and_then(|h| h.as_array())
+                    .and_then(|a| a.first())
+                    .and_then(|e| e.get("name"))
+                    .and_then(|n| n.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| stem.clone());
+        let rel = path.strip_prefix(dir).unwrap_or(&path).to_path_buf();
+        out.push(Found {
+            kind: CapabilityKind::Hook,
+            id: format!("{}:{}", CapabilityKind::Hook.id_prefix(), rel_unix(&rel)),
+            name,
+            relative_path: rel,
+            path,
+        });
     }
 }
 
@@ -377,7 +436,8 @@ mod tests {
         fs::write(path, contents).unwrap();
     }
 
-    const WS_TOOLS: [ToolId; 3] = [ToolId::Codex, ToolId::Claude, ToolId::Cursor];
+    const WS_TOOLS: [ToolId; 4] =
+        [ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro];
 
     #[test]
     fn discovers_resources_per_tool() {
@@ -444,6 +504,28 @@ mod tests {
         assert!(tools.contains(&ToolId::Cursor));
         assert!(tools.contains(&ToolId::Claude));
         assert_eq!(tools.len(), 2);
+    }
+
+    #[test]
+    fn discovers_kiro_steering_agents_and_hooks() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(&ws.join(".kiro/steering/api-standards.md"), "# api");
+        write(
+            &ws.join(".kiro/agents/reviewer.md"),
+            "---\nname: reviewer\n---\n# review",
+        );
+        write(
+            &ws.join(".kiro/hooks/fmt.json"),
+            r#"{"version":"v1","hooks":[{"name":"fmt","trigger":"Stop"}]}"#,
+        );
+
+        let inv = scan_workspace(ws, &[ToolId::Kiro]);
+        let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"rule:api-standards.md"));
+        assert!(ids.contains(&"agent:reviewer.md"));
+        assert!(ids.contains(&"hook:fmt.json"));
+        assert!(inv.states.iter().all(|s| s.tool == ToolId::Kiro));
     }
 
     #[test]
