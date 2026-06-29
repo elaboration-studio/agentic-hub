@@ -5,8 +5,8 @@
  */
 export type ToolSettings = { enabled: boolean, skillsPath: string, agentsPath: string, rulesPath: string, instructionsPath: string | null, hooksEnabled: boolean, hooksFile: string | null, 
 /**
- * Per-hook JSON directory (Kiro `~/.kiro/hooks/`). `None` for tools that
- * use a single `hooks_file` instead.
+ * Per-hook JSON directory (Kiro/Copilot). `None` for tools that use a
+ * single `hooks_file` instead.
  */
 hooksDir: string | null, 
 /**

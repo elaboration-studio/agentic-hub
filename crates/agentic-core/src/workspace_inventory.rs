@@ -105,28 +105,33 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
             skill_dirs.push(ws.join(".agents/skills"));
             agent_dirs.push(ws.join(".agents/agents"));
         }
+        if tool == ToolId::Copilot {
+            skill_dirs.push(ws.join(".agents/skills"));
+        }
+        if tool == ToolId::Antigravity {
+            skill_dirs.push(ws.join(".agent/skills"));
+        }
         for dir in &skill_dirs {
             collect_skills(dir, &mut found, &mut errors);
         }
-        // Codex subagents are TOML files under `.codex/agents`; Claude and
-        // Cursor agents are markdown. Source: the per-tool agent dir resolves
-        // via the adapter; only the file extension differs by format.
         let agent_exts: &[&str] = if tool == ToolId::Codex {
             &["toml"]
         } else {
             &["md"]
         };
         for dir in &agent_dirs {
-            collect_files(
-                dir,
-                CapabilityKind::Agent,
-                agent_exts,
-                &mut found,
-                &mut errors,
-            );
+            if tool == ToolId::Copilot {
+                collect_copilot_agents(dir, &mut found, &mut errors);
+            } else {
+                collect_files(
+                    dir,
+                    CapabilityKind::Agent,
+                    agent_exts,
+                    &mut found,
+                    &mut errors,
+                );
+            }
         }
-        // Codex/Claude rules live in their managed instruction block, not a
-        // rules dir; Cursor and Kiro keep per-file rules under their rules path.
         if tool == ToolId::Cursor || tool == ToolId::Kiro {
             collect_files(
                 &adapter.rules_path,
@@ -136,8 +141,31 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
                 &mut errors,
             );
         }
+        if tool == ToolId::Copilot {
+            collect_copilot_rules(&adapter.rules_path, &mut found, &mut errors);
+        }
+        if tool == ToolId::Antigravity {
+            collect_files(
+                &adapter.rules_path,
+                CapabilityKind::Rule,
+                CapabilityKind::Rule.file_extensions(),
+                &mut found,
+                &mut errors,
+            );
+            let legacy_rules = ws.join(".agent/rules");
+            collect_files(
+                &legacy_rules,
+                CapabilityKind::Rule,
+                CapabilityKind::Rule.file_extensions(),
+                &mut found,
+                &mut errors,
+            );
+        }
         if tool == ToolId::Kiro {
             collect_kiro_hooks(&adapter, &mut found, &mut errors);
+        }
+        if tool == ToolId::Copilot {
+            collect_copilot_hooks(&adapter, &mut found, &mut errors);
         }
         // Slash-command prompts: nested `.md` under the tool's commands dir
         // (`.cursor/commands`, `.claude/commands`, `.codex/prompts`). Read-only.
@@ -240,7 +268,11 @@ fn workspace_source_ref(ws: &Path) -> SourceRef {
 }
 
 /// Inventory Kiro hook JSON files under `.kiro/hooks/*.json`.
-fn collect_kiro_hooks(adapter: &ResolvedAdapter, out: &mut Vec<Found>, errors: &mut Vec<ScanError>) {
+fn collect_kiro_hooks(
+    adapter: &ResolvedAdapter,
+    out: &mut Vec<Found>,
+    errors: &mut Vec<ScanError>,
+) {
     let Some(dir) = adapter.hooks_dir.as_ref() else {
         return;
     };
@@ -271,9 +303,7 @@ fn collect_kiro_hooks(adapter: &ResolvedAdapter, out: &mut Vec<Found>, errors: &
             .unwrap_or_default();
         let name = fs::read_to_string(&path)
             .ok()
-            .and_then(|content| {
-                serde_json::from_str::<serde_json::Value>(&content).ok()
-            })
+            .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
             .and_then(|v| {
                 v.get("hooks")
                     .and_then(|h| h.as_array())
@@ -288,6 +318,168 @@ fn collect_kiro_hooks(adapter: &ResolvedAdapter, out: &mut Vec<Found>, errors: &
             kind: CapabilityKind::Hook,
             id: format!("{}:{}", CapabilityKind::Hook.id_prefix(), rel_unix(&rel)),
             name,
+            relative_path: rel,
+            path,
+        });
+    }
+}
+
+/// Copilot custom agents use the `*.agent.md` suffix.
+fn collect_copilot_agents(base: &Path, out: &mut Vec<Found>, errors: &mut Vec<ScanError>) {
+    if !base.is_dir() {
+        return;
+    }
+    walk_copilot_agents(base, base, 0, out, errors);
+}
+
+fn walk_copilot_agents(
+    base: &Path,
+    dir: &Path,
+    depth: usize,
+    out: &mut Vec<Found>,
+    errors: &mut Vec<ScanError>,
+) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            errors.push(ScanError {
+                path: dir.to_path_buf(),
+                message: e.to_string(),
+            });
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if entry.file_name() != std::ffi::OsStr::new(ARCHIVED) {
+                walk_copilot_agents(base, &path, depth + 1, out, errors);
+            }
+        } else if path.is_file() && is_copilot_agent(&path) {
+            let rel = path.strip_prefix(base).unwrap_or(&path).to_path_buf();
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.strip_suffix(".agent.md"))
+                .unwrap_or("")
+                .to_string();
+            out.push(Found {
+                kind: CapabilityKind::Agent,
+                id: format!("{}:{}", CapabilityKind::Agent.id_prefix(), rel_unix(&rel)),
+                name,
+                relative_path: rel,
+                path,
+            });
+        }
+    }
+}
+
+fn is_copilot_agent(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.ends_with(".agent.md"))
+}
+
+fn collect_copilot_rules(base: &Path, out: &mut Vec<Found>, errors: &mut Vec<ScanError>) {
+    if !base.is_dir() {
+        return;
+    }
+    walk_copilot_rules(base, base, 0, out, errors);
+}
+
+fn walk_copilot_rules(
+    base: &Path,
+    dir: &Path,
+    depth: usize,
+    out: &mut Vec<Found>,
+    errors: &mut Vec<ScanError>,
+) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            errors.push(ScanError {
+                path: dir.to_path_buf(),
+                message: e.to_string(),
+            });
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if entry.file_name() != std::ffi::OsStr::new(ARCHIVED) {
+                walk_copilot_rules(base, &path, depth + 1, out, errors);
+            }
+        } else if path.is_file() && is_copilot_instruction(&path) {
+            let rel = path.strip_prefix(base).unwrap_or(&path).to_path_buf();
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.strip_suffix(".instructions.md"))
+                .unwrap_or("")
+                .to_string();
+            out.push(Found {
+                kind: CapabilityKind::Rule,
+                id: format!("{}:{}", CapabilityKind::Rule.id_prefix(), rel_unix(&rel)),
+                name,
+                relative_path: rel,
+                path,
+            });
+        }
+    }
+}
+
+fn is_copilot_instruction(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.ends_with(".instructions.md"))
+}
+
+/// Inventory Copilot hook JSON files under `.github/hooks/*.json`.
+fn collect_copilot_hooks(
+    adapter: &ResolvedAdapter,
+    out: &mut Vec<Found>,
+    errors: &mut Vec<ScanError>,
+) {
+    let Some(dir) = adapter.hooks_dir.as_ref() else {
+        return;
+    };
+    if !dir.is_dir() {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            errors.push(ScanError {
+                path: dir.to_path_buf(),
+                message: e.to_string(),
+            });
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let rel = path.strip_prefix(dir).unwrap_or(&path).to_path_buf();
+        out.push(Found {
+            kind: CapabilityKind::Hook,
+            id: format!("{}:{}", CapabilityKind::Hook.id_prefix(), rel_unix(&rel)),
+            name: stem,
             relative_path: rel,
             path,
         });
@@ -436,8 +628,14 @@ mod tests {
         fs::write(path, contents).unwrap();
     }
 
-    const WS_TOOLS: [ToolId; 4] =
-        [ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro];
+    const WS_TOOLS: [ToolId; 6] = [
+        ToolId::Codex,
+        ToolId::Claude,
+        ToolId::Cursor,
+        ToolId::Kiro,
+        ToolId::Copilot,
+        ToolId::Antigravity,
+    ];
 
     #[test]
     fn discovers_resources_per_tool() {
@@ -526,6 +724,45 @@ mod tests {
         assert!(ids.contains(&"agent:reviewer.md"));
         assert!(ids.contains(&"hook:fmt.json"));
         assert!(inv.states.iter().all(|s| s.tool == ToolId::Kiro));
+    }
+
+    #[test]
+    fn discovers_copilot_agent_md_and_instructions() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(
+            &ws.join(".github/agents/security-auditor.agent.md"),
+            "# security",
+        );
+        write(
+            &ws.join(".github/instructions/team/style.instructions.md"),
+            "# style",
+        );
+        write(
+            &ws.join(".github/hooks/fmt.json"),
+            r#"{"version":1,"hooks":{"stop":[{"type":"command","bash":"echo"}]}}"#,
+        );
+
+        let inv = scan_workspace(ws, &[ToolId::Copilot]);
+        let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"agent:security-auditor.agent.md"));
+        assert!(ids.contains(&"rule:team/style.instructions.md"));
+        assert!(ids.contains(&"hook:fmt.json"));
+    }
+
+    #[test]
+    fn discovers_antigravity_agents_skills_and_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(&ws.join(".agents/skills/dev/tdd/SKILL.md"), "# tdd");
+        write(&ws.join(".agents/rules/typescript.md"), "# ts");
+        write(&ws.join("AGENTS.md"), "# project");
+
+        let inv = scan_workspace(ws, &[ToolId::Antigravity]);
+        let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"skill:dev/tdd"));
+        assert!(ids.contains(&"rule:typescript.md"));
+        assert!(ids.contains(&"rule:AGENTS.md"));
     }
 
     #[test]

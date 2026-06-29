@@ -10,4 +10,4 @@ openstandard: ToolSettings,
 /**
  * Injected for configs written before this tool existed.
  */
-kiro: ToolSettings, };
+kiro: ToolSettings, copilot: ToolSettings, antigravity: ToolSettings, };

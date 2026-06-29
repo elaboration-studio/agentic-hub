@@ -1,5 +1,5 @@
-//! Kiro hook projection — one v1 JSON file per hook id under `~/.kiro/hooks/`.
-//! See `docs/tech/modules/kiro-tool-adapter.md`.
+//! Copilot hook projection — one v1 JSON file per hook id under `~/.copilot/hooks/`.
+//! Uses the Copilot CLI hook schema (`version: 1`, camelCase event keys).
 
 use std::collections::HashMap;
 use std::fs;
@@ -14,20 +14,8 @@ use crate::model::{
     ToolId,
 };
 
-fn kiro_trigger(event: HookCanonicalEvent) -> Option<&'static str> {
-    use HookCanonicalEvent::{
-        Notification, PermissionRequest, PostCompact, PostToolUse, PostToolUseFailure, PreCompact,
-        PreToolUse, SessionEnd, SessionStart, Stop, UserPromptSubmit,
-    };
-    match event {
-        PreToolUse => Some("PreToolUse"),
-        PostToolUse => Some("PostToolUse"),
-        UserPromptSubmit => Some("UserPromptSubmit"),
-        Stop => Some("Stop"),
-        SessionStart => Some("SessionStart"),
-        PostToolUseFailure | SessionEnd | PreCompact | PostCompact | Notification
-        | PermissionRequest => None,
-    }
+fn copilot_event_key(event: HookCanonicalEvent) -> Option<&'static str> {
+    event.cursor_key()
 }
 
 fn hook_target(adapter: &ResolvedAdapter, hook_id: &str) -> Option<PathBuf> {
@@ -43,54 +31,45 @@ fn marker(id: &str, hash: &str) -> Value {
 }
 
 fn build_entry(item: &CapabilityItem, m: &HookManifest, hash: &str, spec: &HookEventSpec) -> Value {
+    let cmd = hook_sync::expand_hook_dir(&m.command, &item.source_path);
     let mut entry = Map::new();
-    entry.insert(
-        "name".to_string(),
-        Value::String(m.name.clone().unwrap_or_else(|| m.id.clone())),
-    );
-    entry.insert(
-        "trigger".to_string(),
-        Value::String(
-            kiro_trigger(spec.name)
-                .expect("filtered upstream")
-                .to_string(),
-        ),
-    );
+    entry.insert("type".to_string(), json!("command"));
+    entry.insert("bash".to_string(), Value::String(cmd.clone()));
+    entry.insert("command".to_string(), Value::String(cmd));
     if let Some(matcher) = &spec.matcher {
         entry.insert("matcher".to_string(), Value::String(matcher.clone()));
     }
-    entry.insert(
-        "action".to_string(),
-        json!({
-            "type": "command",
-            "command": hook_sync::expand_hook_dir(&m.command, &item.source_path),
-        }),
-    );
     if let Some(t) = m.timeout {
-        entry.insert("timeout".to_string(), json!(t));
+        entry.insert("timeoutSec".to_string(), json!(t));
     }
-    entry.insert("enabled".to_string(), json!(true));
     entry.insert("_agenticHub".to_string(), marker(&m.id, hash));
     Value::Object(entry)
 }
 
-fn build_hooks_array(
+fn build_hooks_object(
     item: &CapabilityItem,
     m: &HookManifest,
     hash: &str,
     notes: &mut Vec<String>,
-) -> Vec<Value> {
-    let mut out = Vec::new();
+) -> Map<String, Value> {
+    let mut hooks = Map::new();
     for spec in &m.events {
-        match kiro_trigger(spec.name) {
-            Some(_) => out.push(build_entry(item, m, hash, spec)),
+        match copilot_event_key(spec.name) {
+            Some(key) => {
+                hooks
+                    .entry(key.to_string())
+                    .or_insert_with(|| Value::Array(Vec::new()))
+                    .as_array_mut()
+                    .expect("event bucket is an array")
+                    .push(build_entry(item, m, hash, spec));
+            }
             None => notes.push(format!(
-                "{} is not supported by Kiro; entry skipped.",
+                "{} is not supported by Copilot; entry skipped.",
                 spec.name.pascal()
             )),
         }
     }
-    out
+    hooks
 }
 
 enum FileRead {
@@ -98,10 +77,10 @@ enum FileRead {
     Foreign,
     Broken,
     ForeignContent,
-    Ok(Vec<Value>),
+    Ok(Map<String, Value>),
 }
 
-fn read_managed_entries(path: &Path, hook_id: &str) -> FileRead {
+fn read_managed_hooks(path: &Path, hook_id: &str) -> FileRead {
     match fs::symlink_metadata(path) {
         Err(_) => FileRead::Missing,
         Ok(meta) if !meta.is_file() => FileRead::Foreign,
@@ -109,22 +88,41 @@ fn read_managed_entries(path: &Path, hook_id: &str) -> FileRead {
             Err(_) => FileRead::Broken,
             Ok(content) => match serde_json::from_str::<Value>(&content) {
                 Ok(Value::Object(root)) => {
-                    let Some(arr) = root.get("hooks").and_then(Value::as_array) else {
+                    let Some(hooks_val) = root.get("hooks") else {
                         return FileRead::Broken;
                     };
-                    if arr.is_empty() {
-                        return FileRead::Ok(Vec::new());
+                    let hooks_obj = match hooks_val {
+                        Value::Object(map) => map.clone(),
+                        _ => return FileRead::Broken,
+                    };
+                    if hooks_obj.is_empty() {
+                        return FileRead::Ok(Map::new());
                     }
-                    let all_managed = arr.iter().all(|e| {
-                        e.get("_agenticHub")
-                            .and_then(|a| a.get("hookId"))
-                            .and_then(Value::as_str)
-                            == Some(hook_id)
-                    });
-                    if !all_managed {
-                        return FileRead::ForeignContent;
+                    let mut managed = Map::new();
+                    for (event, arr) in hooks_obj {
+                        let Some(items) = arr.as_array() else {
+                            return FileRead::ForeignContent;
+                        };
+                        let ours: Vec<Value> = items
+                            .iter()
+                            .filter(|e| {
+                                e.get("_agenticHub")
+                                    .and_then(|a| a.get("hookId"))
+                                    .and_then(Value::as_str)
+                                    == Some(hook_id)
+                            })
+                            .cloned()
+                            .collect();
+                        if !ours.is_empty() {
+                            if ours.len() != items.len() {
+                                return FileRead::ForeignContent;
+                            }
+                            managed.insert(event, Value::Array(ours));
+                        } else if !items.is_empty() {
+                            return FileRead::ForeignContent;
+                        }
                     }
-                    FileRead::Ok(arr.clone())
+                    FileRead::Ok(managed)
                 }
                 Ok(_) => FileRead::Broken,
                 Err(_) => FileRead::Broken,
@@ -133,28 +131,29 @@ fn read_managed_entries(path: &Path, hook_id: &str) -> FileRead {
     }
 }
 
-fn managed_hash(entries: &[Value], hook_id: &str) -> Option<String> {
-    entries.iter().find_map(|e| {
-        let agentic = e.get("_agenticHub")?;
-        if agentic.get("hookId").and_then(Value::as_str) == Some(hook_id) {
-            agentic
-                .get("sourceHash")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        } else {
-            None
+fn managed_hash(hooks: &Map<String, Value>, hook_id: &str) -> Option<String> {
+    for arr in hooks.values() {
+        for entry in arr.as_array()? {
+            let agentic = entry.get("_agenticHub")?;
+            if agentic.get("hookId").and_then(Value::as_str) == Some(hook_id) {
+                return agentic
+                    .get("sourceHash")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+            }
         }
-    })
+    }
+    None
 }
 
-/// Per-(hook, tool) state for Kiro hook files.
-pub fn inspect_kiro_hooks(
+/// Per-(hook, tool) state for Copilot hook files.
+pub fn inspect_copilot_hooks(
     items: &[CapabilityItem],
     manifests: &HashMap<String, HookManifest>,
     adapter: &ResolvedAdapter,
 ) -> Vec<ToolCapabilityState> {
     let mut out = Vec::new();
-    if adapter.tool_id != ToolId::Kiro || !adapter.hooks_enabled {
+    if adapter.tool_id != ToolId::Copilot || !adapter.hooks_enabled {
         return out;
     }
     if adapter.hooks_dir.is_none() {
@@ -165,19 +164,19 @@ pub fn inspect_kiro_hooks(
         let Some(m) = manifests.get(&item.id) else {
             continue;
         };
-        if !m.effective_targets().contains(&ToolId::Kiro) {
+        if !m.effective_targets().contains(&ToolId::Copilot) {
             continue;
         }
         let Some(target) = hook_target(adapter, &m.id) else {
             continue;
         };
         let hash = hook_sync::source_hash(&item.source_path);
-        let state = match read_managed_entries(&target, &m.id) {
+        let state = match read_managed_hooks(&target, &m.id) {
             FileRead::Missing => LinkState::Disabled,
             FileRead::Foreign | FileRead::ForeignContent => LinkState::ForeignFile,
             FileRead::Broken => LinkState::Broken,
-            FileRead::Ok(entries) if entries.is_empty() => LinkState::Disabled,
-            FileRead::Ok(entries) => match managed_hash(&entries, &m.id) {
+            FileRead::Ok(hooks) if hooks.is_empty() => LinkState::Disabled,
+            FileRead::Ok(hooks) => match managed_hash(&hooks, &m.id) {
                 Some(h) if h == hash => LinkState::Enabled,
                 Some(_) => LinkState::Stale,
                 None => LinkState::Disabled,
@@ -199,7 +198,7 @@ fn atomic_write_json(target: &Path, value: &Value) -> std::io::Result<()> {
         fs::create_dir_all(parent)?;
     }
     let body = format!("{}\n", serde_json::to_string_pretty(value)?);
-    let tmp = target.with_extension("agentic-kiro-hooks.tmp");
+    let tmp = target.with_extension("agentic-copilot-hooks.tmp");
     if fs::write(&tmp, &body).is_ok() && fs::rename(&tmp, target).is_ok() {
         return Ok(());
     }
@@ -222,7 +221,7 @@ fn io_err(path: &Path, e: &std::io::Error) -> HookSyncError {
 fn refuse_unmanaged_target(path: &Path, state: FileRead) -> Result<(), HookSyncError> {
     match state {
         FileRead::Missing => Ok(()),
-        FileRead::Ok(entries) if !entries.is_empty() => Ok(()),
+        FileRead::Ok(hooks) if !hooks.is_empty() => Ok(()),
         FileRead::Foreign | FileRead::ForeignContent | FileRead::Ok(_) => Err(HookSyncError {
             path: path.to_path_buf(),
             code: "conflict_real_file_at_target".to_string(),
@@ -231,18 +230,18 @@ fn refuse_unmanaged_target(path: &Path, state: FileRead) -> Result<(), HookSyncE
         FileRead::Broken => Err(HookSyncError {
             path: path.to_path_buf(),
             code: "hook_target_broken_json".to_string(),
-            message: "Hook config file is not valid Kiro hook JSON; refusing to overwrite"
+            message: "Hook config file is not valid Copilot hook JSON; refusing to overwrite"
                 .to_string(),
         }),
     }
 }
 
-/// Write or remove Kiro hook JSON files for enabled hooks targeting Kiro.
-pub fn sync_kiro_hooks(
+/// Write or remove Copilot hook JSON files for enabled hooks targeting Copilot.
+pub fn sync_copilot_hooks(
     adapter: &ResolvedAdapter,
     enabled: &[(&CapabilityItem, &HookManifest)],
 ) -> Result<(HookSyncOutcome, Vec<String>), HookSyncError> {
-    if adapter.tool_id != ToolId::Kiro {
+    if adapter.tool_id != ToolId::Copilot {
         return Ok((HookSyncOutcome::NoOp, vec![]));
     }
     let hooks_dir = match adapter.hooks_dir.as_ref() {
@@ -254,14 +253,13 @@ pub fn sync_kiro_hooks(
     let mut wrote = false;
     let mut removed = false;
 
-    // Sync each enabled hook to its own file.
     for (item, m) in enabled {
         let target = hooks_dir.join(format!("{}.json", m.id));
-        refuse_unmanaged_target(&target, read_managed_entries(&target, &m.id))?;
+        refuse_unmanaged_target(&target, read_managed_hooks(&target, &m.id))?;
         let hash = hook_sync::source_hash(&item.source_path);
-        let entries = build_hooks_array(item, m, &hash, &mut notes);
-        if entries.is_empty() {
-            match read_managed_entries(&target, &m.id) {
+        let hooks = build_hooks_object(item, m, &hash, &mut notes);
+        if hooks.is_empty() {
+            match read_managed_hooks(&target, &m.id) {
                 FileRead::Ok(existing) if !existing.is_empty() => {
                     fs::remove_file(&target).map_err(|e| io_err(&target, &e))?;
                     removed = true;
@@ -271,7 +269,7 @@ pub fn sync_kiro_hooks(
                         path: target,
                         code: "hook_target_broken_json".to_string(),
                         message:
-                            "Hook config file is not valid Kiro hook JSON; refusing to overwrite"
+                            "Hook config file is not valid Copilot hook JSON; refusing to overwrite"
                                 .to_string(),
                     });
                 }
@@ -282,12 +280,11 @@ pub fn sync_kiro_hooks(
             }
             continue;
         }
-        let doc = json!({ "version": "v1", "hooks": entries });
+        let doc = json!({ "version": 1, "hooks": hooks });
         atomic_write_json(&target, &doc).map_err(|e| io_err(&target, &e))?;
         wrote = true;
     }
 
-    // Remove managed files for hooks no longer enabled (only hub-owned files).
     if hooks_dir.is_dir() {
         let enabled_ids: std::collections::HashSet<&str> =
             enabled.iter().map(|(_, m)| m.id.as_str()).collect();
@@ -301,8 +298,8 @@ pub fn sync_kiro_hooks(
             if enabled_ids.contains(stem) {
                 continue;
             }
-            match read_managed_entries(&path, stem) {
-                FileRead::Ok(entries) if !entries.is_empty() => {
+            match read_managed_hooks(&path, stem) {
+                FileRead::Ok(hooks) if !hooks.is_empty() => {
                     fs::remove_file(&path).map_err(|e| io_err(&path, &e))?;
                     removed = true;
                 }
@@ -342,7 +339,7 @@ mod tests {
             command: "${HOOK_DIR}/run.sh".to_string(),
             timeout: Some(30),
             loop_limit: None,
-            targets: Some(vec![ToolId::Kiro]),
+            targets: Some(vec![ToolId::Copilot]),
         }
     }
 
@@ -371,15 +368,15 @@ mod tests {
         }
     }
 
-    fn kiro_adapter(dir: &Path) -> ResolvedAdapter {
+    fn copilot_adapter(dir: &Path) -> ResolvedAdapter {
         let mut s = Settings::default();
-        s.tools.kiro.enabled = true;
-        s.tools.kiro.hooks_dir = Some(dir.to_path_buf());
-        resolve(&s, ToolId::Kiro)
+        s.tools.copilot.enabled = true;
+        s.tools.copilot.hooks_dir = Some(dir.to_path_buf());
+        resolve(&s, ToolId::Copilot)
     }
 
     #[test]
-    fn writes_v1_json_with_mapped_events() {
+    fn writes_v1_json_with_camel_case_events() {
         let dir = tempfile::tempdir().unwrap();
         let hooks_dir = dir.path().join("hooks");
         let hook_dir = dir.path().join("src/fmt");
@@ -396,22 +393,21 @@ mod tests {
             "fmt",
             vec![ev(HookCanonicalEvent::PostToolUse, Some("Edit"))],
         );
-        let adapter = kiro_adapter(&hooks_dir);
+        let adapter = copilot_adapter(&hooks_dir);
 
-        let (outcome, notes) = sync_kiro_hooks(&adapter, &[(&item, &m)]).unwrap();
+        let (outcome, notes) = sync_copilot_hooks(&adapter, &[(&item, &m)]).unwrap();
         assert_eq!(outcome, HookSyncOutcome::Wrote);
         assert!(notes.is_empty());
 
         let target = hooks_dir.join("fmt.json");
         let content: Value = serde_json::from_str(&fs::read_to_string(&target).unwrap()).unwrap();
-        assert_eq!(content.get("version").and_then(Value::as_str), Some("v1"));
-        let hooks = content.get("hooks").and_then(Value::as_array).unwrap();
-        assert_eq!(hooks.len(), 1);
-        assert_eq!(
-            hooks[0].get("trigger").and_then(Value::as_str),
-            Some("PostToolUse")
-        );
-        assert!(hooks[0].get("_agenticHub").is_some());
+        assert_eq!(content.get("version").and_then(Value::as_i64), Some(1));
+        let hooks = content.get("hooks").and_then(Value::as_object).unwrap();
+        let post = hooks.get("postToolUse").and_then(Value::as_array).unwrap();
+        assert_eq!(post.len(), 1);
+        assert_eq!(post[0].get("type").and_then(Value::as_str), Some("command"));
+        assert!(post[0].get("bash").is_some());
+        assert!(post[0].get("_agenticHub").is_some());
     }
 
     #[test]
@@ -428,9 +424,9 @@ mod tests {
 
         let item = hook_item("n", hook_dir);
         let m = manifest("n", vec![ev(HookCanonicalEvent::Notification, None)]);
-        let adapter = kiro_adapter(&hooks_dir);
+        let adapter = copilot_adapter(&hooks_dir);
 
-        let (outcome, notes) = sync_kiro_hooks(&adapter, &[(&item, &m)]).unwrap();
+        let (outcome, notes) = sync_copilot_hooks(&adapter, &[(&item, &m)]).unwrap();
         assert_eq!(outcome, HookSyncOutcome::NoOp);
         assert!(notes.iter().any(|n| n.contains("Notification")));
     }
@@ -442,13 +438,13 @@ mod tests {
         let item = hook_item("fmt", dir.path().join("src/fmt"));
         let supported = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
         let unsupported = manifest("fmt", vec![ev(HookCanonicalEvent::Notification, None)]);
-        let adapter = kiro_adapter(&hooks_dir);
+        let adapter = copilot_adapter(&hooks_dir);
 
-        sync_kiro_hooks(&adapter, &[(&item, &supported)]).unwrap();
+        sync_copilot_hooks(&adapter, &[(&item, &supported)]).unwrap();
         let target = hooks_dir.join("fmt.json");
         assert!(target.exists());
 
-        let (outcome, _) = sync_kiro_hooks(&adapter, &[(&item, &unsupported)]).unwrap();
+        let (outcome, _) = sync_copilot_hooks(&adapter, &[(&item, &unsupported)]).unwrap();
         assert_eq!(outcome, HookSyncOutcome::Removed);
         assert!(!target.exists());
     }
@@ -468,9 +464,9 @@ mod tests {
 
         let item = hook_item("fmt", hook_dir.clone());
         let m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
-        let adapter = kiro_adapter(&hooks_dir);
+        let adapter = copilot_adapter(&hooks_dir);
 
-        sync_kiro_hooks(&adapter, &[(&item, &m)]).unwrap();
+        sync_copilot_hooks(&adapter, &[(&item, &m)]).unwrap();
         fs::write(
             hook_dir.join("hook.json"),
             r#"{"id":"fmt","events":[{"name":"Stop"}],"command":"echo changed"}"#,
@@ -478,7 +474,7 @@ mod tests {
         .unwrap();
 
         let manifests = HashMap::from([(item.id.clone(), m)]);
-        let states = inspect_kiro_hooks(&[item], &manifests, &adapter);
+        let states = inspect_copilot_hooks(&[item], &manifests, &adapter);
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].state, LinkState::Stale);
     }
@@ -489,14 +485,14 @@ mod tests {
         let hooks_dir = dir.path().join("hooks");
         fs::create_dir_all(&hooks_dir).unwrap();
         let target = hooks_dir.join("fmt.json");
-        let foreign = r#"{"version":"v1","hooks":[{"name":"user-hook","trigger":"Stop"}]}"#;
+        let foreign = r#"{"version":1,"hooks":{"stop":[{"type":"command","bash":"echo user"}]}}"#;
         fs::write(&target, foreign).unwrap();
 
         let item = hook_item("fmt", dir.path().join("src/fmt"));
         let m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
-        let adapter = kiro_adapter(&hooks_dir);
+        let adapter = copilot_adapter(&hooks_dir);
 
-        let err = sync_kiro_hooks(&adapter, &[(&item, &m)]).unwrap_err();
+        let err = sync_copilot_hooks(&adapter, &[(&item, &m)]).unwrap_err();
         assert_eq!(err.code, "conflict_real_file_at_target");
         assert_eq!(fs::read_to_string(target).unwrap(), foreign);
     }
@@ -511,9 +507,9 @@ mod tests {
 
         let item = hook_item("fmt", dir.path().join("src/fmt"));
         let m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
-        let adapter = kiro_adapter(&hooks_dir);
+        let adapter = copilot_adapter(&hooks_dir);
 
-        let err = sync_kiro_hooks(&adapter, &[(&item, &m)]).unwrap_err();
+        let err = sync_copilot_hooks(&adapter, &[(&item, &m)]).unwrap_err();
         assert_eq!(err.code, "hook_target_broken_json");
         assert_eq!(fs::read_to_string(target).unwrap(), "{ broken");
     }
@@ -527,17 +523,17 @@ mod tests {
         let foreign = hooks_dir.join("foreign.json");
         fs::write(
             &managed,
-            r#"{"version":"v1","hooks":[{"_agenticHub":{"hookId":"managed","sourceHash":"x","version":1}}]}"#,
+            r#"{"version":1,"hooks":{"stop":[{"_agenticHub":{"hookId":"managed","sourceHash":"x","version":1}}]}}"#,
         )
         .unwrap();
         fs::write(
             &foreign,
-            r#"{"version":"v1","hooks":[{"name":"user-hook","trigger":"Stop"}]}"#,
+            r#"{"version":1,"hooks":{"stop":[{"type":"command","bash":"echo user"}]}}"#,
         )
         .unwrap();
 
-        let adapter = kiro_adapter(&hooks_dir);
-        let (outcome, _) = sync_kiro_hooks(&adapter, &[]).unwrap();
+        let adapter = copilot_adapter(&hooks_dir);
+        let (outcome, _) = sync_copilot_hooks(&adapter, &[]).unwrap();
 
         assert_eq!(outcome, HookSyncOutcome::Removed);
         assert!(!managed.exists());
@@ -545,7 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn kiro_not_in_default_hook_targets() {
+    fn copilot_not_in_default_hook_targets() {
         let m = HookManifest {
             id: "fmt".to_string(),
             name: None,
@@ -559,6 +555,6 @@ mod tests {
             loop_limit: None,
             targets: None,
         };
-        assert!(!m.effective_targets().contains(&ToolId::Kiro));
+        assert!(!m.effective_targets().contains(&ToolId::Copilot));
     }
 }

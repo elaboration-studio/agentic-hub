@@ -98,6 +98,8 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
       openclaw: toolSettings(overrides.openclaw ?? false),
       openstandard: toolSettings(overrides.openstandard ?? false),
       kiro: toolSettings(overrides.kiro ?? false),
+      copilot: toolSettings(overrides.copilot ?? false),
+      antigravity: toolSettings(overrides.antigravity ?? false),
     },
   };
 }

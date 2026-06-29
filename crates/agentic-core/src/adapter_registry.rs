@@ -2,7 +2,7 @@
 //! decision (layout), the projection mode per `(tool, kind)`, and target-path
 //! resolution. See `docs/tech/reference/tool-adapter-matrix.md`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::model::{CapabilityItem, CapabilityKind, ToolId};
 use crate::settings::{Settings, ToolSettings};
@@ -29,6 +29,8 @@ pub enum ProjectionMode {
     JsonSection,
     /// One Kiro v1 hook JSON file per hook id under `hooks_dir`.
     KiroHookFile,
+    /// One Copilot v1 hook JSON file per hook id under `hooks_dir`.
+    CopilotHookFile,
 }
 
 /// A tool's resolved, canonical-path adapter for global scope.
@@ -42,7 +44,8 @@ pub struct ResolvedAdapter {
     pub instructions_path: Option<PathBuf>,
     pub hooks_enabled: bool,
     pub hooks_file: Option<PathBuf>,
-    /// Per-hook JSON directory (Kiro). `None` when hooks use `hooks_file`.
+    /// Per-hook JSON directory (Kiro and Copilot). `None` when hooks use
+    /// `hooks_file`.
     pub hooks_dir: Option<PathBuf>,
     /// Slash-command directory. `None` when the tool has no command concept
     /// (OpenClaw).
@@ -57,6 +60,8 @@ fn tool_settings(settings: &Settings, tool: ToolId) -> &ToolSettings {
         ToolId::Openclaw => &settings.tools.openclaw,
         ToolId::Openstandard => &settings.tools.openstandard,
         ToolId::Kiro => &settings.tools.kiro,
+        ToolId::Copilot => &settings.tools.copilot,
+        ToolId::Antigravity => &settings.tools.antigravity,
     }
 }
 
@@ -72,7 +77,12 @@ pub fn resolve(settings: &Settings, tool: ToolId) -> ResolvedAdapter {
         instructions_path: ts.instructions_path.clone(),
         hooks_enabled: ts.hooks_enabled,
         hooks_file: ts.hooks_file.clone(),
-        hooks_dir: ts.hooks_dir.clone(),
+        // Fall back for configs persisted before per-file hook adapters added
+        // `hooksDir`. `hooksEnabled` remains the explicit off switch.
+        hooks_dir: ts
+            .hooks_dir
+            .clone()
+            .or_else(|| crate::settings::default_hooks_dir(tool)),
         // Fall back to the per-tool default so configs written before
         // `commands_path` existed still project commands (OpenClaw stays None).
         commands_path: ts
@@ -88,8 +98,14 @@ pub fn resolve_all(settings: &Settings) -> Vec<ResolvedAdapter> {
 }
 
 /// Tools supported in workspace scope. OpenClaw and OpenStandard are global-only.
-pub const WORKSPACE_TOOL_IDS: [ToolId; 4] =
-    [ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro];
+pub const WORKSPACE_TOOL_IDS: [ToolId; 6] = [
+    ToolId::Codex,
+    ToolId::Claude,
+    ToolId::Cursor,
+    ToolId::Kiro,
+    ToolId::Copilot,
+    ToolId::Antigravity,
+];
 
 /// Materialize a workspace-scoped adapter rooted at `ws`. Paths are hard-coded
 /// per tool (v1). OpenClaw and OpenStandard are unsupported and return a
@@ -152,6 +168,30 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             hooks_dir: Some(j(".kiro/hooks")),
             commands_path: None,
         },
+        ToolId::Copilot => ResolvedAdapter {
+            tool_id: tool,
+            enabled: true,
+            skills_path: j(".github/skills"),
+            agents_path: j(".github/agents"),
+            rules_path: j(".github/instructions"),
+            instructions_path: Some(j(".github/copilot-instructions.md")),
+            hooks_enabled: true,
+            hooks_file: None,
+            hooks_dir: Some(j(".github/hooks")),
+            commands_path: Some(j(".github/prompts")),
+        },
+        ToolId::Antigravity => ResolvedAdapter {
+            tool_id: tool,
+            enabled: true,
+            skills_path: j(".agents/skills"),
+            agents_path: j(".agents/agents"),
+            rules_path: j(".agents/rules"),
+            instructions_path: Some(j("AGENTS.md")),
+            hooks_enabled: true,
+            hooks_file: Some(j(".agents/hooks.json")),
+            hooks_dir: None,
+            commands_path: None,
+        },
         ToolId::Openclaw => ResolvedAdapter {
             tool_id: tool,
             enabled: false,
@@ -200,7 +240,9 @@ impl ResolvedAdapter {
         use CapabilityKind::{Agent, Skill};
         match (self.tool_id, kind) {
             (ToolId::Claude, Skill) => Layout::Flat,
-            (ToolId::Cursor | ToolId::Codex | ToolId::Kiro, Agent) => Layout::Flat,
+            (ToolId::Cursor | ToolId::Codex | ToolId::Kiro | ToolId::Copilot, Agent) => {
+                Layout::Flat
+            }
             _ => Layout::Nested,
         }
     }
@@ -210,24 +252,24 @@ impl ResolvedAdapter {
     pub fn projection_mode_for(&self, kind: CapabilityKind) -> Option<ProjectionMode> {
         use CapabilityKind::{Agent, Command, Hook, Rule, Skill};
         use ProjectionMode::{
-            CodexAgentToml, FileSync, JsonSection, KiroHookFile, LinkSync, MarkdownSectionSync,
+            CodexAgentToml, CopilotHookFile, FileSync, JsonSection, KiroHookFile, LinkSync,
+            MarkdownSectionSync,
         };
         match (self.tool_id, kind) {
             (ToolId::Openclaw, Hook | Command) => None,
+            (ToolId::Antigravity, Agent | Command) => None,
             (ToolId::Kiro, Hook) => Some(KiroHookFile),
             (ToolId::Kiro, Command) => None,
+            (ToolId::Copilot, Hook) => Some(CopilotHookFile),
+            (ToolId::Copilot, Command) => None,
             (_, Hook) => Some(JsonSection),
             (ToolId::Cursor, Agent) => Some(FileSync),
-            // Codex loads only `*.toml` subagents (name/description/
-            // developer_instructions); markdown is ignored. Render the source to
-            // a managed TOML copy rather than symlinking the markdown.
             (ToolId::Codex, Agent) => Some(CodexAgentToml),
-            // Claude's skill and command loaders do not follow symlinks, so they
-            // are hard-copied (managed) rather than linked.
             (ToolId::Claude, Skill | Command) => Some(FileSync),
             (_, Command) => Some(LinkSync),
             (_, Skill | Agent) => Some(LinkSync),
-            (ToolId::Cursor | ToolId::Kiro, Rule) => Some(LinkSync),
+            (ToolId::Cursor | ToolId::Kiro | ToolId::Copilot, Rule) => Some(LinkSync),
+            (ToolId::Antigravity, Rule) => Some(MarkdownSectionSync),
             (_, Rule) => Some(MarkdownSectionSync),
         }
     }
@@ -273,7 +315,32 @@ impl ResolvedAdapter {
         if self.projection_mode_for(item.kind) == Some(ProjectionMode::CodexAgentToml) {
             rel.set_extension("toml");
         }
+        if self.tool_id == ToolId::Copilot {
+            rel = copilot_target_rel(item.kind, rel);
+        }
         Some(base.join(rel))
+    }
+}
+
+fn copilot_target_rel(kind: CapabilityKind, rel: PathBuf) -> PathBuf {
+    use CapabilityKind::{Agent, Rule};
+    match kind {
+        Agent => {
+            let stem = rel
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            rel.with_file_name(format!("{stem}.agent.md"))
+        }
+        Rule => {
+            let stem = rel
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let parent = rel.parent().unwrap_or(Path::new(""));
+            parent.join(format!("{stem}.instructions.md"))
+        }
+        _ => rel,
     }
 }
 
@@ -538,11 +605,7 @@ mod tests {
         assert_eq!(kiro.layout_for(CapabilityKind::Agent), Layout::Flat);
         assert!(kiro.skills_path.ends_with(".kiro/skills"));
         assert!(kiro.rules_path.ends_with(".kiro/steering"));
-        assert!(kiro
-            .hooks_dir
-            .as_ref()
-            .unwrap()
-            .ends_with(".kiro/hooks"));
+        assert!(kiro.hooks_dir.as_ref().unwrap().ends_with(".kiro/hooks"));
         assert!(kiro.hooks_file.is_none());
 
         let agent = item(CapabilityKind::Agent, "team/reviewer.md");
@@ -551,6 +614,25 @@ mod tests {
             target.ends_with(Path::new(".kiro/agents/reviewer.md")),
             "{target:?}"
         );
+    }
+
+    #[test]
+    fn resolve_restores_default_hook_dirs_for_legacy_settings() {
+        let mut settings = Settings::default();
+        settings.tools.kiro.hooks_dir = None;
+        settings.tools.copilot.hooks_dir = None;
+
+        let kiro = resolve(&settings, ToolId::Kiro);
+        let copilot = resolve(&settings, ToolId::Copilot);
+
+        assert!(kiro
+            .hooks_dir
+            .as_ref()
+            .is_some_and(|path| path.ends_with(".kiro/hooks")));
+        assert!(copilot
+            .hooks_dir
+            .as_ref()
+            .is_some_and(|path| path.ends_with(".copilot/hooks")));
     }
 
     #[test]
@@ -566,8 +648,81 @@ mod tests {
     }
 
     #[test]
-    fn workspace_tool_ids_includes_kiro() {
+    fn copilot_agent_target_uses_agent_md_suffix() {
+        let s = Settings::default();
+        let copilot = resolve(&s, ToolId::Copilot);
+        assert!(!copilot.enabled);
+        assert_eq!(
+            copilot.projection_mode_for(CapabilityKind::Agent),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            copilot.projection_mode_for(CapabilityKind::Hook),
+            Some(ProjectionMode::CopilotHookFile)
+        );
+        assert_eq!(copilot.projection_mode_for(CapabilityKind::Command), None);
+        assert_eq!(copilot.layout_for(CapabilityKind::Agent), Layout::Flat);
+
+        let agent = item(CapabilityKind::Agent, "security-auditor.md");
+        let target = copilot.target_path_for(&agent).unwrap();
+        assert!(
+            target.ends_with(Path::new(".copilot/agents/security-auditor.agent.md")),
+            "{target:?}"
+        );
+
+        let rule = item(CapabilityKind::Rule, "team/style.md");
+        let rule_target = copilot.target_path_for(&rule).unwrap();
+        assert!(
+            rule_target.ends_with(Path::new("instructions/team/style.instructions.md")),
+            "{rule_target:?}"
+        );
+    }
+
+    #[test]
+    fn antigravity_projection_modes() {
+        let s = Settings::default();
+        let ag = resolve(&s, ToolId::Antigravity);
+        assert!(!ag.enabled);
+        assert_eq!(
+            ag.projection_mode_for(CapabilityKind::Skill),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(ag.projection_mode_for(CapabilityKind::Agent), None);
+        assert_eq!(
+            ag.projection_mode_for(CapabilityKind::Rule),
+            Some(ProjectionMode::MarkdownSectionSync)
+        );
+        assert_eq!(
+            ag.projection_mode_for(CapabilityKind::Hook),
+            Some(ProjectionMode::JsonSection)
+        );
+        assert!(ag.skills_path.ends_with(".gemini/skills"));
+        assert!(ag
+            .hooks_file
+            .as_ref()
+            .unwrap()
+            .ends_with(".gemini/config/hooks.json"));
+    }
+
+    #[test]
+    fn workspace_adapter_copilot_and_antigravity_paths() {
+        let ws = Path::new("/ws");
+        let copilot = create_workspace_adapter(ToolId::Copilot, ws);
+        assert_eq!(copilot.skills_path, ws.join(".github/skills"));
+        assert_eq!(copilot.agents_path, ws.join(".github/agents"));
+        assert_eq!(copilot.hooks_dir, Some(ws.join(".github/hooks")));
+
+        let ag = create_workspace_adapter(ToolId::Antigravity, ws);
+        assert_eq!(ag.skills_path, ws.join(".agents/skills"));
+        assert_eq!(ag.rules_path, ws.join(".agents/rules"));
+        assert_eq!(ag.hooks_file, Some(ws.join(".agents/hooks.json")));
+    }
+
+    #[test]
+    fn workspace_tool_ids_includes_kiro_copilot_antigravity() {
         assert!(WORKSPACE_TOOL_IDS.contains(&ToolId::Kiro));
+        assert!(WORKSPACE_TOOL_IDS.contains(&ToolId::Copilot));
+        assert!(WORKSPACE_TOOL_IDS.contains(&ToolId::Antigravity));
     }
 
     #[test]

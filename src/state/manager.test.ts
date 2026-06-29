@@ -92,6 +92,8 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
       openclaw: toolSettings(overrides.openclaw ?? false),
       openstandard: toolSettings(overrides.openstandard ?? false),
       kiro: toolSettings(overrides.kiro ?? false),
+      copilot: toolSettings(overrides.copilot ?? false),
+      antigravity: toolSettings(overrides.antigravity ?? false),
     },
   };
 }
@@ -234,7 +236,14 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
     expect(s.data?.items).toHaveLength(1);
     // Workspace columns are the three supported tools regardless of global
     // enabled settings (claude is disabled in makeSettings but still shown).
-    expect(s.tools.map((t) => t.id)).toEqual(["codex", "claude", "cursor", "kiro"]);
+    expect(s.tools.map((t) => t.id)).toEqual([
+      "codex",
+      "claude",
+      "cursor",
+      "kiro",
+      "copilot",
+      "antigravity",
+    ]);
     // Local resources are namespaced so they stay distinct from globals.
     expect(s.desired[`cursor::${WS}skill:a`]).toBe(true);
     expect(s.desired[`claude::${WS}skill:a`]).toBe(true);

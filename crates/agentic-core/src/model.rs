@@ -155,7 +155,7 @@ pub struct ScanResult {
     pub errors: Vec<ScanError>,
 }
 
-/// The six supported AI tools.
+/// The eight supported AI tools.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
@@ -172,16 +172,22 @@ pub enum ToolId {
     Openstandard,
     /// Amazon Kiro IDE/CLI (`~/.kiro/`).
     Kiro,
+    /// GitHub Copilot CLI (`~/.copilot/`).
+    Copilot,
+    /// Google Antigravity IDE/CLI (`~/.gemini/` shared layout).
+    Antigravity,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 6] = [
+    pub const ALL: [ToolId; 8] = [
         ToolId::Codex,
         ToolId::Claude,
         ToolId::Cursor,
         ToolId::Openclaw,
         ToolId::Openstandard,
         ToolId::Kiro,
+        ToolId::Copilot,
+        ToolId::Antigravity,
     ];
 
     /// Lowercase id, matching the serde wire representation.
@@ -193,6 +199,8 @@ impl ToolId {
             ToolId::Openclaw => "openclaw",
             ToolId::Openstandard => "openstandard",
             ToolId::Kiro => "kiro",
+            ToolId::Copilot => "copilot",
+            ToolId::Antigravity => "antigravity",
         }
     }
 }

@@ -32,8 +32,8 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::error::IpcError;
-use crate::paste::{self, PasteOutcome};
 use crate::palette;
+use crate::paste::{self, PasteOutcome};
 use crate::watcher::{self, WatcherState};
 
 type IpcResult<T> = Result<T, IpcError>;
@@ -546,11 +546,8 @@ fn resync_bindings(
                     &effective,
                     &manual_refs,
                 );
-                let _ = SuiteBindingStore::new().record(
-                    b.tool_id,
-                    &b.suite_id,
-                    result.manual_item_ids,
-                );
+                let _ =
+                    SuiteBindingStore::new().record(b.tool_id, &b.suite_id, result.manual_item_ids);
             }
         }
     });

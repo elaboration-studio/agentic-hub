@@ -138,6 +138,8 @@ function makeSettings(): Settings {
       openclaw: toolSettings(false),
       openstandard: toolSettings(false),
       kiro: toolSettings(false),
+      copilot: toolSettings(false),
+      antigravity: toolSettings(false),
     },
   };
 }

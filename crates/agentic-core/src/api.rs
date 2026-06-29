@@ -201,7 +201,12 @@ fn sync_hooks_for_adapter(
     use crate::model::CapabilityKind;
 
     match adapter.projection_mode_for(CapabilityKind::Hook) {
-        Some(ProjectionMode::KiroHookFile) => crate::kiro_hook_sync::sync_kiro_hooks(adapter, enabled),
+        Some(ProjectionMode::KiroHookFile) => {
+            crate::kiro_hook_sync::sync_kiro_hooks(adapter, enabled)
+        }
+        Some(ProjectionMode::CopilotHookFile) => {
+            crate::copilot_hook_sync::sync_copilot_hooks(adapter, enabled)
+        }
         Some(ProjectionMode::JsonSection) => hook_sync::sync_json_hooks(adapter, enabled),
         _ => Ok((HookSyncOutcome::NoOp, vec![])),
     }
@@ -219,9 +224,10 @@ fn inspect_hooks_for_adapter(
         Some(ProjectionMode::KiroHookFile) => {
             crate::kiro_hook_sync::inspect_kiro_hooks(items, manifests, adapter)
         }
-        Some(ProjectionMode::JsonSection) => {
-            hook_sync::inspect_hooks(items, manifests, adapter)
+        Some(ProjectionMode::CopilotHookFile) => {
+            crate::copilot_hook_sync::inspect_copilot_hooks(items, manifests, adapter)
         }
+        Some(ProjectionMode::JsonSection) => hook_sync::inspect_hooks(items, manifests, adapter),
         _ => vec![],
     }
 }
@@ -794,6 +800,70 @@ mod tests {
     }
 
     #[test]
+    fn apply_suite_routes_opt_in_tool_skills_and_hooks() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/review/SKILL.md"), "# review");
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{
+                "id": "fmt",
+                "command": "run",
+                "events": [{"name":"Stop"}],
+                "targets": ["kiro", "copilot", "antigravity"]
+            }"#,
+        );
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+        let selected = suite("opt-in", &["skill:review", "hook:fmt"]);
+
+        for tool in [ToolId::Kiro, ToolId::Copilot, ToolId::Antigravity] {
+            apply_suite(&scanned.items, &settings, tool, &selected, &[]);
+            let enabled = enabled_ids(&settings, &scanned.items, tool);
+            assert!(
+                enabled.iter().any(|id| id == "skill:review"),
+                "{tool:?}: {enabled:?}"
+            );
+            assert!(
+                enabled.iter().any(|id| id == "hook:fmt"),
+                "{tool:?}: {enabled:?}"
+            );
+        }
+
+        assert!(settings.tools.kiro.skills_path.join("review").exists());
+        assert!(settings
+            .tools
+            .kiro
+            .hooks_dir
+            .as_ref()
+            .unwrap()
+            .join("fmt.json")
+            .exists());
+        assert!(settings.tools.copilot.skills_path.join("review").exists());
+        assert!(settings
+            .tools
+            .copilot
+            .hooks_dir
+            .as_ref()
+            .unwrap()
+            .join("fmt.json")
+            .exists());
+        assert!(settings
+            .tools
+            .antigravity
+            .skills_path
+            .join("review")
+            .exists());
+        assert!(settings
+            .tools
+            .antigravity
+            .hooks_file
+            .as_ref()
+            .unwrap()
+            .exists());
+    }
+
+    #[test]
     fn apply_empty_suite_disables_everything() {
         let root = tempfile::tempdir().unwrap();
         let tools = tempfile::tempdir().unwrap();
@@ -1141,12 +1211,14 @@ mod tests {
         let mut settings = Settings::sandboxed(dir.path(), tools.path());
         settings.tools.openclaw.enabled = false;
         settings.tools.kiro.enabled = false;
+        settings.tools.copilot.enabled = false;
+        settings.tools.antigravity.enabled = false;
 
         let scanned = scan(&settings);
         let result = inspect(&scanned.items, &settings);
 
         // One status per tool.
-        assert_eq!(result.adapter_statuses.len(), 6);
+        assert_eq!(result.adapter_statuses.len(), 8);
         let openclaw = result
             .adapter_statuses
             .iter()
@@ -1164,6 +1236,8 @@ mod tests {
         // Disabled tool produces no states; enabled tools each inspect the skill.
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Openclaw));
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Kiro));
+        assert!(!result.states.iter().any(|s| s.tool == ToolId::Copilot));
+        assert!(!result.states.iter().any(|s| s.tool == ToolId::Antigravity));
         assert!(result
             .states
             .iter()

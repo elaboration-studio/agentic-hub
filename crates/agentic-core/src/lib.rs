@@ -12,6 +12,7 @@ pub mod api;
 pub mod applier;
 pub mod cli_tools;
 pub mod codex_agent;
+pub mod copilot_hook_sync;
 pub mod error;
 pub mod hook_sync;
 pub mod kiro_hook_sync;

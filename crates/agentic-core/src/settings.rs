@@ -151,8 +151,8 @@ pub struct ToolSettings {
     pub instructions_path: Option<PathBuf>,
     pub hooks_enabled: bool,
     pub hooks_file: Option<PathBuf>,
-    /// Per-hook JSON directory (Kiro `~/.kiro/hooks/`). `None` for tools that
-    /// use a single `hooks_file` instead.
+    /// Per-hook JSON directory (Kiro/Copilot). `None` for tools that use a
+    /// single `hooks_file` instead.
     #[serde(default)]
     pub hooks_dir: Option<PathBuf>,
     /// Directory holding slash-command prompts (`commands`/`prompts`). `None`
@@ -181,6 +181,10 @@ pub struct ToolsSettings {
     /// Injected for configs written before this tool existed.
     #[serde(default = "default_kiro")]
     pub kiro: ToolSettings,
+    #[serde(default = "default_copilot")]
+    pub copilot: ToolSettings,
+    #[serde(default = "default_antigravity")]
+    pub antigravity: ToolSettings,
 }
 
 fn default_openstandard() -> ToolSettings {
@@ -189,6 +193,14 @@ fn default_openstandard() -> ToolSettings {
 
 fn default_kiro() -> ToolSettings {
     ToolSettings::defaults_for(ToolId::Kiro)
+}
+
+fn default_copilot() -> ToolSettings {
+    ToolSettings::defaults_for(ToolId::Copilot)
+}
+
+fn default_antigravity() -> ToolSettings {
+    ToolSettings::defaults_for(ToolId::Antigravity)
 }
 
 /// Last-known main window size and position in logical pixels. Restored on
@@ -320,7 +332,23 @@ pub fn default_commands_path(tool: ToolId) -> Option<PathBuf> {
         ToolId::Claude => Some(expand_tilde("~/.claude/commands")),
         ToolId::Cursor => Some(expand_tilde("~/.cursor/commands")),
         ToolId::Openstandard => Some(expand_tilde("~/.agents/commands")),
-        ToolId::Openclaw | ToolId::Kiro => None,
+        ToolId::Openclaw | ToolId::Kiro | ToolId::Copilot | ToolId::Antigravity => None,
+    }
+}
+
+/// Default per-hook JSON directory for tools that do not use a single hook
+/// config file. Kept separate so adapter resolution can repair legacy configs
+/// where `hooksDir` is absent.
+pub fn default_hooks_dir(tool: ToolId) -> Option<PathBuf> {
+    match tool {
+        ToolId::Kiro => Some(expand_tilde("~/.kiro/hooks")),
+        ToolId::Copilot => Some(expand_tilde("~/.copilot/hooks")),
+        ToolId::Codex
+        | ToolId::Claude
+        | ToolId::Cursor
+        | ToolId::Openclaw
+        | ToolId::Openstandard
+        | ToolId::Antigravity => None,
     }
 }
 
@@ -392,7 +420,29 @@ impl ToolSettings {
                 instructions_path: None,
                 hooks_enabled: true,
                 hooks_file: None,
-                hooks_dir: Some(expand_tilde("~/.kiro/hooks")),
+                hooks_dir: default_hooks_dir(ToolId::Kiro),
+                commands_path: None,
+            },
+            ToolId::Copilot => ToolSettings {
+                enabled: false,
+                skills_path: expand_tilde("~/.copilot/skills"),
+                agents_path: expand_tilde("~/.copilot/agents"),
+                rules_path: expand_tilde("~/.copilot/instructions"),
+                instructions_path: Some(expand_tilde("~/.copilot/copilot-instructions.md")),
+                hooks_enabled: true,
+                hooks_file: None,
+                hooks_dir: default_hooks_dir(ToolId::Copilot),
+                commands_path: None,
+            },
+            ToolId::Antigravity => ToolSettings {
+                enabled: false,
+                skills_path: expand_tilde("~/.gemini/skills"),
+                agents_path: expand_tilde("~/.gemini/antigravity/agents"),
+                rules_path: expand_tilde("~/.gemini/antigravity/rules"),
+                instructions_path: Some(expand_tilde("~/.gemini/AGENTS.md")),
+                hooks_enabled: true,
+                hooks_file: Some(expand_tilde("~/.gemini/config/hooks.json")),
+                hooks_dir: None,
                 commands_path: None,
             },
         }
@@ -408,6 +458,8 @@ impl Default for ToolsSettings {
             openclaw: ToolSettings::defaults_for(ToolId::Openclaw),
             openstandard: ToolSettings::defaults_for(ToolId::Openstandard),
             kiro: ToolSettings::defaults_for(ToolId::Kiro),
+            copilot: ToolSettings::defaults_for(ToolId::Copilot),
+            antigravity: ToolSettings::defaults_for(ToolId::Antigravity),
         }
     }
 }
@@ -625,6 +677,34 @@ impl Settings {
                 commands_path: None,
             }
         };
+        let copilot_tool = || {
+            let base = tools_dir.join("copilot");
+            ToolSettings {
+                enabled: true,
+                skills_path: base.join("skills"),
+                agents_path: base.join("agents"),
+                rules_path: base.join("instructions"),
+                instructions_path: Some(base.join("copilot-instructions.md")),
+                hooks_enabled: true,
+                hooks_file: None,
+                hooks_dir: Some(base.join("hooks")),
+                commands_path: None,
+            }
+        };
+        let antigravity_tool = || {
+            let base = tools_dir.join("antigravity");
+            ToolSettings {
+                enabled: true,
+                skills_path: base.join("skills"),
+                agents_path: base.join("agents"),
+                rules_path: base.join("rules"),
+                instructions_path: Some(base.join("AGENTS.md")),
+                hooks_enabled: true,
+                hooks_file: Some(base.join("hooks.json")),
+                hooks_dir: None,
+                commands_path: None,
+            }
+        };
         Settings {
             sources: Vec::new(),
             shared_root: shared_root.into(),
@@ -646,6 +726,8 @@ impl Settings {
                 openclaw: tool("openclaw"),
                 openstandard: tool("openstandard"),
                 kiro: kiro_tool(),
+                copilot: copilot_tool(),
+                antigravity: antigravity_tool(),
             },
         }
     }
@@ -773,6 +855,38 @@ mod tests {
             .ends_with(".kiro/hooks"));
         assert!(s.tools.kiro.commands_path.is_none());
         assert!(s.tools.kiro.instructions_path.is_none());
+        assert!(!s.tools.copilot.enabled);
+        assert!(s.tools.copilot.skills_path.ends_with(".copilot/skills"));
+        assert!(s
+            .tools
+            .copilot
+            .hooks_dir
+            .as_ref()
+            .unwrap()
+            .ends_with(".copilot/hooks"));
+        assert!(s
+            .tools
+            .copilot
+            .instructions_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".copilot/copilot-instructions.md"));
+        assert!(!s.tools.antigravity.enabled);
+        assert!(s.tools.antigravity.skills_path.ends_with(".gemini/skills"));
+        assert!(s
+            .tools
+            .antigravity
+            .hooks_file
+            .as_ref()
+            .unwrap()
+            .ends_with(".gemini/config/hooks.json"));
+        assert!(s
+            .tools
+            .antigravity
+            .instructions_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".gemini/AGENTS.md"));
         // Codex is self-contained under `.codex`; the open-standard `.agents`
         // root is owned by the OpenStandard tool.
         assert!(s.tools.codex.skills_path.ends_with(".codex/skills"));
@@ -938,11 +1052,19 @@ mod tests {
             .skills_path
             .ends_with(".agents/skills"));
         assert!(!loaded.tools.kiro.enabled);
+        assert!(loaded.tools.kiro.skills_path.ends_with(".kiro/skills"));
+        assert!(!loaded.tools.copilot.enabled);
         assert!(loaded
             .tools
-            .kiro
+            .copilot
             .skills_path
-            .ends_with(".kiro/skills"));
+            .ends_with(".copilot/skills"));
+        assert!(!loaded.tools.antigravity.enabled);
+        assert!(loaded
+            .tools
+            .antigravity
+            .skills_path
+            .ends_with(".gemini/skills"));
     }
 
     #[test]
@@ -972,10 +1094,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
         let mut value = serde_json::to_value(Settings::default()).unwrap();
-        value
-            .as_object_mut()
-            .unwrap()
-            .remove("pasteIntoFocused");
+        value.as_object_mut().unwrap().remove("pasteIntoFocused");
         fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
         let loaded = Settings::load_from(&path).unwrap();
         assert!(!loaded.paste_into_focused, "absent field defaults to off");

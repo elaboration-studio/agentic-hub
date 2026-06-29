@@ -168,6 +168,8 @@ fn skills_agent_id(tool: ToolId) -> &'static str {
         ToolId::Openstandard => "openstandard",
         // Kiro has no skills.sh agent mapping; workspace install targets other tools.
         ToolId::Kiro => "kiro",
+        ToolId::Copilot => "copilot",
+        ToolId::Antigravity => "antigravity",
     }
 }
 

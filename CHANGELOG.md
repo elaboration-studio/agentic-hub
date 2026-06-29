@@ -13,6 +13,14 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 - **Kiro tool adapter.** Project shared skills, agents, steering rules, and hooks
   into `~/.kiro/` when enabled in Config (off by default). Hooks require
   `"targets": ["kiro"]`. Workspace inventory scans project `.kiro/` dirs.
+- **GitHub Copilot tool adapter.** Project skills, custom agents (`.agent.md`),
+  instruction rules (`.instructions.md`), and hooks into `~/.copilot/` when
+  enabled (off by default). Hooks require `"targets": ["copilot"]`. Workspace
+  inventory scans `.github/` Copilot dirs.
+- **Google Antigravity tool adapter.** Project skills, rules (managed block in
+  `~/.gemini/AGENTS.md`), and hooks (`~/.gemini/config/hooks.json`) when enabled
+  (off by default). Agents and commands are unsupported. Hooks require
+  `"targets": ["antigravity"]`. Workspace inventory scans `.agents/` dirs.
 
 ## [0.9.5] — 2026-06-26
 
