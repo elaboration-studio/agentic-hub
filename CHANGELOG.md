@@ -8,6 +8,8 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-06-30
+
 ### Added
 
 - **Kiro tool adapter.** Project shared skills, agents, steering rules, and hooks
