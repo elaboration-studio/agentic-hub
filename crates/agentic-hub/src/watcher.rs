@@ -26,7 +26,9 @@ use crate::commands::SuiteStoreChangedEvent;
 
 /// The per-tool directories and instruction files inside a workspace that the
 /// inventory scan reads; watched (when present) so edits live-refresh the view.
-const WORKSPACE_WATCH_DIRS: [&str; 4] = [".agents", ".claude", ".cursor", ".codex"];
+const WORKSPACE_WATCH_DIRS: [&str; 7] = [
+    ".agents", ".agent", ".claude", ".cursor", ".codex", ".kiro", ".github",
+];
 const WORKSPACE_WATCH_FILES: [&str; 2] = ["AGENTS.md", "CLAUDE.md"];
 
 /// Quiet window after the last change before a reconcile fires. Coalesces the
@@ -281,4 +283,21 @@ fn is_relevant(event: &Event) -> bool {
         !p.components()
             .any(|c| c.as_os_str() == std::ffi::OsStr::new(".git"))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_watch_dirs_cover_all_inventory_roots() {
+        for expected in [
+            ".agents", ".agent", ".claude", ".cursor", ".codex", ".kiro", ".github",
+        ] {
+            assert!(
+                WORKSPACE_WATCH_DIRS.contains(&expected),
+                "missing workspace inventory root: {expected}"
+            );
+        }
+    }
 }

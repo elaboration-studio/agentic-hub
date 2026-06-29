@@ -111,6 +111,7 @@ function toolSettings(enabled: boolean): ToolSettings {
     instructionsPath: null,
     hooksEnabled: false,
     hooksFile: null,
+    hooksDir: null,
     commandsPath: enabled ? "/commands" : null,
   };
 }
@@ -136,6 +137,9 @@ function makeSettings(): Settings {
       cursor: toolSettings(true),
       openclaw: toolSettings(false),
       openstandard: toolSettings(false),
+      kiro: toolSettings(false),
+      copilot: toolSettings(false),
+      antigravity: toolSettings(false),
     },
   };
 }

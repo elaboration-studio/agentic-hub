@@ -12,7 +12,7 @@ Related Docs: [docs/tech/modules/workspace-inventory.md](../tech/modules/workspa
 The global manager answers "what does my machine have?" by reading the shared
 roots and projecting them into each tool's home dir. But a developer opening a
 specific project wants the inverse question: **"what agentic resources does
-*this* project already give Cursor, Claude, and Codex?"** A project carries its
+*this* project already give each supported agentic tool?"** A project carries its
 own `.cursor/skills`, `.claude/skills`, `.agents/skills`, `.cursor/rules`,
 `AGENTS.md`, `CLAUDE.md` — committed to the repo and shared with the team. There
 was no way to audit that from the hub.
@@ -61,16 +61,15 @@ audit**: pick a project, see exactly what each tool has, live-updated.
 
 ## Scope
 
-- Tools: Codex, Claude, Cursor (`WORKSPACE_TOOL_IDS`). OpenClaw is skipped until
-  it has a stable project layout.
-- Resource kinds: skills (`SKILL.md` dirs), agents (`*.md`), Cursor rules
-  (`.cursor/rules/*.mdc|.md`), and each tool's instruction file as a single rule
-  row.
+- Tools: Codex, Claude, Cursor, Kiro, Copilot, and Antigravity
+  (`WORKSPACE_TOOL_IDS`). OpenClaw and OpenStandard are global-only.
+- Resource kinds: tool-specific skills, agents, rule files, and instruction
+  files. Kiro and Copilot per-hook JSON files are also inventoried.
 
 ## Out of scope (follow-ups)
 
 - Parsing the Codex/Claude managed markdown block into individual rule rows.
-- Inventorying installed hooks.
+- Decomposing aggregate hook files for Codex, Claude, Cursor, or Antigravity.
 - Any write-back from the hub into a workspace.
 
 ## User flow

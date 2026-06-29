@@ -35,6 +35,9 @@ User-facing feature designs aligned with each milestone.
 - [source-watcher.md](features/source-watcher.md) — auto-reconcile projections on source-root file changes; Watch toggle
 - [agentic-demo-scaffold.md](features/agentic-demo-scaffold.md) — first-run bootstrap of a starter shared root
 - [open-files.md](features/open-files.md) — per-row actions to open a capability's original file (preferred editor) or the file each tool actually references
+- [kiro-tool-adapter.md](features/kiro-tool-adapter.md) — opt-in Kiro projection and workspace inventory
+- [copilot-tool-adapter.md](features/copilot-tool-adapter.md) — opt-in GitHub Copilot projection and workspace inventory
+- [antigravity-tool-adapter.md](features/antigravity-tool-adapter.md) — opt-in Google Antigravity projection and workspace inventory
 
 ### `tech/modules/` — subsystem deep dives
 
@@ -45,6 +48,9 @@ Detailed technical design for each subsystem of the projection engine and adjace
 - [multi-source-roots.md](tech/modules/multi-source-roots.md) — ordered source forest, first-source-wins dedupe, priority collision resolution
 - [claude-flat-skill-layout.md](tech/modules/claude-flat-skill-layout.md) — Claude's flat layout constraint and basename-collision rules
 - [openclaw-tool-adapter.md](tech/modules/openclaw-tool-adapter.md) — OpenClaw filesystem conventions and SOUL.md managed block
+- [kiro-tool-adapter.md](tech/modules/kiro-tool-adapter.md) — Kiro paths and per-hook JSON projection
+- [copilot-tool-adapter.md](tech/modules/copilot-tool-adapter.md) — Copilot paths, filename transforms, and per-hook JSON projection
+- [antigravity-tool-adapter.md](tech/modules/antigravity-tool-adapter.md) — Antigravity paths and aggregate hook/rule projection
 - [suite-presets.md](tech/modules/suite-presets.md) — suite store, full-reset apply pipeline
 - [suite-bindings.md](tech/modules/suite-bindings.md) — suite↔tool binding store; auto re-sync on capability edits
 - [workspace-inventory.md](tech/modules/workspace-inventory.md) — workspace target store, per-tool scan, read-only inventory contract

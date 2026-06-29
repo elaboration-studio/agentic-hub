@@ -37,7 +37,7 @@ pub enum HookCanonicalEvent {
 }
 
 impl HookCanonicalEvent {
-    fn pascal(self) -> &'static str {
+    pub(crate) fn pascal(self) -> &'static str {
         use HookCanonicalEvent::*;
         match self {
             PreToolUse => "PreToolUse",
@@ -54,8 +54,8 @@ impl HookCanonicalEvent {
         }
     }
 
-    /// Cursor camelCase key, or `None` if Cursor does not support the event.
-    fn cursor_key(self) -> Option<&'static str> {
+    /// Cursor/Copilot camelCase key, or `None` when unsupported.
+    pub(crate) fn cursor_key(self) -> Option<&'static str> {
         use HookCanonicalEvent::*;
         Some(match self {
             PreToolUse => "preToolUse",

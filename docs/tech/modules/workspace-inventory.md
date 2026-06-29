@@ -18,7 +18,9 @@ Specify the read-only workspace inventory: how `agentic-core` walks a project's 
 - `SyncScope = Global | Workspace`. The main window has a header toggle.
 - `Global` keeps the per-tool home-directory projection (symlinks + managed copies).
 - `Workspace` reads a remembered project directory and reports its inventory.
-- Workspace scope covers `Codex`, `Claude`, `Cursor` (`WORKSPACE_TOOL_IDS`); OpenClaw's workspace adapter is disabled.
+- Workspace scope covers `Codex`, `Claude`, `Cursor`, `Kiro`, `Copilot`, and
+  `Antigravity` (`WORKSPACE_TOOL_IDS`); OpenClaw and OpenStandard remain
+  global-only.
 
 ## Workspace target store
 
@@ -39,11 +41,14 @@ Persisted at `~/.agentic-hub/state.json`:
 
 `adapter_registry::create_workspace_adapter(tool, ws)` provides the paths:
 
-| Tool | skill dirs | agent dirs (ext) | `rules_path` (scanned) | `instructions_path` |
-|------|------------|------------------|------------------------|---------------------|
-| Codex | `<ws>/.agents/skills` | `<ws>/.codex/agents` (`*.toml`) | — | `<ws>/AGENTS.md` |
-| Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` (`*.md`) | — | `<ws>/CLAUDE.md` |
-| Cursor | `<ws>/.cursor/skills` **+ `<ws>/.agents/skills`** | `<ws>/.cursor/agents` **+ `<ws>/.agents/agents`** (`*.md`) | `<ws>/.cursor/rules` | `<ws>/AGENTS.md` |
+| Tool | skill dirs | agent dirs (ext) | `rules_path` (scanned) | hooks | `instructions_path` |
+|------|------------|------------------|------------------------|-------|---------------------|
+| Codex | `<ws>/.agents/skills` | `<ws>/.codex/agents` (`*.toml`) | — | `<ws>/.codex/hooks.json` | `<ws>/AGENTS.md` |
+| Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` (`*.md`) | — | (in `settings.json`) | `<ws>/CLAUDE.md` |
+| Cursor | `<ws>/.cursor/skills` **+ `<ws>/.agents/skills`** | `<ws>/.cursor/agents` **+ `<ws>/.agents/agents`** (`*.md`) | `<ws>/.cursor/rules` | `<ws>/.cursor/hooks.json` | `<ws>/AGENTS.md` |
+| Kiro | `<ws>/.kiro/skills` | `<ws>/.kiro/agents` (`*.md`) | `<ws>/.kiro/steering` | `<ws>/.kiro/hooks/*.json` | — |
+| Copilot | `<ws>/.github/skills` **+ `<ws>/.agents/skills`** | `<ws>/.github/agents` (`*.agent.md`) | `<ws>/.github/instructions` (`*.instructions.md`) | `<ws>/.github/hooks/*.json` | `<ws>/.github/copilot-instructions.md` |
+| Antigravity | `<ws>/.agents/skills` **+ `<ws>/.agent/skills`** | — | `<ws>/.agents/rules` **+ `<ws>/.agent/rules`** | aggregate file, not inventoried | `<ws>/AGENTS.md` |
 
 Verified against the 2026 tool docs:
 
@@ -72,7 +77,8 @@ Algorithm per tool (skipped when the adapter is disabled):
 ```
 skill dirs:  walk; every dir with SKILL.md          -> id = skill:<rel>,  name = folder
 agent dirs:  walk; Codex *.toml else *.md            -> id = agent:<rel>,  name = file stem
-rules_path (Cursor only): walk; *.md / *.mdc         -> id = rule:<rel>,   name = file stem
+rules_path (tool-specific): walk supported rule files -> id = rule:<rel>, name = file stem
+per-hook dirs (Kiro/Copilot): every *.json            -> id = hook:<rel>, name = file stem
 instructions_path (if it is a file):                 -> id = rule:<file>,  name = file name
 ```
 
@@ -104,13 +110,30 @@ third-party lock never breaks the read-only scan. The UI store namespaces each
 - **Global (applied):** `scan(sources)` + `inspect` over the shared roots, filtered to states that are `Enabled` **and** belong to a workspace tool. A globally-enabled resource is projected into the tool's home dir, so it applies to every project. Items with no surviving state are dropped.
 - **Local:** `scan_workspace` output. Local item ids and state `itemId`s are namespaced with a `ws::` prefix so a global and a local resource sharing the same relative path stay **distinct rows**, each carrying its own source (`.agentic-arno`, `.helper`, … vs `Workspace`).
 
-Both sets are unioned into `items` / `states`. Tool columns are fixed to `WORKSPACE_TOOLS` (Codex / Claude / Cursor). The matrix's source filter appears automatically (more than one source) and lets the user narrow to a single shared root or to `Workspace`. The `ws::` prefix uses the same `::` delimiter as `key()`, so tool parsing is unaffected. A `sources-changed` event reloads the merged inventory while in workspace scope (globals can change too), alongside `workspace-changed` for local edits.
+Both sets are unioned into `items` / `states`. Tool columns are fixed to
+`WORKSPACE_TOOLS` (Codex / Claude / Cursor / Kiro / Copilot / Antigravity).
+The matrix's source filter appears automatically (more than one source) and
+lets the user narrow to a single shared root or to `Workspace`. The `ws::`
+prefix uses the same `::` delimiter as `key()`, so tool parsing is unaffected.
+A `sources-changed` event reloads the merged inventory while in workspace scope
+(globals can change too), alongside `workspace-changed` for local edits.
 
 The store also builds `lockedSkills: Map<namespacedItemId, { name, source }>` from `inv.lockedSkills` (applying the `ws::` prefix), which the matrix reads to render a `skills.sh` badge and the row's **Update via skills.sh** action. It is reset to empty in global scope (`refresh`).
 
 ## Watcher integration
 
-The `agentic-hub` watcher subscribes to the shared source roots **and** the active workspace's existing tool dirs (`.agents`, `.claude`, `.cursor`, `.codex` recursive) plus `AGENTS.md` / `CLAUDE.md`. A debounced batch reconciles global projections, then emits both `sources-changed` and `workspace-changed`. Picking / activating / removing a workspace calls `restart_if_running` so the watcher re-subscribes to the new active dirs.
+The `agentic-hub` watcher subscribes to the shared source roots **and** the
+active workspace's existing tool dirs (`.agents`, `.agent`, `.claude`,
+`.cursor`, `.codex`, `.kiro`, `.github` recursively) plus `AGENTS.md` /
+`CLAUDE.md`. A debounced batch reconciles global projections, then emits both
+`sources-changed` and `workspace-changed`. Picking / activating / removing a
+workspace calls `restart_if_running` so the watcher re-subscribes to the new
+active dirs.
+
+Aggregate workspace hook files are not decomposed into inventory rows. This
+currently excludes Codex, Claude, Cursor, and Antigravity hooks. Kiro and
+Copilot hooks are inventoried because their one-file-per-hook layouts provide a
+stable item identity without interpreting foreign aggregate content.
 
 ## IPC surface
 

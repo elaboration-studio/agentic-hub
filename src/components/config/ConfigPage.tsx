@@ -659,7 +659,10 @@ function ToolsPanel({ settings, onChanged }: PanelProps) {
         <CardTitle className={sectionTitle}>Tools</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 p-0">
-        <p className={hint}>Enabled tools appear as columns in the manager. More tools coming later.</p>
+        <p className={hint}>
+          Enabled tools appear as columns in the manager. Kiro, Copilot, and Antigravity are off by
+          default — enable them here when you use those tools.
+        </p>
         <ul className="flex flex-col gap-1.5">
           {ALL_TOOLS.map((t) => {
             const ts = settings.tools[t.id];
