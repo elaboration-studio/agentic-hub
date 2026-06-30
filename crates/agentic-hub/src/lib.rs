@@ -102,6 +102,12 @@ pub fn run() {
             if settings.migrate_codex_agents_path() {
                 let _ = settings.save();
             }
+            // One-time migration: rewrite a stale Antigravity skills path of
+            // `~/.gemini/skills` (pre-0.10.1 default) to `~/.gemini/config/skills`
+            // where Antigravity actually reads skills. Best-effort save.
+            if settings.migrate_antigravity_skills_path() {
+                let _ = settings.save();
+            }
             // Start the source watcher on launch when enabled in settings.
             if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());
