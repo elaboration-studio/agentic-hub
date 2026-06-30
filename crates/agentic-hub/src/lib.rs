@@ -108,6 +108,9 @@ pub fn run() {
             if settings.migrate_antigravity_skills_path() {
                 let _ = settings.save();
             }
+            if settings.migrate_kiro_rules_agents_md() {
+                let _ = settings.save();
+            }
             // Start the source watcher on launch when enabled in settings.
             if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());

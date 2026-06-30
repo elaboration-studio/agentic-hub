@@ -262,6 +262,11 @@ pub struct Settings {
     /// once, then sets this so a later deliberate choice of the old path sticks.
     #[serde(default)]
     pub antigravity_skills_path_migrated: bool,
+    /// One-time migration marker: sets Kiro `instructionsPath` to
+    /// `~/.kiro/steering/AGENTS.md` when absent so shared rules project into the
+    /// AGENTS.md managed block instead of per-file steering copies.
+    #[serde(default)]
+    pub kiro_rules_agents_md_migrated: bool,
     /// Preferred editor for opening a capability's original file. Defaults to
     /// the OS default app.
     #[serde(default)]
@@ -357,6 +362,23 @@ pub fn default_hooks_dir(tool: ToolId) -> Option<PathBuf> {
     }
 }
 
+/// Default instruction-file path per tool for markdown-section rule projection.
+/// `None` when rules use symlinks (Cursor) or per-file steering only. Kept
+/// separate so adapter resolution can repair legacy configs where
+/// `instructionsPath` is absent (notably Kiro before AGENTS.md steering).
+pub fn default_instructions_path(tool: ToolId) -> Option<PathBuf> {
+    match tool {
+        ToolId::Codex => Some(expand_tilde("~/.codex/AGENTS.md")),
+        ToolId::Claude => Some(expand_tilde("~/.claude/CLAUDE.md")),
+        ToolId::Openclaw => Some(expand_tilde("~/.openclaw/workspace/SOUL.md")),
+        ToolId::Openstandard => Some(expand_tilde("~/.agents/AGENTS.md")),
+        ToolId::Kiro => Some(expand_tilde("~/.kiro/steering/AGENTS.md")),
+        ToolId::Copilot => Some(expand_tilde("~/.copilot/copilot-instructions.md")),
+        ToolId::Antigravity => Some(expand_tilde("~/.gemini/AGENTS.md")),
+        ToolId::Cursor => None,
+    }
+}
+
 impl ToolSettings {
     fn defaults_for(tool: ToolId) -> ToolSettings {
         match tool {
@@ -422,7 +444,7 @@ impl ToolSettings {
                 skills_path: expand_tilde("~/.kiro/skills"),
                 agents_path: expand_tilde("~/.kiro/agents"),
                 rules_path: expand_tilde("~/.kiro/steering"),
-                instructions_path: None,
+                instructions_path: default_instructions_path(ToolId::Kiro),
                 hooks_enabled: true,
                 hooks_file: None,
                 hooks_dir: default_hooks_dir(ToolId::Kiro),
@@ -483,6 +505,8 @@ impl Default for Settings {
             codex_agents_path_migrated: true,
             // A fresh config already ships the correct antigravity path; skip migration.
             antigravity_skills_path_migrated: true,
+            // A fresh config already ships Kiro AGENTS.md steering; skip migration.
+            kiro_rules_agents_md_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             paste_into_focused: false,
@@ -569,6 +593,22 @@ impl Settings {
         self.antigravity_skills_path_migrated = true;
         if self.tools.antigravity.skills_path == expand_tilde("~/.gemini/skills") {
             self.tools.antigravity.skills_path = expand_tilde("~/.gemini/config/skills");
+        }
+        true
+    }
+
+    /// One-time migration: set Kiro `instructions_path` to
+    /// `~/.kiro/steering/AGENTS.md` when absent so shared rules use the AGENTS.md
+    /// managed block per [Kiro steering docs](https://kiro.dev/docs/steering/).
+    /// Returns whether the marker was newly set (and thus the config needs
+    /// persisting). Idempotent.
+    pub fn migrate_kiro_rules_agents_md(&mut self) -> bool {
+        if self.kiro_rules_agents_md_migrated {
+            return false;
+        }
+        self.kiro_rules_agents_md_migrated = true;
+        if self.tools.kiro.instructions_path.is_none() {
+            self.tools.kiro.instructions_path = default_instructions_path(ToolId::Kiro);
         }
         true
     }
@@ -694,7 +734,7 @@ impl Settings {
                 skills_path: base.join("skills"),
                 agents_path: base.join("agents"),
                 rules_path: base.join("steering"),
-                instructions_path: None,
+                instructions_path: Some(base.join("steering/AGENTS.md")),
                 hooks_enabled: true,
                 hooks_file: None,
                 hooks_dir: Some(base.join("hooks")),
@@ -738,6 +778,7 @@ impl Settings {
             watcher_force_migrated: true,
             codex_agents_path_migrated: true,
             antigravity_skills_path_migrated: true,
+            kiro_rules_agents_md_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             paste_into_focused: false,
@@ -903,8 +944,10 @@ mod tests {
 
     #[test]
     fn antigravity_skills_path_migration_leaves_custom_path() {
-        let mut s = Settings::default();
-        s.antigravity_skills_path_migrated = false;
+        let mut s = Settings {
+            antigravity_skills_path_migrated: false,
+            ..Default::default()
+        };
         s.tools.antigravity.skills_path = PathBuf::from("/custom/gemini/skills");
         assert!(s.migrate_antigravity_skills_path(), "marker set on first run");
         assert_eq!(
@@ -912,6 +955,32 @@ mod tests {
             PathBuf::from("/custom/gemini/skills")
         );
         assert!(s.antigravity_skills_path_migrated);
+    }
+
+    #[test]
+    fn kiro_rules_agents_md_migration_sets_instructions_path() {
+        let mut s = Settings {
+            kiro_rules_agents_md_migrated: false,
+            tools: ToolsSettings {
+                kiro: ToolSettings {
+                    instructions_path: None,
+                    ..ToolSettings::defaults_for(ToolId::Kiro)
+                },
+                ..ToolsSettings::default()
+            },
+            ..Default::default()
+        };
+        assert!(s.migrate_kiro_rules_agents_md());
+        assert!(
+            s.tools
+                .kiro
+                .instructions_path
+                .as_ref()
+                .unwrap()
+                .ends_with(".kiro/steering/AGENTS.md")
+        );
+        assert!(s.kiro_rules_agents_md_migrated);
+        assert!(!s.migrate_kiro_rules_agents_md());
     }
 
     #[test]
@@ -934,7 +1003,14 @@ mod tests {
             .unwrap()
             .ends_with(".kiro/hooks"));
         assert!(s.tools.kiro.commands_path.is_none());
-        assert!(s.tools.kiro.instructions_path.is_none());
+        assert!(
+            s.tools
+                .kiro
+                .instructions_path
+                .as_ref()
+                .unwrap()
+                .ends_with(".kiro/steering/AGENTS.md")
+        );
         assert!(!s.tools.copilot.enabled);
         assert!(s.tools.copilot.skills_path.ends_with(".copilot/skills"));
         assert!(s

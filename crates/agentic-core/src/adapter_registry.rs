@@ -74,7 +74,10 @@ pub fn resolve(settings: &Settings, tool: ToolId) -> ResolvedAdapter {
         skills_path: ts.skills_path.clone(),
         agents_path: ts.agents_path.clone(),
         rules_path: ts.rules_path.clone(),
-        instructions_path: ts.instructions_path.clone(),
+        instructions_path: ts
+            .instructions_path
+            .clone()
+            .or_else(|| crate::settings::default_instructions_path(tool)),
         hooks_enabled: ts.hooks_enabled,
         hooks_file: ts.hooks_file.clone(),
         // Fall back for configs persisted before per-file hook adapters added
@@ -162,7 +165,9 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             skills_path: j(".kiro/skills"),
             agents_path: j(".kiro/agents"),
             rules_path: j(".kiro/steering"),
-            instructions_path: None,
+            // Kiro reads workspace-root AGENTS.md (always included); native
+            // steering with inclusion modes lives under `.kiro/steering/*.md`.
+            instructions_path: Some(j("AGENTS.md")),
             hooks_enabled: true,
             hooks_file: None,
             hooks_dir: Some(j(".kiro/hooks")),
@@ -272,8 +277,9 @@ impl ResolvedAdapter {
             (ToolId::Cursor, Agent) => Some(FileSync),
             (ToolId::Codex, Agent) => Some(CodexAgentToml),
             // Kiro's loader does not follow symlinks under ~/.kiro/ (skills,
-            // agents, steering); hard-copy like Claude skills.
-            (ToolId::Kiro, Skill | Agent | Rule) => Some(FileSync),
+            // agents); hard-copy like Claude skills. Shared rules use the
+            // AGENTS.md managed block at `~/.kiro/steering/AGENTS.md`.
+            (ToolId::Kiro, Skill | Agent) => Some(FileSync),
             // Antigravity IDE ignores symlinks under ~/.gemini/; hard-copy skills.
             (ToolId::Antigravity, Skill) => Some(FileSync),
             (ToolId::Claude, Skill | Command) => Some(FileSync),
@@ -299,7 +305,7 @@ impl ResolvedAdapter {
 
     /// Whether this `(tool, kind)` projects as a managed copy — a real file
     /// recorded in the per-root manifest (Cursor agents, Claude/Kiro/Antigravity
-    /// skills, Kiro agents/rules, Claude commands, Codex agents). Codex agents are a
+    /// skills, Kiro agents, Claude commands, Codex agents). Codex agents are a
     /// transformed copy but still managed.
     pub fn uses_managed_copy(&self, kind: CapabilityKind) -> bool {
         matches!(
@@ -610,9 +616,15 @@ mod tests {
         assert!(kiro.uses_managed_copy(CapabilityKind::Agent));
         assert_eq!(
             kiro.projection_mode_for(CapabilityKind::Rule),
-            Some(ProjectionMode::FileSync)
+            Some(ProjectionMode::MarkdownSectionSync)
         );
-        assert!(kiro.uses_managed_copy(CapabilityKind::Rule));
+        assert!(!kiro.uses_managed_copy(CapabilityKind::Rule));
+        assert!(
+            kiro.instructions_path
+                .as_ref()
+                .unwrap()
+                .ends_with(".kiro/steering/AGENTS.md")
+        );
         assert_eq!(
             kiro.projection_mode_for(CapabilityKind::Hook),
             Some(ProjectionMode::KiroHookFile)
@@ -636,6 +648,19 @@ mod tests {
         assert!(
             target.ends_with(Path::new(".kiro/agents/reviewer.md")),
             "{target:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_restores_default_instructions_path_for_legacy_kiro() {
+        let mut settings = Settings::default();
+        settings.tools.kiro.instructions_path = None;
+
+        let kiro = resolve(&settings, ToolId::Kiro);
+        assert!(
+            kiro.instructions_path
+                .as_ref()
+                .is_some_and(|path| path.ends_with(".kiro/steering/AGENTS.md"))
         );
     }
 
@@ -666,6 +691,7 @@ mod tests {
         assert_eq!(kiro.skills_path, ws.join(".kiro/skills"));
         assert_eq!(kiro.agents_path, ws.join(".kiro/agents"));
         assert_eq!(kiro.rules_path, ws.join(".kiro/steering"));
+        assert_eq!(kiro.instructions_path, Some(ws.join("AGENTS.md")));
         assert_eq!(kiro.hooks_dir, Some(ws.join(".kiro/hooks")));
         assert!(kiro.commands_path.is_none());
     }

@@ -29,13 +29,13 @@ Workspace scope mirrors under `<ws>/.kiro/`.
 |-----------------|------------|--------|
 | `skill` | **managed copy** (flat) | `~/.kiro/skills/` |
 | `agent` | **managed copy** (flat) | `~/.kiro/agents/<name>.md` |
-| `rule` | **managed copy** (nested) | `~/.kiro/steering/` |
+| `rule` | **managed block** in `~/.kiro/steering/AGENTS.md` | `AGENTS.md` managed block (always included; native steering stays in `.kiro/steering/*.md`) |
 | `hook` | `kiro_hook_file` | `~/.kiro/hooks/<hook-id>.json` |
 | `command` | not supported | — |
 
 Kiro's loader does **not** follow symlinks under `~/.kiro/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401), [#8265](https://github.com/kirodotdev/Kiro/issues/8265)), and its skill scanner is non-recursive like Claude Code's — so skills use the same managed-copy + flat layout as Claude skills. Agents and steering rules are hard-copied for the same symlink reason; agents stay flat (non-recursive loader), rules keep nested paths.
 
-Rules use `rulesPath` → `~/.kiro/steering`. There is no `instructionsPath` (Kiro has no single instruction file for rules).
+Rules use `instructionsPath` → `~/.kiro/steering/AGENTS.md` (managed block, always included). Native Kiro steering with inclusion modes stays in `~/.kiro/steering/*.md` and is inventory-only from the hub's perspective — the hub does not overwrite those files.
 
 ## Settings defaults
 
@@ -46,7 +46,8 @@ Persisted under `tools.kiro` in `~/.agentic-hub/config.json`:
 | `enabled` | `false` | Hidden until opted in (OpenClaw-style) |
 | `skillsPath` | `~/.kiro/skills` | Managed-copy target for skills |
 | `agentsPath` | `~/.kiro/agents` | Managed-copy target for agents |
-| `rulesPath` | `~/.kiro/steering` | Managed-copy target for steering rules |
+| `rulesPath` | `~/.kiro/steering` | Native steering scan target (inventory); shared rules sync to `instructionsPath` |
+| `instructionsPath` | `~/.kiro/steering/AGENTS.md` | Managed block for shared rules ([Kiro AGENTS.md](https://kiro.dev/docs/steering/#agentsmd)) |
 | `hooksEnabled` | `true` | When tool is enabled, hooks can project |
 | `hooksDir` | `~/.kiro/hooks` | Per-hook JSON files (not `hooksFile`) |
 | `commandsPath` | `null` | No command concept in IDE v1 |
