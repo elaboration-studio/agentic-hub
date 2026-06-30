@@ -48,20 +48,25 @@ The Codex `agentsPath` default was `~/.agents/agents` before v0.5.0, which colli
 |--------|------|----------------|--------------------|
 | Tool id | `kiro` | `copilot` | `antigravity` |
 | Default `enabled` | `false` | `false` | `false` |
-| Skills | `~/.kiro/skills` | `~/.copilot/skills` | `~/.gemini/skills` |
-| Agents | symlink to `~/.kiro/agents/*.md` | symlink to `~/.copilot/agents/*.agent.md` | not supported |
-| Rules | symlink to `~/.kiro/steering` | symlink to `~/.copilot/instructions/*.instructions.md` | managed block in `~/.gemini/AGENTS.md` |
+| `skillLayout` | `Flat` | `Flat`* | `Flat`* |
+| Skill projection | **managed copy** (flat) | symlink (flat)* | **managed copy** (flat)* |
+| Agents | managed copy (flat) | symlink (flat) | not supported |
+| Rules | managed copy (nested) | symlink (nested) | managed block in `~/.gemini/AGENTS.md` |
 | Hooks | one v1 JSON per id in `~/.kiro/hooks` | one v1 JSON per id in `~/.copilot/hooks` | `json_section` in `~/.gemini/config/hooks.json` |
 | Commands | not supported | not supported | not supported |
 | Hook targeting | explicit `"kiro"` | explicit `"copilot"` | explicit `"antigravity"` |
+
+\* **Copilot** skill loaders scan only the top level of their skills dir; Copilot CLI fixed symlink discovery in v1.x ([#1021](https://github.com/github/copilot-cli/issues/1021)), so skills stay symlinks with flat layout. **Antigravity** ignores symlinks ([#633](https://github.com/vercel-labs/skills/issues/633)) and uses the same non-recursive scan — skills hard-copy to `~/.gemini/config/skills`.
+
+The Antigravity `skillsPath` default was `~/.gemini/skills` before v0.10.1, which Antigravity does not read per official docs. Configs persisted before the default moved keep the stale path. `Settings::migrate_antigravity_skills_path()` (marker `antigravitySkillsPathMigrated`, run once from `setup()`) rewrites that exact superseded default to `~/.gemini/config/skills`; a deliberate custom path is left untouched.
 
 ### Codex agents project as transformed TOML, not a symlink
 
 Codex loads subagents only from `*.toml` files (`name` / `description` / `developer_instructions`); a symlinked markdown spec is ignored. So Codex is the one tool whose **agent** projection is neither a plain symlink nor a verbatim managed copy: it uses the `codex_agent_toml` projection mode. The markdown source (YAML frontmatter `name` / `description` + body as `developer_instructions`) is rendered to a Codex subagent TOML (`crates/agentic-core/src/codex_agent.rs`) and written as a **managed copy** at `<name>.toml` (the adapter renames the `.md` source stem to `.toml`). Because the on-disk bytes are derived (not a byte-for-byte copy of the source), staleness is detected by re-rendering the expected TOML and comparing content, not by source hash. The applier carries the intent via `PlannedOperation.content_transform = CodexAgentToml`; absent that field, managed copies are written verbatim. On enable, any superseded `<name>.md` symlink the hub previously created is removed (self-heal); a user-authored `.md` at that path is never touched.
 
-### Why Cursor agents and Claude skills are managed copies
+### Why Cursor agents, Claude skills, and Kiro capabilities are managed copies
 
-Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
+Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Kiro ignores symlinks for skills, agents, and steering under `~/.kiro/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401), [#8265](https://github.com/kirodotdev/Kiro/issues/8265)), so those kinds hard-copy too. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
 
 ### Why Claude commands are managed copies (and the others symlink)
 
@@ -74,6 +79,9 @@ Flat layout collapses an item's `relative_path` to its basename; nested preserve
 | `(tool, kind)` | Layout | Why |
 |----------------|--------|-----|
 | Claude **skill** | Flat | Skill loader scans only the top level of `~/.claude/skills/` ([docs](https://code.claude.com/docs/en/skills); issues [#18192](https://github.com/anthropics/claude-code/issues/18192) / [#10238](https://github.com/anthropics/claude-code/issues/10238)). |
+| Kiro **skill** | Flat | Same non-recursive scan as Claude; Kiro also ignores symlinks under `~/.kiro/skills/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401)). |
+| Copilot **skill** | Flat | Skill loader scans only the top level of `~/.copilot/skills/`; symlinks work ([#1021](https://github.com/github/copilot-cli/issues/1021)). |
+| Antigravity **skill** | Flat | Same non-recursive scan; Antigravity ignores symlinks ([#633](https://github.com/vercel-labs/skills/issues/633)). |
 | Cursor **agent** | Flat | Subagent loader scans only the top level of `~/.cursor/agents/`; identity is the filename ([Cursor subagents](https://cursor.com/docs/subagents)). |
 | Codex **agent** | Flat | Only top-level `*.toml` are loaded from `~/.codex/agents/`; nested files are ignored ([Codex subagents](https://developers.openai.com/codex/subagents)). |
 | Claude **agent** | Nested | Agent loader walks subfolders **recursively**; identity is the `name` frontmatter, not the path ([sub-agents docs](https://code.claude.com/docs/en/sub-agents)) — flattening would collide same-basename agents. |
@@ -228,9 +236,9 @@ If a developer asks "where does enabling skill X for tool Y go?", the answer sho
 | `agentsPath` | `~/.kiro/agents` |
 | `rulesPath` | `~/.kiro/steering` |
 | `hooksDir` | `~/.kiro/hooks` |
-| Skill projection | symlink (nested) |
-| Agent projection | symlink (**flat** `.md`) |
-| Rule projection | symlink under steering (not managed block) |
+| Skill projection | **managed copy** (flat) |
+| Agent projection | **managed copy** (flat) |
+| Rule projection | **managed copy** (nested) |
 | Hook projection | `kiro_hook_file` — one v1 JSON per hook id |
 | Commands | not supported |
 | Hook targets | opt-in via `"targets": ["kiro"]` |

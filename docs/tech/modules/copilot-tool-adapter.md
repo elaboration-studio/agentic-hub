@@ -5,7 +5,7 @@ slug: copilot-tool-adapter
 
 # Module: GitHub Copilot Tool Adapter
 
-`ToolId::Copilot` is disabled by default. Its adapter uses nested skill
+`ToolId::Copilot` is disabled by default. Its adapter uses flat skill
 symlinks, flat agent symlinks renamed to `*.agent.md`, nested rule symlinks
 renamed to `*.instructions.md`, and `CopilotHookFile` projection.
 

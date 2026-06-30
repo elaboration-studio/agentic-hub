@@ -257,6 +257,11 @@ pub struct Settings {
     /// deliberate choice of the old path sticks.
     #[serde(default)]
     pub codex_agents_path_migrated: bool,
+    /// One-time migration marker: rewrites a stale Antigravity `skillsPath` of
+    /// `~/.gemini/skills` (the pre-0.10.1 default) to `~/.gemini/config/skills`
+    /// once, then sets this so a later deliberate choice of the old path sticks.
+    #[serde(default)]
+    pub antigravity_skills_path_migrated: bool,
     /// Preferred editor for opening a capability's original file. Defaults to
     /// the OS default app.
     #[serde(default)]
@@ -436,7 +441,7 @@ impl ToolSettings {
             },
             ToolId::Antigravity => ToolSettings {
                 enabled: false,
-                skills_path: expand_tilde("~/.gemini/skills"),
+                skills_path: expand_tilde("~/.gemini/config/skills"),
                 agents_path: expand_tilde("~/.gemini/antigravity/agents"),
                 rules_path: expand_tilde("~/.gemini/antigravity/rules"),
                 instructions_path: Some(expand_tilde("~/.gemini/AGENTS.md")),
@@ -476,6 +481,8 @@ impl Default for Settings {
             watcher_force_migrated: true,
             // A fresh config already ships the correct codex path; skip migration.
             codex_agents_path_migrated: true,
+            // A fresh config already ships the correct antigravity path; skip migration.
+            antigravity_skills_path_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             paste_into_focused: false,
@@ -545,6 +552,23 @@ impl Settings {
         self.codex_agents_path_migrated = true;
         if self.tools.codex.agents_path == expand_tilde("~/.agents/agents") {
             self.tools.codex.agents_path = expand_tilde("~/.codex/agents");
+        }
+        true
+    }
+
+    /// One-time migration: rewrite a stale Antigravity `skills_path` of
+    /// `~/.gemini/skills` — the pre-0.10.1 default that Antigravity does not
+    /// read per official docs — to `~/.gemini/config/skills`. Only the exact
+    /// superseded default is rewritten; any deliberate custom path is left alone.
+    /// Returns whether the marker was newly set (and thus the config needs
+    /// persisting). Idempotent.
+    pub fn migrate_antigravity_skills_path(&mut self) -> bool {
+        if self.antigravity_skills_path_migrated {
+            return false;
+        }
+        self.antigravity_skills_path_migrated = true;
+        if self.tools.antigravity.skills_path == expand_tilde("~/.gemini/skills") {
+            self.tools.antigravity.skills_path = expand_tilde("~/.gemini/config/skills");
         }
         true
     }
@@ -713,6 +737,7 @@ impl Settings {
             watcher_enabled: true,
             watcher_force_migrated: true,
             codex_agents_path_migrated: true,
+            antigravity_skills_path_migrated: true,
             editor: EditorPref::default(),
             palette_shortcut: default_palette_shortcut(),
             paste_into_focused: false,
@@ -835,6 +860,61 @@ mod tests {
     }
 
     #[test]
+    fn pre_antigravity_skills_path_config_migrates_once_to_config_skills() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        let obj = value.as_object_mut().unwrap();
+        obj.remove("antigravitySkillsPathMigrated");
+        let antigravity = obj
+            .get_mut("tools")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .get_mut("antigravity")
+            .unwrap()
+            .as_object_mut()
+            .unwrap();
+        antigravity.insert(
+            "skillsPath".to_string(),
+            serde_json::Value::String(
+                expand_tilde("~/.gemini/skills")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        );
+        let mut s: Settings = serde_json::from_value(value).unwrap();
+        assert!(
+            !s.antigravity_skills_path_migrated,
+            "marker absent in legacy file"
+        );
+        assert_eq!(
+            s.tools.antigravity.skills_path,
+            expand_tilde("~/.gemini/skills")
+        );
+
+        assert!(s.migrate_antigravity_skills_path());
+        assert_eq!(
+            s.tools.antigravity.skills_path,
+            expand_tilde("~/.gemini/config/skills")
+        );
+        assert!(s.antigravity_skills_path_migrated);
+
+        assert!(!s.migrate_antigravity_skills_path());
+    }
+
+    #[test]
+    fn antigravity_skills_path_migration_leaves_custom_path() {
+        let mut s = Settings::default();
+        s.antigravity_skills_path_migrated = false;
+        s.tools.antigravity.skills_path = PathBuf::from("/custom/gemini/skills");
+        assert!(s.migrate_antigravity_skills_path(), "marker set on first run");
+        assert_eq!(
+            s.tools.antigravity.skills_path,
+            PathBuf::from("/custom/gemini/skills")
+        );
+        assert!(s.antigravity_skills_path_migrated);
+    }
+
+    #[test]
     fn defaults_match_tool_adapter_matrix() {
         let s = Settings::default();
         // Codex / Claude / Cursor / OpenStandard ship enabled; OpenClaw is hidden.
@@ -872,7 +952,11 @@ mod tests {
             .unwrap()
             .ends_with(".copilot/copilot-instructions.md"));
         assert!(!s.tools.antigravity.enabled);
-        assert!(s.tools.antigravity.skills_path.ends_with(".gemini/skills"));
+        assert!(s
+            .tools
+            .antigravity
+            .skills_path
+            .ends_with(".gemini/config/skills"));
         assert!(s
             .tools
             .antigravity
@@ -1064,7 +1148,7 @@ mod tests {
             .tools
             .antigravity
             .skills_path
-            .ends_with(".gemini/skills"));
+            .ends_with(".gemini/config/skills"));
     }
 
     #[test]

@@ -224,7 +224,10 @@ impl ResolvedAdapter {
     /// Nested preserves it. Flattening is required wherever a tool's loader is
     /// **non-recursive** (it scans only the top level of the target dir):
     ///
-    /// - Claude *skills* — `~/.claude/skills/` is scanned non-recursively.
+    /// - Claude / Kiro / Copilot / Antigravity *skills* — top-level scan only;
+    ///   Kiro and Antigravity also ignore symlinks under their tool dirs
+    ///   ([kiro#6401](https://github.com/kirodotdev/Kiro/issues/6401),
+    ///   [skills#633](https://github.com/vercel-labs/skills/issues/633)).
     /// - Cursor *agents* — `~/.cursor/agents/` is scanned non-recursively and
     ///   identity is the filename ([Cursor subagents](https://cursor.com/docs/subagents)).
     /// - Codex *agents* — only top-level `*.toml` are loaded from
@@ -239,7 +242,10 @@ impl ResolvedAdapter {
     pub fn layout_for(&self, kind: CapabilityKind) -> Layout {
         use CapabilityKind::{Agent, Skill};
         match (self.tool_id, kind) {
-            (ToolId::Claude, Skill) => Layout::Flat,
+            (
+                ToolId::Claude | ToolId::Kiro | ToolId::Copilot | ToolId::Antigravity,
+                Skill,
+            ) => Layout::Flat,
             (ToolId::Cursor | ToolId::Codex | ToolId::Kiro | ToolId::Copilot, Agent) => {
                 Layout::Flat
             }
@@ -265,10 +271,15 @@ impl ResolvedAdapter {
             (_, Hook) => Some(JsonSection),
             (ToolId::Cursor, Agent) => Some(FileSync),
             (ToolId::Codex, Agent) => Some(CodexAgentToml),
+            // Kiro's loader does not follow symlinks under ~/.kiro/ (skills,
+            // agents, steering); hard-copy like Claude skills.
+            (ToolId::Kiro, Skill | Agent | Rule) => Some(FileSync),
+            // Antigravity IDE ignores symlinks under ~/.gemini/; hard-copy skills.
+            (ToolId::Antigravity, Skill) => Some(FileSync),
             (ToolId::Claude, Skill | Command) => Some(FileSync),
             (_, Command) => Some(LinkSync),
             (_, Skill | Agent) => Some(LinkSync),
-            (ToolId::Cursor | ToolId::Kiro | ToolId::Copilot, Rule) => Some(LinkSync),
+            (ToolId::Cursor | ToolId::Copilot, Rule) => Some(LinkSync),
             (ToolId::Antigravity, Rule) => Some(MarkdownSectionSync),
             (_, Rule) => Some(MarkdownSectionSync),
         }
@@ -287,8 +298,9 @@ impl ResolvedAdapter {
     }
 
     /// Whether this `(tool, kind)` projects as a managed copy — a real file
-    /// recorded in the per-root manifest (Cursor agents, Claude skills/commands,
-    /// Codex agents). Codex agents are a transformed copy but still managed.
+    /// recorded in the per-root manifest (Cursor agents, Claude/Kiro/Antigravity
+    /// skills, Kiro agents/rules, Claude commands, Codex agents). Codex agents are a
+    /// transformed copy but still managed.
     pub fn uses_managed_copy(&self, kind: CapabilityKind) -> bool {
         matches!(
             self.projection_mode_for(kind),
@@ -585,18 +597,22 @@ mod tests {
         let s = Settings::default();
         let kiro = resolve(&s, ToolId::Kiro);
         assert!(!kiro.enabled);
+        assert_eq!(kiro.layout_for(CapabilityKind::Skill), Layout::Flat);
         assert_eq!(
             kiro.projection_mode_for(CapabilityKind::Skill),
-            Some(ProjectionMode::LinkSync)
+            Some(ProjectionMode::FileSync)
         );
+        assert!(kiro.uses_managed_copy(CapabilityKind::Skill));
         assert_eq!(
             kiro.projection_mode_for(CapabilityKind::Agent),
-            Some(ProjectionMode::LinkSync)
+            Some(ProjectionMode::FileSync)
         );
+        assert!(kiro.uses_managed_copy(CapabilityKind::Agent));
         assert_eq!(
             kiro.projection_mode_for(CapabilityKind::Rule),
-            Some(ProjectionMode::LinkSync)
+            Some(ProjectionMode::FileSync)
         );
+        assert!(kiro.uses_managed_copy(CapabilityKind::Rule));
         assert_eq!(
             kiro.projection_mode_for(CapabilityKind::Hook),
             Some(ProjectionMode::KiroHookFile)
@@ -607,6 +623,13 @@ mod tests {
         assert!(kiro.rules_path.ends_with(".kiro/steering"));
         assert!(kiro.hooks_dir.as_ref().unwrap().ends_with(".kiro/hooks"));
         assert!(kiro.hooks_file.is_none());
+
+        let skill = item(CapabilityKind::Skill, "dev/repo-research");
+        let skill_target = kiro.target_path_for(&skill).unwrap();
+        assert!(
+            skill_target.ends_with(Path::new(".kiro/skills/repo-research")),
+            "kiro flattens skills to basename: {skill_target:?}"
+        );
 
         let agent = item(CapabilityKind::Agent, "team/reviewer.md");
         let target = kiro.target_path_for(&agent).unwrap();
@@ -652,6 +675,11 @@ mod tests {
         let s = Settings::default();
         let copilot = resolve(&s, ToolId::Copilot);
         assert!(!copilot.enabled);
+        assert_eq!(copilot.layout_for(CapabilityKind::Skill), Layout::Flat);
+        assert_eq!(
+            copilot.projection_mode_for(CapabilityKind::Skill),
+            Some(ProjectionMode::LinkSync)
+        );
         assert_eq!(
             copilot.projection_mode_for(CapabilityKind::Agent),
             Some(ProjectionMode::LinkSync)
@@ -670,6 +698,13 @@ mod tests {
             "{target:?}"
         );
 
+        let skill = item(CapabilityKind::Skill, "dev/repo-research");
+        let skill_target = copilot.target_path_for(&skill).unwrap();
+        assert!(
+            skill_target.ends_with(Path::new(".copilot/skills/repo-research")),
+            "copilot flattens skills to basename: {skill_target:?}"
+        );
+
         let rule = item(CapabilityKind::Rule, "team/style.md");
         let rule_target = copilot.target_path_for(&rule).unwrap();
         assert!(
@@ -683,10 +718,12 @@ mod tests {
         let s = Settings::default();
         let ag = resolve(&s, ToolId::Antigravity);
         assert!(!ag.enabled);
+        assert_eq!(ag.layout_for(CapabilityKind::Skill), Layout::Flat);
         assert_eq!(
             ag.projection_mode_for(CapabilityKind::Skill),
-            Some(ProjectionMode::LinkSync)
+            Some(ProjectionMode::FileSync)
         );
+        assert!(ag.uses_managed_copy(CapabilityKind::Skill));
         assert_eq!(ag.projection_mode_for(CapabilityKind::Agent), None);
         assert_eq!(
             ag.projection_mode_for(CapabilityKind::Rule),
@@ -696,7 +733,16 @@ mod tests {
             ag.projection_mode_for(CapabilityKind::Hook),
             Some(ProjectionMode::JsonSection)
         );
-        assert!(ag.skills_path.ends_with(".gemini/skills"));
+        assert!(ag
+            .skills_path
+            .ends_with(".gemini/config/skills"));
+
+        let skill = item(CapabilityKind::Skill, "dev/repo-research");
+        let skill_target = ag.target_path_for(&skill).unwrap();
+        assert!(
+            skill_target.ends_with(Path::new(".gemini/config/skills/repo-research")),
+            "antigravity flattens skills to basename: {skill_target:?}"
+        );
         assert!(ag
             .hooks_file
             .as_ref()

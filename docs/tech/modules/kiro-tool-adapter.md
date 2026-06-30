@@ -27,11 +27,13 @@ Workspace scope mirrors under `<ws>/.kiro/`.
 
 | Capability kind | Projection | Target |
 |-----------------|------------|--------|
-| `skill` | `link_sync` (symlink) | `~/.kiro/skills/` |
-| `agent` | `link_sync` (symlink, **flat**) | `~/.kiro/agents/<name>.md` |
-| `rule` | `link_sync` (symlink) | `~/.kiro/steering/` |
+| `skill` | **managed copy** (flat) | `~/.kiro/skills/` |
+| `agent` | **managed copy** (flat) | `~/.kiro/agents/<name>.md` |
+| `rule` | **managed copy** (nested) | `~/.kiro/steering/` |
 | `hook` | `kiro_hook_file` | `~/.kiro/hooks/<hook-id>.json` |
 | `command` | not supported | — |
+
+Kiro's loader does **not** follow symlinks under `~/.kiro/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401), [#8265](https://github.com/kirodotdev/Kiro/issues/8265)), and its skill scanner is non-recursive like Claude Code's — so skills use the same managed-copy + flat layout as Claude skills. Agents and steering rules are hard-copied for the same symlink reason; agents stay flat (non-recursive loader), rules keep nested paths.
 
 Rules use `rulesPath` → `~/.kiro/steering`. There is no `instructionsPath` (Kiro has no single instruction file for rules).
 
@@ -42,9 +44,9 @@ Persisted under `tools.kiro` in `~/.agentic-hub/config.json`:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `enabled` | `false` | Hidden until opted in (OpenClaw-style) |
-| `skillsPath` | `~/.kiro/skills` | Symlink target for skills |
-| `agentsPath` | `~/.kiro/agents` | Symlink target for agents |
-| `rulesPath` | `~/.kiro/steering` | Symlink target for steering rules |
+| `skillsPath` | `~/.kiro/skills` | Managed-copy target for skills |
+| `agentsPath` | `~/.kiro/agents` | Managed-copy target for agents |
+| `rulesPath` | `~/.kiro/steering` | Managed-copy target for steering rules |
 | `hooksEnabled` | `true` | When tool is enabled, hooks can project |
 | `hooksDir` | `~/.kiro/hooks` | Per-hook JSON files (not `hooksFile`) |
 | `commandsPath` | `null` | No command concept in IDE v1 |
