@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -178,7 +178,7 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
                 &mut errors,
             );
         }
-        if let Some(instructions) = adapter.instructions_path.as_ref() {
+        for instructions in instruction_scan_paths(tool, ws, &adapter) {
             if instructions.is_file() {
                 if let Some(file_name) = instructions.file_name().and_then(|s| s.to_str()) {
                     let rel = std::path::PathBuf::from(file_name);
@@ -617,6 +617,32 @@ fn rel_unix(rel: &Path) -> String {
         .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
+/// Instruction files a tool reads for always-on steering. Most tools have one
+/// path via `instructions_path`; Copilot and Antigravity also honor additional
+/// AGENTS.md locations per their 2026 docs.
+fn instruction_scan_paths(tool: ToolId, ws: &Path, adapter: &ResolvedAdapter) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(p) = adapter.instructions_path.as_ref() {
+        paths.push(p.clone());
+    }
+    match tool {
+        ToolId::Copilot => {
+            let root = ws.join("AGENTS.md");
+            if !paths.iter().any(|p| p == &root) {
+                paths.push(root);
+            }
+        }
+        ToolId::Antigravity => {
+            let nested = ws.join(".agents/AGENTS.md");
+            if !paths.iter().any(|p| p == &nested) {
+                paths.push(nested);
+            }
+        }
+        _ => {}
+    }
+    paths
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -724,6 +750,39 @@ mod tests {
         assert!(ids.contains(&"agent:reviewer.md"));
         assert!(ids.contains(&"hook:fmt.json"));
         assert!(inv.states.iter().all(|s| s.tool == ToolId::Kiro));
+    }
+
+    #[test]
+    fn discovers_copilot_copilot_instructions_and_root_agents_md() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(&ws.join(".github/copilot-instructions.md"), "# repo");
+        write(&ws.join("AGENTS.md"), "# agents standard");
+
+        let inv = scan_workspace(ws, &[ToolId::Copilot]);
+        let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"rule:copilot-instructions.md"));
+        assert!(ids.contains(&"rule:AGENTS.md"));
+        assert_eq!(
+            inv.states
+                .iter()
+                .filter(|s| s.tool == ToolId::Copilot && s.item_id.starts_with("rule:"))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn discovers_antigravity_dot_agents_agents_md() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(&ws.join(".agents/AGENTS.md"), "# nested agents");
+
+        let inv = scan_workspace(ws, &[ToolId::Antigravity]);
+        assert!(inv
+            .states
+            .iter()
+            .any(|s| s.item_id == "rule:AGENTS.md" && s.tool == ToolId::Antigravity));
     }
 
     #[test]
@@ -921,7 +980,8 @@ mod tests {
         assert!(ids.contains(&"rule:AGENTS.md"));
         assert!(ids.contains(&"rule:CLAUDE.md"));
 
-        // AGENTS.md is read by both Codex and Cursor; CLAUDE.md by Claude only.
+        // AGENTS.md is read by Codex, Cursor, Kiro, Copilot, and Antigravity;
+        // CLAUDE.md by Claude only.
         let agents_tools: Vec<ToolId> = inv
             .states
             .iter()
@@ -930,6 +990,9 @@ mod tests {
             .collect();
         assert!(agents_tools.contains(&ToolId::Codex), "{agents_tools:?}");
         assert!(agents_tools.contains(&ToolId::Cursor), "{agents_tools:?}");
+        assert!(agents_tools.contains(&ToolId::Kiro), "{agents_tools:?}");
+        assert!(agents_tools.contains(&ToolId::Copilot), "{agents_tools:?}");
+        assert!(agents_tools.contains(&ToolId::Antigravity), "{agents_tools:?}");
         assert!(!agents_tools.contains(&ToolId::Claude), "{agents_tools:?}");
 
         let claude_tools: Vec<ToolId> = inv

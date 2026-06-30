@@ -20,7 +20,7 @@ Project shared agentic capabilities — skills, agents, rules (as steering files
 - [ ] `ToolId::Kiro` appears in the manager matrix when enabled in Config
 - [ ] Skills symlink into `~/.kiro/skills/` (nested, Agent Skills standard)
 - [ ] Agents symlink into `~/.kiro/agents/` as flat `*.md` (IDE format)
-- [ ] Rules symlink into `~/.kiro/steering/` (per-file steering, not a managed block)
+- [ ] Rules sync into the managed block in `~/.kiro/steering/AGENTS.md` (always included; not per-file steering)
 - [ ] Hooks with `"targets": ["kiro"]` project to `~/.kiro/hooks/<id>.json` in Kiro v1 schema
 - [ ] Workspace scope scans `<ws>/.kiro/{skills,agents,steering,hooks}` read-only
 - [ ] Foreign Kiro hook files and steering files are never overwritten

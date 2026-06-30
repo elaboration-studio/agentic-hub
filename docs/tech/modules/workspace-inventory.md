@@ -46,14 +46,14 @@ Persisted at `~/.agentic-hub/state.json`:
 | Codex | `<ws>/.agents/skills` | `<ws>/.codex/agents` (`*.toml`) | — | `<ws>/.codex/hooks.json` | `<ws>/AGENTS.md` |
 | Claude | `<ws>/.claude/skills` | `<ws>/.claude/agents` (`*.md`) | — | (in `settings.json`) | `<ws>/CLAUDE.md` |
 | Cursor | `<ws>/.cursor/skills` **+ `<ws>/.agents/skills`** | `<ws>/.cursor/agents` **+ `<ws>/.agents/agents`** (`*.md`) | `<ws>/.cursor/rules` | `<ws>/.cursor/hooks.json` | `<ws>/AGENTS.md` |
-| Kiro | `<ws>/.kiro/skills` | `<ws>/.kiro/agents` (`*.md`) | `<ws>/.kiro/steering` | `<ws>/.kiro/hooks/*.json` | — |
-| Copilot | `<ws>/.github/skills` **+ `<ws>/.agents/skills`** | `<ws>/.github/agents` (`*.agent.md`) | `<ws>/.github/instructions` (`*.instructions.md`) | `<ws>/.github/hooks/*.json` | `<ws>/.github/copilot-instructions.md` |
-| Antigravity | `<ws>/.agents/skills` **+ `<ws>/.agent/skills`** | — | `<ws>/.agents/rules` **+ `<ws>/.agent/rules`** | aggregate file, not inventoried | `<ws>/AGENTS.md` |
+| Kiro | `<ws>/.kiro/skills` | `<ws>/.kiro/agents` (`*.md`) | `<ws>/.kiro/steering` (native steering) | `<ws>/.kiro/hooks/*.json` | `<ws>/AGENTS.md` |
+| Copilot | `<ws>/.github/skills` **+ `<ws>/.agents/skills`** | `<ws>/.github/agents` (`*.agent.md`) | `<ws>/.github/instructions` (`*.instructions.md`) | `<ws>/.github/hooks/*.json` | `<ws>/.github/copilot-instructions.md` **+ `<ws>/AGENTS.md`** |
+| Antigravity | `<ws>/.agents/skills` **+ `<ws>/.agent/skills`** | — | `<ws>/.agents/rules` **+ `<ws>/.agent/rules`** | aggregate file, not inventoried | `<ws>/AGENTS.md` **+ `<ws>/.agents/AGENTS.md`** |
 
 Verified against the 2026 tool docs:
 
 - **Codex skills** live under `.agents/skills` (its documented project skill path), but **Codex subagents are TOML files under `.codex/agents`** — `.agents/` is skills-only ([Codex subagents](https://developers.openai.com/codex/subagents)). The scanner matches `*.toml` for Codex agents, `*.md` otherwise.
-- **`AGENTS.md` is read by both Codex and Cursor**, so both adapters set `instructions_path` to it and the inventory attributes that row to both tools ([Cursor rules](https://cursor.com/docs/rules)). `CLAUDE.md` is Claude-only.
+- **`AGENTS.md` is read by Codex, Cursor, Kiro, Copilot, and Antigravity**, so those adapters set `instructions_path` (or additional scan paths) and the inventory attributes that row accordingly ([Kiro steering](https://kiro.dev/docs/steering/#agentsmd)). `CLAUDE.md` is Claude-only.
 - **Cursor honors the shared `.agents/` standard dir** (skills) in addition to its own `.cursor/` dirs, so a skill dropped in `.agents/skills` surfaces for both Codex and Cursor ([Cursor skills](https://cursor.com/docs/skills)).
 
 ## Scan contract

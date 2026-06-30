@@ -51,7 +51,7 @@ The Codex `agentsPath` default was `~/.agents/agents` before v0.5.0, which colli
 | `skillLayout` | `Flat` | `Flat`* | `Flat`* |
 | Skill projection | **managed copy** (flat) | symlink (flat)* | **managed copy** (flat)* |
 | Agents | managed copy (flat) | symlink (flat) | not supported |
-| Rules | managed copy (nested) | symlink (nested) | managed block in `~/.gemini/AGENTS.md` |
+| Rules | managed block in `~/.kiro/steering/AGENTS.md` | symlink (`.instructions.md`) | managed block in `~/.gemini/AGENTS.md` |
 | Hooks | one v1 JSON per id in `~/.kiro/hooks` | one v1 JSON per id in `~/.copilot/hooks` | `json_section` in `~/.gemini/config/hooks.json` |
 | Commands | not supported | not supported | not supported |
 | Hook targeting | explicit `"kiro"` | explicit `"copilot"` | explicit `"antigravity"` |
@@ -66,7 +66,7 @@ Codex loads subagents only from `*.toml` files (`name` / `description` / `develo
 
 ### Why Cursor agents, Claude skills, and Kiro capabilities are managed copies
 
-Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Kiro ignores symlinks for skills, agents, and steering under `~/.kiro/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401), [#8265](https://github.com/kirodotdev/Kiro/issues/8265)), so those kinds hard-copy too. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
+Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Kiro ignores symlinks for skills and agents under `~/.kiro/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401), [#8265](https://github.com/kirodotdev/Kiro/issues/8265)), so those kinds hard-copy too. Kiro shared rules use the AGENTS.md managed block instead. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
 
 ### Why Claude commands are managed copies (and the others symlink)
 
@@ -102,11 +102,11 @@ Workspace scope is **read-only inventory** (`workspace_inventory`): it scans the
 | Rules scan source | (in `AGENTS.md`) | (in `CLAUDE.md`) | `<ws>/.cursor/rules/*.mdc` | `<ws>/.kiro/steering/*.md` | `<ws>/.github/instructions/*.instructions.md` | `<ws>/.agents/rules` + `<ws>/.agent/rules` |
 | Hooks inventory | aggregate file not decomposed | aggregate file not decomposed | aggregate file not decomposed | `<ws>/.kiro/hooks/*.json` | `<ws>/.github/hooks/*.json` | aggregate file not decomposed |
 | Commands scan source | `<ws>/.codex/prompts/**/*.md` | `<ws>/.claude/commands/**/*.md` | `<ws>/.cursor/commands/**/*.md` | _none_ | _none_ | _none_ |
-| Instructions scan source | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | `<ws>/AGENTS.md` | _none_ | `<ws>/.github/copilot-instructions.md` | `<ws>/AGENTS.md` |
+| Instructions scan source | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | `<ws>/AGENTS.md` | `<ws>/AGENTS.md` + native `<ws>/.kiro/steering/*.md` | `<ws>/.github/copilot-instructions.md` + `<ws>/AGENTS.md` | `<ws>/AGENTS.md` + `<ws>/.agents/AGENTS.md` |
 
 Notes:
 - **Codex agents are TOML** (`.codex/agents/*.toml`), distinct from Claude/Cursor markdown agents — the scanner matches `*.toml` for Codex, `*.md` otherwise.
-- **`AGENTS.md` is read by both Codex and Cursor**, so the inventory attributes that row to both tools; `CLAUDE.md` is Claude-only.
+- **`AGENTS.md` is read by Codex, Cursor, Kiro, Copilot, and Antigravity**, so the inventory attributes that row to each of those tools when present; `CLAUDE.md` is Claude-only.
 - **Cursor also honors the shared `.agents/` dir** (skills) in addition to its own `.cursor/` dirs.
 - Claude's flat skill constraint is a global-home loader quirk; the workspace scanner reports nested skills as-is because users own the project path.
 
@@ -235,10 +235,11 @@ If a developer asks "where does enabling skill X for tool Y go?", the answer sho
 | `skillsPath` | `~/.kiro/skills` |
 | `agentsPath` | `~/.kiro/agents` |
 | `rulesPath` | `~/.kiro/steering` |
+| `instructionsPath` | `~/.kiro/steering/AGENTS.md` |
 | `hooksDir` | `~/.kiro/hooks` |
 | Skill projection | **managed copy** (flat) |
 | Agent projection | **managed copy** (flat) |
-| Rule projection | **managed copy** (nested) |
+| Rule projection | **markdown_section_sync** → `~/.kiro/steering/AGENTS.md` |
 | Hook projection | `kiro_hook_file` — one v1 JSON per hook id |
 | Commands | not supported |
 | Hook targets | opt-in via `"targets": ["kiro"]` |

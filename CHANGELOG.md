@@ -8,6 +8,27 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-06-30
+
+### Fixed
+
+- **Kiro rules now project to AGENTS.md, not per-file steering copies.** Shared
+  rules sync into the managed block at `~/.kiro/steering/AGENTS.md` (always
+  included per [Kiro docs](https://kiro.dev/docs/steering/#agentsmd)); native
+  `.kiro/steering/*.md` files with inclusion modes are left to the user.
+  Workspace inventory also attributes project-root `AGENTS.md` to Kiro, Copilot,
+  and Antigravity alongside Codex/Cursor.
+- **Copilot workspace inventory includes root `AGENTS.md`.** Copilot reads both
+  `.github/copilot-instructions.md` and workspace-root `AGENTS.md`.
+- **Antigravity workspace inventory includes `.agents/AGENTS.md`.** Antigravity
+  loads both repo-root and `.agents/AGENTS.md` per Gemini/Antigravity docs.
+
+### Added
+
+- **Config → Tools lists all five projection targets per tool.** Skills, agents,
+  rules, hooks, and commands show their on-disk write paths with a reveal-in-Finder
+  action so you can verify what the hub projects.
+
 ## [0.10.1] — 2026-06-30
 
 ### Fixed
