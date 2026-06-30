@@ -8,6 +8,22 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-06-30
+
+### Fixed
+
+- **Kiro projection used symlinks Kiro cannot load.** Kiro IDE ignores symlinks
+  under `~/.kiro/skills/`, `~/.kiro/agents/`, and `~/.kiro/steering/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401)). Skills now use managed copy with flat layout (same strategy as Claude Code skills); agents and steering rules hard-copy too.
+- **Copilot and Antigravity skills used nested paths their loaders never scan.**
+  Copilot and Antigravity skill loaders are non-recursive (top-level only).
+  Copilot skills now use flat layout (symlinks still work); Antigravity skills
+  use managed copy with flat layout because Antigravity ignores symlinks
+  ([#633](https://github.com/vercel-labs/skills/issues/633)).
+- **Antigravity default skills path was wrong.** The hub defaulted to
+  `~/.gemini/skills`; Antigravity reads `~/.gemini/config/skills`. New installs
+  use the correct path; existing configs with the legacy default migrate once on
+  launch (`Settings::migrate_antigravity_skills_path`).
+
 ## [0.10.0] — 2026-06-30
 
 ### Added

@@ -5,27 +5,25 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.10.0] — 2026-06-30
+## [0.10.1] — 2026-06-30
 
-### Added
+### Fixed
 
-- **Kiro tool adapter.** Project shared skills, agents, steering rules, and
-  hooks into `~/.kiro/` when enabled in Config (off by default). Hooks require
-  `"targets": ["kiro"]`. Workspace inventory scans project `.kiro/` dirs.
-- **GitHub Copilot tool adapter.** Project skills, custom agents (`.agent.md`),
-  instruction rules (`.instructions.md`), and hooks into `~/.copilot/` when
-  enabled (off by default). Hooks require `"targets": ["copilot"]`. Workspace
-  inventory scans `.github/` Copilot dirs.
-- **Google Antigravity tool adapter.** Project skills, rules (managed block in
-  `~/.gemini/AGENTS.md`), and hooks (`~/.gemini/config/hooks.json`) when enabled
-  (off by default). Agents and commands are unsupported. Hooks require
-  `"targets": ["antigravity"]`. Workspace inventory scans `.agents/` dirs.
+- **Kiro projection used symlinks Kiro cannot load.** Skills, agents, and
+  steering rules now hard-copy with flat layout where required (same strategy
+  as Claude Code skills).
+- **Copilot and Antigravity skills used nested paths their loaders never scan.**
+  Copilot skills now flatten to the top level (symlinks still work); Antigravity
+  skills hard-copy with flat layout because Antigravity ignores symlinks.
+- **Antigravity default skills path was wrong.** Default is now
+  `~/.gemini/config/skills` (was `~/.gemini/skills`).
 
 ### Migration
 
-- **None.** Installs over 0.9.5 in place; in-app auto-update delivers this
-  release once published. New adapters are off by default — enable each tool in
-  Config when you are ready.
+- **Antigravity skills path (one-time).** On first launch after updating, configs
+  still pointing at the legacy default `~/.gemini/skills` are rewritten to
+  `~/.gemini/config/skills`. Custom paths are untouched. Re-apply or reconcile
+  Antigravity after updating if you had already enabled it under the old path.
 
 ### Known Issues
 
