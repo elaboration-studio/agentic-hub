@@ -5,13 +5,19 @@ Mode: Detailed
 Owner: Arno
 Last Updated: 2026-06-04
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.workspace.md](../../../ARCHITECTURE.workspace.md), [docs/tech/modules/multi-source-roots.md](./multi-source-roots.md)
-Related Docs: [docs/features/workspace-inventory.md](../../features/workspace-inventory.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
+Related Docs: [docs/features/workspace-inventory.md](../../features/workspace-inventory.md), [docs/features/global-installed-resources.md](../../features/global-installed-resources.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
 ## Purpose
 
 Specify the read-only workspace inventory: how `agentic-core` walks a project's own per-tool directories and reports which agentic resources each tool already has. Workspace scope performs **no filesystem writes**; this module is the inverse of global projection.
 
 > The previous "workspace patch" module (hard-copy a suite into a project, with a manifest and clean-then-write cycle) was removed. The shared root + global projection remain the only place capabilities are written.
+
+The same read-only scanner contract also powers Global installed-resource
+inventory: enabled tools' global folders are walked and merged into the Global
+Manager as source-labeled, read-only rows. This lets users audit capabilities
+installed outside configured Agentic Hub source roots without letting the Hub
+overwrite or delete them.
 
 ## Scope model
 
@@ -91,6 +97,39 @@ Rules:
 - `source_id` = `"workspace"`, `source_label` = `"Workspace"`.
 - `__archived__` dirs are skipped; walks are depth-bounded (16) like the shared scanner; a missing tool dir is not an error; an unreadable dir produces a `ScanError`.
 
+## Global installed-resource inventory
+
+Global inventory uses the same collector against `adapter_registry::resolve`
+instead of `create_workspace_adapter`. It scans only tools that are enabled in
+Config and emits `InstalledToolInventory`:
+
+```rust
+pub fn scan_installed_tools(settings: &Settings) -> InstalledToolInventory;
+
+pub struct InstalledToolInventory {
+    pub items: Vec<CapabilityItem>,
+    pub states: Vec<ToolCapabilityState>,
+    pub errors: Vec<ScanError>,
+}
+```
+
+Rules:
+
+- Source labels are the owning tool labels (`Codex`, `Claude`, `Cursor`,
+  `OpenClaw`, `OpenStandard`, `Kiro`, `Copilot`, `Antigravity`); source ids are
+  `installed:<tool>`.
+- Item ids are namespaced as `installed::<tool>::<kind>:<relative_path>` so
+  unmanaged rows never collide with Hub source-root rows.
+- Each unmanaged state is `Enabled` for the owning tool only; the Manager renders
+  these rows read-only and excludes them from `plan`, `syncRules`, and
+  `syncHooks`.
+- Duplicates are suppressed by target path in the Manager store after inspect:
+  if an installed file or directory is already represented by a managed
+  source-root state, the unmanaged row is not merged into the matrix.
+- Open / Reveal use the existing tool-target allowlist. Tool roots are already
+  part of `open_targets::is_openable`, so no raw filesystem scope is exposed to
+  the WebView.
+
 ## skills.sh lock marking
 
 After building items, the scan reads the project lock via
@@ -138,6 +177,7 @@ stable item identity without interpreting foreign aggregate content.
 ## IPC surface
 
 - `cmd_scan_workspace(workspace_id) -> WorkspaceInventory` — resolve the dir from the target store, scan it.
+- `cmd_scan_installed_tools(input: { tools: ToolsSettings }) -> InstalledToolInventory` — scan enabled tools' global folders.
 - `cmd_pick_workspace_dir`, `cmd_list_workspace_targets`, `cmd_set_active_workspace_target`, `cmd_remove_workspace_target` — target store CRUD; the mutating ones restart the watcher.
 - Event `workspace-changed` — the UI reloads the active inventory while in workspace scope.
 - Skills.sh install + update (opt-in source only) — the **two** explicit workspace writes, both driven from the `install` window. They run a starred skill's install (`npx skills add`) or a locked skill's update (`npx skills update`) via a controlled subprocess, then emit `workspace-changed` so this read-only scan re-runs. The scan never writes; see [skill-sources.md](./skill-sources.md).
@@ -147,6 +187,11 @@ See [tauri-ipc-contract.md](./tauri-ipc-contract.md).
 ## Testing
 
 TDD unit tests in `workspace_inventory.rs`: per-tool discovery, cross-tool dedupe (one row, two present states), Cursor reading the shared `.agents/` dir, per-tool state dedupe across `.cursor`/`.agents`, instruction-file presence (`AGENTS.md` attributed to both Codex **and** Cursor; `CLAUDE.md` to Claude only), Codex subagents read from `.codex/agents/*.toml` (markdown in `.agents/agents` is not a Codex subagent), Cursor recursive nested skill discovery (name = leaf folder), Cursor nested `.mdc` rule discovery, empty workspace → nothing, `__archived__` skipped, OpenClaw skipped, plus skills.sh lock marking (a skill in the lock is marked with its source; an unlocked skill is not; no lock file → empty). Adapter-layout truths live in `adapter_registry.rs` (Claude skills Flat, Claude agents Nested + recursive). UI: `manager.loadWorkspace` populates a read-only inventory with no pending keys and refuses toggles, merges only `Enabled` global states with namespaced local resources, populates namespaced `lockedSkills` from the inventory lock, and `refresh` clears `readOnly` and `lockedSkills`; the workspace store reload/pick/activate/remove handoff to `loadWorkspace`.
+
+Global installed-resource tests live beside the workspace tests because they use
+the same collector. Cover enabled-tool scanning, source labels, id namespacing,
+`__archived__` skipping, target-path duplicate suppression against managed
+states, and Manager-store filtering so unmanaged rows never reach apply or sync.
 
 ## Follow-ups
 

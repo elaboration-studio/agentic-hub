@@ -31,6 +31,7 @@ User-facing feature designs aligned with each milestone.
 - [commands.md](features/commands.md) — the `command` capability kind (slash-command prompts) projected into each tool's commands dir; palette copy / open
 - [suite-presets.md](features/suite-presets.md) — named capability presets with one-click full-reset apply
 - [workspace-inventory.md](features/workspace-inventory.md) — read-only per-workspace inventory of installed agentic resources
+- [global-installed-resources.md](features/global-installed-resources.md) — read-only Global Manager audit of resources installed directly into tool folders
 - [skills-sh-integration.md](features/skills-sh-integration.md) — opt-in skills.sh source: search, star, and install skills into a workspace
 - [source-watcher.md](features/source-watcher.md) — auto-reconcile projections on source-root file changes; Watch toggle
 - [agentic-demo-scaffold.md](features/agentic-demo-scaffold.md) — first-run bootstrap of a starter shared root
