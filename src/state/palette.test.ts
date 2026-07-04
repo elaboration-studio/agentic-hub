@@ -125,6 +125,8 @@ function makeSettings(): Settings {
     watcherEnabled: true,
     watcherForceMigrated: true,
     codexAgentsPathMigrated: true,
+    antigravitySkillsPathMigrated: true,
+    kiroRulesAgentsMdMigrated: true,
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
     pasteIntoFocused: false,

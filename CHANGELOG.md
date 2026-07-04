@@ -8,6 +8,17 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.10.3] — 2026-07-04
+
+### Added
+
+- **Global Manager shows unmanaged tool installs.** The Global view merges Hub
+  source-root resources with read-only rows discovered from enabled tools'
+  native global folders (`~/.codex`, `~/.claude`, `~/.cursor`, and peers).
+  Unmanaged rows are labeled by tool source, filterable via the Source filter,
+  and support Open / Reveal without toggles, Apply, or sync. Duplicates already
+  represented by Hub-managed projection state are suppressed.
+
 ## [0.10.2] — 2026-06-30
 
 ### Fixed

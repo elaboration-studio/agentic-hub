@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/ipc", () => ({
   loadSettings: vi.fn(),
   scan: vi.fn(),
+  scanInstalledTools: vi.fn(),
   scanWorkspace: vi.fn(),
   inspect: vi.fn(),
   plan: vi.fn(),
@@ -24,6 +25,7 @@ import {
   loadSettings,
   plan,
   scan,
+  scanInstalledTools,
   scanWorkspace,
   setWatcherEnabled,
   suiteOwnership,
@@ -46,6 +48,7 @@ import { useManagerStore } from "./manager";
 const mocked = {
   loadSettings: vi.mocked(loadSettings),
   scan: vi.mocked(scan),
+  scanInstalledTools: vi.mocked(scanInstalledTools),
   scanWorkspace: vi.mocked(scanWorkspace),
   inspect: vi.mocked(inspect),
   plan: vi.mocked(plan),
@@ -79,6 +82,8 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     watcherEnabled: true,
     watcherForceMigrated: true,
     codexAgentsPathMigrated: true,
+    antigravitySkillsPathMigrated: true,
+    kiroRulesAgentsMdMigrated: true,
     editor: { kind: "default", customApp: null },
     paletteShortcut: "Cmd+Alt+A",
     pasteIntoFocused: false,
@@ -113,6 +118,16 @@ function makeItem(id: string): CapabilityItem {
   };
 }
 
+function makeInstalledItem(tool: ToolId, id: string): CapabilityItem {
+  return {
+    ...makeItem(`installed::${tool}::${id}`),
+    name: id,
+    sourcePath: `/${tool}/${id}`,
+    sourceId: `installed:${tool}`,
+    sourceLabel: tool === "codex" ? "Codex" : tool,
+  };
+}
+
 function makeState(tool: ToolId, itemId: string, state: LinkState): ToolCapabilityState {
   return { tool, itemId, targetPath: `/${tool}/${itemId}`, state, currentLinkTarget: null };
 }
@@ -139,6 +154,7 @@ function seedHappyPath(result?: Partial<InspectResult>) {
   };
   mocked.loadSettings.mockResolvedValue(makeSettings());
   mocked.scan.mockResolvedValue({ items: [item], errors: [] });
+  mocked.scanInstalledTools.mockResolvedValue({ items: [], states: [], errors: [] });
   mocked.inspect.mockResolvedValue(inspectResult);
   mocked.suiteOwnership.mockResolvedValue([]);
 }
@@ -161,6 +177,42 @@ describe("manager store — refresh", () => {
     expect(s.desired["cursor::skill:a"]).toBe(false);
     expect(s.tools.map((t) => t.id)).toEqual(["codex", "cursor"]);
     expect(s.pendingKeys).toEqual([]);
+  });
+
+  it("merges read-only installed resources into global scope", async () => {
+    seedHappyPath();
+    const installed = makeInstalledItem("codex", "skill:manual");
+    mocked.scanInstalledTools.mockResolvedValue({
+      items: [installed],
+      states: [makeState("codex", installed.id, "enabled")],
+      errors: [],
+    });
+
+    await useManagerStore.getState().refresh();
+    const s = useManagerStore.getState();
+
+    expect(s.data?.items.map((i) => i.id).sort()).toEqual([
+      "installed::codex::skill:manual",
+      "skill:a",
+    ]);
+    expect(s.readOnlyItemIds.has("installed::codex::skill:manual")).toBe(true);
+    expect(s.desired["codex::installed::codex::skill:manual"]).toBe(true);
+  });
+
+  it("suppresses installed rows already represented by managed inspect states", async () => {
+    seedHappyPath();
+    const duplicate = makeInstalledItem("codex", "skill:a");
+    mocked.scanInstalledTools.mockResolvedValue({
+      items: [duplicate],
+      states: [{ ...makeState("codex", duplicate.id, "enabled"), targetPath: "/codex/skill:a" }],
+      errors: [],
+    });
+
+    await useManagerStore.getState().refresh();
+    const ids = useManagerStore.getState().data?.items.map((i) => i.id) ?? [];
+
+    expect(ids).toEqual(["skill:a"]);
+    expect(useManagerStore.getState().readOnlyItemIds.size).toBe(0);
   });
 
   it("re-syncs desired and ownership when refreshed after an external apply", async () => {
@@ -392,6 +444,22 @@ describe("manager store — staging", () => {
     expect(s.pendingKeys).toContain("codex::skill:a");
   });
 
+  it("does not toggle read-only installed resources", async () => {
+    seedHappyPath();
+    const installed = makeInstalledItem("codex", "skill:manual");
+    mocked.scanInstalledTools.mockResolvedValue({
+      items: [installed],
+      states: [makeState("codex", installed.id, "enabled")],
+      errors: [],
+    });
+    await useManagerStore.getState().refresh();
+
+    useManagerStore.getState().toggle("codex", installed.id);
+
+    expect(useManagerStore.getState().desired[`codex::${installed.id}`]).toBe(true);
+    expect(useManagerStore.getState().pendingKeys).toEqual([]);
+  });
+
   it("toggle is a no-op for a tool/item pair that is not in the current map", async () => {
     seedHappyPath();
     await useManagerStore.getState().refresh();
@@ -493,6 +561,41 @@ describe("manager store — apply pipeline", () => {
     expect(mocked.syncHooks).toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalled();
     expect(useManagerStore.getState().applying).toBe(false);
+  });
+
+  it("excludes read-only installed resources from plan and sync payloads", async () => {
+    seedHappyPath();
+    const installed = makeInstalledItem("codex", "skill:manual");
+    mocked.scanInstalledTools.mockResolvedValue({
+      items: [installed],
+      states: [makeState("codex", installed.id, "enabled")],
+      errors: [],
+    });
+    await useManagerStore.getState().refresh();
+    mocked.plan.mockResolvedValue([]);
+    mocked.syncRules.mockResolvedValue({} as never);
+    mocked.syncHooks.mockResolvedValue({} as never);
+
+    useManagerStore.getState().toggle("codex", "skill:a");
+    useManagerStore.getState().requestApply();
+
+    await vi.waitFor(() => expect(mocked.syncHooks).toHaveBeenCalled());
+    expect(mocked.plan).toHaveBeenCalledWith(
+      "codex",
+      [expect.objectContaining({ id: "skill:a" })],
+      { "skill:a": false },
+      false,
+    );
+    expect(mocked.syncRules).toHaveBeenCalledWith(
+      "codex",
+      [expect.objectContaining({ id: "skill:a" })],
+      { "skill:a": false },
+    );
+    expect(mocked.syncHooks).toHaveBeenCalledWith(
+      "codex",
+      [expect.objectContaining({ id: "skill:a" })],
+      { "skill:a": false },
+    );
   });
 
   it("resolveConflicts(true) applies with force and clears the conflict prompt", async () => {

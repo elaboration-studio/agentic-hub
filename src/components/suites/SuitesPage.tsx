@@ -59,7 +59,14 @@ interface Confirm {
 }
 
 export function SuitesPage() {
-  const items = useManagerStore((s) => s.data?.items ?? []);
+  const allItems = useManagerStore((s) => s.data?.items ?? []);
+  const readOnlyItemIds = useManagerStore((s) => s.readOnlyItemIds);
+  // Unmanaged (tool-installed) rows are audit-only: suites can't include what
+  // the Hub doesn't own, since apply_suite only resolves Hub-scanned items.
+  const items = useMemo(
+    () => allItems.filter((it) => !readOnlyItemIds.has(it.id)),
+    [allItems, readOnlyItemIds],
+  );
   const tools = useManagerStore((s) => s.tools);
   const adapterStatuses = useManagerStore((s) => s.data?.result.adapterStatuses ?? []);
 

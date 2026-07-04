@@ -65,5 +65,7 @@ pub use skill_source::{
 };
 pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
-pub use workspace_inventory::{scan_workspace, LockedSkill, WorkspaceInventory};
+pub use workspace_inventory::{
+    scan_installed_tools, scan_workspace, InstalledToolInventory, LockedSkill, WorkspaceInventory,
+};
 pub use workspace_target_store::WorkspaceTargetStore;

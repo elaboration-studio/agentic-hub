@@ -53,6 +53,11 @@ audit**: pick a project, see exactly what each tool has, live-updated.
   (`sources-changed`) reloads the merged inventory too.
 - **No writes, ever.** Workspace scope never touches the filesystem. Toggles,
   apply, and ownership locks are all inert in read-only mode.
+- **Same read-only primitive as Global installed resources.** The workspace
+  scanner and the Global installed-resource scanner share the same inventory
+  contract: discovered tool-native resources become source-labeled rows with
+  static present cells. The Global feature uses tool labels (`Codex`, `Kiro`,
+  `Copilot`, …); Workspace scope keeps the single `Workspace` label.
 - **Locate from the command palette.** The
   [command palette](./command-palette.md) searches every remembered workspace's
   inventory. Picking a result *locates* it: the Hub jumps to Workspace scope,

@@ -11,12 +11,13 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::adapter_registry::create_workspace_adapter;
 use crate::adapter_registry::ResolvedAdapter;
+use crate::adapter_registry::{create_workspace_adapter, resolve};
 use crate::model::{
     CapabilityItem, CapabilityKind, LinkState, ScanError, SourceRef, ToolCapabilityState, ToolId,
 };
 use crate::paths::tildify;
+use crate::settings::Settings;
 use crate::skill_lock::read_local_lock;
 
 /// Bounded walk depth; mirrors the shared-root scanner guard against cycles.
@@ -29,6 +30,8 @@ const ARCHIVED: &str = "__archived__";
 /// scope has a single implicit source (the project itself).
 const WORKSPACE_SOURCE_ID: &str = "workspace";
 const WORKSPACE_SOURCE_LABEL: &str = "Workspace";
+
+const INSTALLED_ID_PREFIX: &str = "installed";
 
 /// A skill in this workspace that the skills.sh CLI manages, matched from the
 /// project's `skills-lock.json`. Carries what the hub needs to offer a one-click
@@ -69,6 +72,21 @@ pub struct WorkspaceInventory {
     /// Skill items the skills.sh CLI manages (from `skills-lock.json`), so the
     /// UI can mark them and offer `npx skills update`. Empty when no lock.
     pub locked_skills: Vec<LockedSkill>,
+}
+
+/// A read-only snapshot of resources already installed in enabled tools'
+/// global folders, outside the configured Agentic Hub source roots.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledToolInventory {
+    pub items: Vec<CapabilityItem>,
+    pub states: Vec<ToolCapabilityState>,
+    pub errors: Vec<ScanError>,
 }
 
 /// A resource discovered in one tool's workspace directory.
@@ -232,6 +250,161 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
         states,
         errors,
         locked_skills,
+    }
+}
+
+/// Scan enabled global tool folders for unmanaged installed resources.
+/// Read-only: no filesystem writes, and missing tool dirs are not errors.
+pub fn scan_installed_tools(settings: &Settings) -> InstalledToolInventory {
+    let mut by_id: BTreeMap<String, CapabilityItem> = BTreeMap::new();
+    let mut states: Vec<ToolCapabilityState> = Vec::new();
+    let mut errors: Vec<ScanError> = Vec::new();
+
+    for tool in ToolId::ALL {
+        let adapter = resolve(settings, tool);
+        if !adapter.enabled {
+            continue;
+        }
+
+        let mut found = Vec::new();
+        collect_installed_for_tool(tool, &adapter, &mut found, &mut errors);
+
+        let source_id = format!("installed:{}", tool.as_str());
+        let source_label = tool_label(tool).to_string();
+        let source = installed_source_ref(&adapter);
+        let mut seen: HashSet<String> = HashSet::new();
+
+        for f in found {
+            let item_id = format!("{INSTALLED_ID_PREFIX}::{}::{}", tool.as_str(), f.id);
+            if !seen.insert(item_id.clone()) {
+                continue;
+            }
+            states.push(ToolCapabilityState {
+                tool,
+                item_id: item_id.clone(),
+                target_path: f.path.clone(),
+                state: LinkState::Enabled,
+                current_link_target: None,
+            });
+            by_id
+                .entry(item_id.clone())
+                .or_insert_with(|| CapabilityItem {
+                    id: item_id,
+                    kind: f.kind,
+                    name: f.name,
+                    source_path: f.path,
+                    relative_path: f.relative_path,
+                    source_id: source_id.clone(),
+                    source_label: source_label.clone(),
+                    source: source.clone(),
+                    valid: true,
+                    validation_errors: Vec::new(),
+                });
+        }
+    }
+
+    InstalledToolInventory {
+        items: by_id.into_values().collect(),
+        states,
+        errors,
+    }
+}
+
+fn collect_installed_for_tool(
+    tool: ToolId,
+    adapter: &ResolvedAdapter,
+    found: &mut Vec<Found>,
+    errors: &mut Vec<ScanError>,
+) {
+    collect_skills(&adapter.skills_path, found, errors);
+
+    match tool {
+        ToolId::Codex => collect_files(
+            &adapter.agents_path,
+            CapabilityKind::Agent,
+            &["toml"],
+            found,
+            errors,
+        ),
+        ToolId::Copilot => collect_copilot_agents(&adapter.agents_path, found, errors),
+        ToolId::Antigravity => {}
+        _ => collect_files(
+            &adapter.agents_path,
+            CapabilityKind::Agent,
+            CapabilityKind::Agent.file_extensions(),
+            found,
+            errors,
+        ),
+    }
+
+    match tool {
+        ToolId::Copilot => collect_copilot_rules(&adapter.rules_path, found, errors),
+        ToolId::Codex | ToolId::Openclaw => {}
+        _ => collect_files(
+            &adapter.rules_path,
+            CapabilityKind::Rule,
+            CapabilityKind::Rule.file_extensions(),
+            found,
+            errors,
+        ),
+    }
+
+    match tool {
+        ToolId::Kiro => collect_kiro_hooks(adapter, found, errors),
+        ToolId::Copilot => collect_copilot_hooks(adapter, found, errors),
+        _ => {}
+    }
+
+    if let Some(commands) = adapter.commands_path.as_ref() {
+        collect_files(
+            commands,
+            CapabilityKind::Command,
+            CapabilityKind::Command.file_extensions(),
+            found,
+            errors,
+        );
+    }
+
+    if let Some(instructions) = adapter.instructions_path.as_ref() {
+        if instructions.is_file() {
+            if let Some(file_name) = instructions.file_name().and_then(|s| s.to_str()) {
+                found.push(Found {
+                    kind: CapabilityKind::Rule,
+                    id: format!("{}:{file_name}", CapabilityKind::Rule.id_prefix()),
+                    name: file_name.to_string(),
+                    relative_path: PathBuf::from(file_name),
+                    path: instructions.clone(),
+                });
+            }
+        }
+    }
+}
+
+fn tool_label(tool: ToolId) -> &'static str {
+    match tool {
+        ToolId::Codex => "Codex",
+        ToolId::Claude => "Claude",
+        ToolId::Cursor => "Cursor",
+        ToolId::Openclaw => "OpenClaw",
+        ToolId::Openstandard => "OpenStandard",
+        ToolId::Kiro => "Kiro",
+        ToolId::Copilot => "Copilot",
+        ToolId::Antigravity => "Antigravity",
+    }
+}
+
+fn installed_source_ref(adapter: &ResolvedAdapter) -> SourceRef {
+    let root = adapter
+        .skills_path
+        .parent()
+        .unwrap_or(adapter.skills_path.as_path());
+    let folder = root
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    SourceRef {
+        rel_home: tildify(root),
+        folder,
     }
 }
 
@@ -646,6 +819,7 @@ fn instruction_scan_paths(tool: ToolId, ws: &Path, adapter: &ResolvedAdapter) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::Settings;
 
     fn write(path: &Path, contents: &str) {
         if let Some(parent) = path.parent() {
@@ -992,7 +1166,10 @@ mod tests {
         assert!(agents_tools.contains(&ToolId::Cursor), "{agents_tools:?}");
         assert!(agents_tools.contains(&ToolId::Kiro), "{agents_tools:?}");
         assert!(agents_tools.contains(&ToolId::Copilot), "{agents_tools:?}");
-        assert!(agents_tools.contains(&ToolId::Antigravity), "{agents_tools:?}");
+        assert!(
+            agents_tools.contains(&ToolId::Antigravity),
+            "{agents_tools:?}"
+        );
         assert!(!agents_tools.contains(&ToolId::Claude), "{agents_tools:?}");
 
         let claude_tools: Vec<ToolId> = inv
@@ -1109,5 +1286,64 @@ mod tests {
         // it contributes nothing.
         let inv = scan_workspace(ws, &[ToolId::Openclaw]);
         assert!(inv.items.is_empty());
+    }
+
+    #[test]
+    fn installed_inventory_discovers_enabled_tool_resources() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        let mut settings = Settings::sandboxed(root.path(), tools.path());
+        settings.tools.kiro.enabled = true;
+        settings.tools.copilot.enabled = true;
+
+        write(&tools.path().join("codex/skills/tdd/SKILL.md"), "# tdd");
+        write(
+            &tools.path().join("codex/agents/reviewer.toml"),
+            "name = \"reviewer\"",
+        );
+        write(&tools.path().join("kiro/steering/api.md"), "# api");
+        write(
+            &tools.path().join("kiro/hooks/fmt.json"),
+            r#"{"hooks":[{"name":"fmt"}]}"#,
+        );
+        write(
+            &tools
+                .path()
+                .join("copilot/agents/security-auditor.agent.md"),
+            "# security",
+        );
+
+        let inv = scan_installed_tools(&settings);
+
+        let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"installed::codex::skill:tdd"));
+        assert!(ids.contains(&"installed::codex::agent:reviewer.toml"));
+        assert!(ids.contains(&"installed::kiro::rule:api.md"));
+        assert!(ids.contains(&"installed::kiro::hook:fmt.json"));
+        assert!(ids.contains(&"installed::copilot::agent:security-auditor.agent.md"));
+        assert!(inv
+            .items
+            .iter()
+            .any(|i| i.source_id == "installed:kiro" && i.source_label == "Kiro"));
+    }
+
+    #[test]
+    fn installed_inventory_skips_disabled_tools_and_archived_resources() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        let mut settings = Settings::sandboxed(root.path(), tools.path());
+        settings.tools.kiro.enabled = false;
+
+        write(&tools.path().join("kiro/skills/disabled/SKILL.md"), "# off");
+        write(
+            &tools.path().join("codex/skills/__archived__/old/SKILL.md"),
+            "# old",
+        );
+
+        let inv = scan_installed_tools(&settings);
+
+        assert!(inv.items.is_empty());
+        assert!(inv.states.is_empty());
+        assert!(inv.errors.is_empty());
     }
 }

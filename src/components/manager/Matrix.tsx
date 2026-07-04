@@ -101,6 +101,7 @@ export function Matrix() {
   const onToggle = useManagerStore((s) => s.toggle);
   const onToggleMany = useManagerStore((s) => s.toggleMany);
   const readOnly = useManagerStore((s) => s.readOnly);
+  const readOnlyItemIds = useManagerStore((s) => s.readOnlyItemIds);
   const lockedSkills = useManagerStore((s) => s.lockedSkills);
   const workspaceId = useWorkspaceStore((s) => s.activeId);
 
@@ -207,6 +208,7 @@ export function Matrix() {
     onToggleMany,
     settings: data.settings,
     readOnly,
+    readOnlyItemIds,
     locateId,
     lockedSkills,
     workspaceId,
@@ -376,6 +378,8 @@ interface BodyContext {
   settings: Settings;
   // Workspace scope: cells and aggregates render as static present/absent.
   readOnly: boolean;
+  // Global installed resources are row-level read-only.
+  readOnlyItemIds: ReadonlySet<string>;
   // The row to surface from a palette locate (namespaced item id), or "".
   locateId: string;
   // Namespaced item id -> skills.sh install behind it (workspace scope only).
@@ -428,8 +432,9 @@ function AggregateCells(props: { items: CapabilityItem[]; ctx: BodyContext }) {
   return (
     <>
       {ctx.tools.map((t) => {
-        const togglable = items.filter((it) => ctx.currentMap.has(key(t.id, it.id)));
-        if (togglable.length === 0) {
+        const present = items.filter((it) => ctx.currentMap.has(key(t.id, it.id)));
+        const togglable = present.filter((it) => !ctx.readOnlyItemIds.has(it.id));
+        if (present.length === 0) {
           return (
             <TableCell key={t.id} className="text-center">
               <span className="text-muted-foreground/50">—</span>
@@ -445,6 +450,13 @@ function AggregateCells(props: { items: CapabilityItem[]; ctx: BodyContext }) {
               <span className={cn("text-xs tabular-nums", all ? "text-success" : "text-muted-foreground")}>
                 {togglable.length}
               </span>
+            </TableCell>
+          );
+        }
+        if (togglable.length === 0) {
+          return (
+            <TableCell key={t.id} className="text-center">
+              <span className="text-xs tabular-nums text-success">{present.length}</span>
             </TableCell>
           );
         }
@@ -592,6 +604,7 @@ function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge
         ownership={ctx.ownership}
         onToggle={ctx.onToggle}
         readOnly={ctx.readOnly}
+        readOnlyItemIds={ctx.readOnlyItemIds}
       />
     </TableRow>
   );

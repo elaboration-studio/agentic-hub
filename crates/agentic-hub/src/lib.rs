@@ -179,6 +179,7 @@ pub fn run() {
             commands::cmd_show_main,
             commands::cmd_rescan_resync,
             commands::cmd_scan,
+            commands::cmd_scan_installed_tools,
             commands::cmd_inspect,
             commands::cmd_scaffold_demo,
             commands::cmd_open_path,

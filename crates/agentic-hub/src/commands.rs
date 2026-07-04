@@ -22,7 +22,7 @@ use agentic_core::skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFav
 use agentic_core::skill_source::{provider_for, SkillCliStatus, SkillSearchHit};
 use agentic_core::suite_binding_store::SuiteBindingStore;
 use agentic_core::suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
-use agentic_core::workspace_inventory::{self, WorkspaceInventory};
+use agentic_core::workspace_inventory::{self, InstalledToolInventory, WorkspaceInventory};
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -137,6 +137,22 @@ pub async fn cmd_scan(input: ScanInput) -> IpcResult<ScanResult> {
         ..Settings::default()
     };
     Ok(api::scan(&settings))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScanInstalledToolsInput {
+    pub tools: ToolsSettings,
+}
+
+#[tauri::command]
+pub async fn cmd_scan_installed_tools(
+    input: ScanInstalledToolsInput,
+) -> IpcResult<InstalledToolInventory> {
+    let settings = Settings {
+        tools: input.tools,
+        ..Settings::default()
+    };
+    Ok(workspace_inventory::scan_installed_tools(&settings))
 }
 
 #[tauri::command]
