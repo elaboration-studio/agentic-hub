@@ -16,6 +16,7 @@ import type {
   CliToolStatus,
   InspectResult,
   InstallContext,
+  InstalledToolInventory,
   PlannedOperation,
   ScaffoldMode,
   ScaffoldResult,
@@ -110,6 +111,9 @@ export const emitSourcesChanged = (): Promise<void> => emit("sources-changed");
 
 export const scan = (sources: SourceConfig[]): Promise<ScanResult> =>
   invoke("cmd_scan", { input: { sources } });
+
+export const scanInstalledTools = (tools: ToolsSettings): Promise<InstalledToolInventory> =>
+  invoke("cmd_scan_installed_tools", { input: { tools } });
 
 /// Materialize the bundled demo tree into the first source root. First-run
 /// "empty start" affordance; re-scan after it resolves.

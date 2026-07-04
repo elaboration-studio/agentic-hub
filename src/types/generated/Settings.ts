@@ -46,6 +46,18 @@ watcherForceMigrated: boolean,
  */
 codexAgentsPathMigrated: boolean, 
 /**
+ * One-time migration marker: rewrites a stale Antigravity `skillsPath` of
+ * `~/.gemini/skills` (the pre-0.10.1 default) to `~/.gemini/config/skills`
+ * once, then sets this so a later deliberate choice of the old path sticks.
+ */
+antigravitySkillsPathMigrated: boolean,
+/**
+ * One-time migration marker: sets Kiro `instructionsPath` to
+ * `~/.kiro/steering/AGENTS.md` when absent so shared rules project into the
+ * AGENTS.md managed block instead of per-file steering copies.
+ */
+kiroRulesAgentsMdMigrated: boolean,
+/**
  * Preferred editor for opening a capability's original file. Defaults to
  * the OS default app.
  */

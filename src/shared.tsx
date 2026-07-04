@@ -110,7 +110,9 @@ export function editorApp(settings: Settings): string | undefined {
 // skill/hook folder, or the capability file itself for agents/rules.
 export function originalFile(item: CapabilityItem): string {
   if (item.kind === "skill") return `${item.sourcePath}/SKILL.md`;
-  if (item.kind === "hook") return `${item.sourcePath}/hook.json`;
+  if (item.kind === "hook") {
+    return item.sourcePath.endsWith(".json") ? item.sourcePath : `${item.sourcePath}/hook.json`;
+  }
   return item.sourcePath;
 }
 

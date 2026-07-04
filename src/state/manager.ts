@@ -12,6 +12,7 @@ import {
   loadSettings,
   plan,
   scan,
+  scanInstalledTools,
   scanWorkspace,
   setWatcherEnabled,
   suiteOwnership,
@@ -71,6 +72,9 @@ interface ManagerState {
   conflicts: ConflictRow[] | null;
   // Workspace scope renders the inventory read-only: no toggles, no apply.
   readOnly: boolean;
+  // Global scope can include unmanaged tool-installed rows. Those individual
+  // rows are audit-only even while normal source-root rows remain editable.
+  readOnlyItemIds: Set<string>;
 
   // Derived (recomputed on data/desired change).
   tools: ToolDef[];
@@ -121,6 +125,24 @@ function namespaceItem(it: CapabilityItem): CapabilityItem {
 
 function namespaceState(s: ToolCapabilityState): ToolCapabilityState {
   return { ...s, itemId: WORKSPACE_ID_PREFIX + s.itemId };
+}
+
+function filterInstalledInventory(
+  installed: { items: CapabilityItem[]; states: ToolCapabilityState[]; errors: ScanError[] },
+  managedStates: ToolCapabilityState[],
+): { items: CapabilityItem[]; states: ToolCapabilityState[]; errors: ScanError[] } {
+  const managedTargets = new Set(
+    managedStates
+      .filter((s) => s.state !== "disabled")
+      .map((s) => s.targetPath),
+  );
+  const states = installed.states.filter((s) => !managedTargets.has(s.targetPath));
+  const liveIds = new Set(states.map((s) => s.itemId));
+  return {
+    items: installed.items.filter((it) => liveIds.has(it.id)),
+    states,
+    errors: installed.errors,
+  };
 }
 
 // Global resources project into each tool's home dir, so a globally-enabled
@@ -205,6 +227,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   watching: true,
   conflicts: null,
   readOnly: false,
+  readOnlyItemIds: new Set(),
   tools: [],
   workspaceTools: [],
   currentMap: new Map(),
@@ -217,13 +240,23 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     try {
       const settings = await loadSettings();
       const { items, errors } = await scan(settings.sources);
-      const result = await inspect(items, settings.tools);
+      const [managedResult, installedRaw] = await Promise.all([
+        inspect(items, settings.tools),
+        scanInstalledTools(settings.tools),
+      ]);
+      const installed = filterInstalledInventory(installedRaw, managedResult.states);
+      const readOnlyItemIds = new Set(installed.items.map((it) => it.id));
+      const result = {
+        states: [...managedResult.states, ...installed.states],
+        adapterStatuses: managedResult.adapterStatuses,
+      };
+      const allItems = [...items, ...installed.items];
       const desired = seedDesired(result);
       const currentMap = buildCurrentMap(result);
       const tools = enabledTools(settings);
       const ownership = await loadOwnership();
       set({
-        data: { settings, items, scanErrors: errors, result },
+        data: { settings, items: allItems, scanErrors: [...errors, ...installed.errors], result },
         desired,
         currentMap,
         tools,
@@ -231,6 +264,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         pendingKeys: [],
         ownership,
         lockedSkills: new Map(),
+        readOnlyItemIds,
         watching: settings.watcherEnabled,
         readOnly: false,
         status: "ready",
@@ -283,6 +317,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         pendingKeys: [],
         ownership: new Map(),
         lockedSkills,
+        readOnlyItemIds: new Set(),
         readOnly: true,
         status: "ready",
       });
@@ -306,8 +341,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   setWatching: (watching) => set({ watching }),
 
   toggle: (tool, itemId) => {
-    const { currentMap, desired, ownership, readOnly } = get();
-    if (readOnly) return;
+    const { currentMap, desired, ownership, readOnly, readOnlyItemIds } = get();
+    if (readOnly || readOnlyItemIds.has(itemId)) return;
     const k = key(tool, itemId);
     // Suite-managed cells are locked: a binding owns them.
     if (!currentMap.has(k) || ownership.has(k)) return;
@@ -316,10 +351,11 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   },
 
   toggleMany: (tool, itemIds, value) => {
-    const { currentMap, desired, ownership, readOnly } = get();
+    const { currentMap, desired, ownership, readOnly, readOnlyItemIds } = get();
     if (readOnly) return;
     const next = { ...desired };
     for (const id of itemIds) {
+      if (readOnlyItemIds.has(id)) continue;
       const k = key(tool, id);
       if (currentMap.has(k) && !ownership.has(k)) next[k] = value;
     }
@@ -361,7 +397,7 @@ async function runApply(
   get: () => ManagerState,
   takeOver: boolean,
 ) {
-  const { data, desired, pendingKeys, tools, refresh } = get();
+  const { data, desired, pendingKeys, tools, refresh, readOnlyItemIds } = get();
   if (!data) return;
   set({ applying: true, progress: null });
   try {
@@ -370,12 +406,13 @@ async function runApply(
     const totals = { created: 0, removed: 0, replaced: 0, errors: 0 };
     for (const tool of tools) {
       if (!modifiedTools.has(tool.id)) continue;
+      const editableItems = data.items.filter((item) => !readOnlyItemIds.has(item.id));
       const desiredByItem: DesiredMap = {};
-      for (const item of data.items) {
+      for (const item of editableItems) {
         const k = key(tool.id, item.id);
         if (k in desired) desiredByItem[item.id] = desired[k];
       }
-      const ops = await plan(tool.id, data.items, desiredByItem, takeOver);
+      const ops = await plan(tool.id, editableItems, desiredByItem, takeOver);
       if (ops.length > 0) {
         const res: ApplyResult = await apply(ops);
         totals.created += res.created;
@@ -383,8 +420,8 @@ async function runApply(
         totals.replaced += res.replaced;
         totals.errors += res.errors.length;
       }
-      await syncRules(tool.id, data.items, desiredByItem);
-      await syncHooks(tool.id, data.items, desiredByItem);
+      await syncRules(tool.id, editableItems, desiredByItem);
+      await syncHooks(tool.id, editableItems, desiredByItem);
     }
     await refresh();
     const summary = `${totals.created} added · ${totals.removed} removed · ${totals.replaced} replaced`;
