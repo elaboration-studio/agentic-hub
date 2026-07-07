@@ -25,6 +25,7 @@ import {
   openPath,
   pasteToFrontmost,
   readCapabilityBody,
+  recordCommandPaletteUsage,
   revealPath,
   setWatcherEnabled,
   type LocateRequest,
@@ -352,14 +353,17 @@ function commandResults(ctx: ProviderContext): PaletteItem[] {
         run: async () => {
           const body = await readCapabilityBody(file);
           await copyText(body);
+          let pasted = false;
           if (ctx.settings.pasteIntoFocused) {
             const outcome = await pasteToFrontmost();
+            pasted = outcome.pasted;
             if (outcome.needsPermission) {
               toast.message(
                 "Grant Accessibility access to Agentic Hub in System Settings to paste directly.",
               );
             }
           }
+          void recordCommandPaletteUsage(it.id, pasted).catch(() => {});
         },
         altRun: () => openPath(file, app),
       };

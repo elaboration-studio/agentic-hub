@@ -46,7 +46,7 @@ Tables:
 | `event_id` | UUID-like id from payload or generated locally |
 | `timestamp` | ISO 8601 timestamp |
 | `source_tool` | Agentic tool id such as `codex`, `claude`, or `cursor` |
-| `event_type` | Terminal events only count: `PostToolUse`, `PostToolUseFailure`, `PostSkillUse`, `McpToolComplete` |
+| `event_type` | Terminal events count: `PostToolUse`, `PostToolUseFailure`, `PostSkillUse`, `CommandPaletteUse`, and MCP wrapper completions |
 | `tool_name` | Tool or MCP tool name when available |
 | `skill_name` | Explicit skill name when available |
 | `capability_id` | Resolved Agentic Hub id, e.g. `skill:root-cause-investigation` |
@@ -70,11 +70,14 @@ The core resolves a skill event against the currently scanned local skills:
 If no match exists, or if more than one skill matches at the same stage, the
 event is stored with `capability_id = null` and excluded from visible counts.
 
-Cursor-specific prompt-submit events may produce `PostSkillUse` only when the
+Cursor- and Codex-specific prompt-submit events may produce `PostSkillUse` only when the
 payload contains a single explicit skill reference such as
 `$root-cause-investigation` or a `.../root-cause-investigation/SKILL.md` link.
-The collector extracts only the skill slug and discards the raw prompt text.
-Ambiguous prompt references stay unresolved.
+Claude slash-command invocations produce `PostSkillUse` from `UserPromptExpansion`
+when `expansion_type` is `slash_command` and `command_name` resolves to one local
+skill. Claude prompt-submit and Codex/Cursor prompt-submit paths use the same
+conservative explicit-reference rules. The collector extracts only the skill slug
+and discards the raw prompt text. Ambiguous prompt references stay unresolved.
 
 ## Collector flow
 
@@ -109,7 +112,9 @@ entries are preserved verbatim.
 | --- | --- |
 | `cmd_usage_tracing_status` | Return whether tracing is enabled, whether the collector is running, DB path, port, and supported tools |
 | `cmd_set_usage_tracing_enabled` | Toggle tracing, persist settings, start/stop collector, and sync managed tracer hooks |
+| `cmd_sync_usage_tracer_hooks` | Reinstall managed tracer hooks and ensure the collector is running without toggling tracing |
 | `cmd_query_usage_stats` | Return per-capability usage totals for the current scan |
+| `cmd_record_command_palette_usage` | Record a palette command copy or paste against a command capability id |
 
 ## Failure modes
 
@@ -136,5 +141,9 @@ do not contain a safely resolvable skill identity.
 - Collector accepts valid tokens, rejects invalid tokens, survives malformed JSON,
   and does not block when storage fails.
 - Cursor lower-camel hook event names are canonicalized before storage.
-- Cursor prompt-submit events count only single explicit skill references and do
-  not persist raw prompt text.
+- Cursor, Codex, and Claude prompt-submit events count only single explicit skill
+  references and do not persist raw prompt text.
+- Claude `UserPromptExpansion` slash-command events count when `command_name`
+  resolves to exactly one local skill.
+- Command palette copy/paste records `CommandPaletteUse` for resolved command
+  rows when local tracing is enabled.

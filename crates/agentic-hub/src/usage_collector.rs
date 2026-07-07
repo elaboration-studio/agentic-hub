@@ -47,6 +47,18 @@ pub struct UsageTracingStatus {
     pub unresolved_event_count: u32,
 }
 
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTracerHooksSyncResult {
+    pub status: UsageTracingStatus,
+    pub synced_tools: Vec<ToolId>,
+}
+
 #[derive(Default)]
 pub struct UsageCollectorState {
     inner: Mutex<CollectorInner>,
@@ -298,14 +310,19 @@ fn normalize_event(raw: Value, source_tool: &str) -> UsageEventInput {
         ],
     )
     .unwrap_or_else(|| "unknown".to_string());
-    let explicit_skill = if source_tool == ToolId::Cursor.as_str() {
+    let explicit_skill = if tool_supports_prompt_skill_attribution(source_tool)
+        && raw_event_type.trim() != "UserPromptExpansion"
+    {
         explicit_skill_reference(&raw)
     } else {
         None
     };
     let tool_name = string_at(&raw, &["tool_name", "toolName", "tool"]);
     let read_skill = skill_name_from_read_tool(&raw, tool_name.as_deref());
-    let event_type = if prompt_submit_event(&raw_event_type) && explicit_skill.is_some() {
+    let expansion_skill = skill_from_claude_prompt_expansion(&raw, source_tool);
+    let event_type = if expansion_skill.is_some() {
+        "PostSkillUse".to_string()
+    } else if prompt_submit_event(&raw_event_type) && explicit_skill.is_some() {
         "PostSkillUse".to_string()
     } else {
         canonical_event_type(&raw_event_type)
@@ -326,6 +343,7 @@ fn normalize_event(raw: Value, source_tool: &str) -> UsageEventInput {
                 )
             })
             .or(explicit_skill)
+            .or(expansion_skill)
             .or(read_skill),
         capability_id: string_at(&raw, &["capability_id", "capabilityId"]),
         workspace: string_at(
@@ -359,6 +377,29 @@ fn canonical_event_type(event_type: &str) -> String {
 
 fn prompt_submit_event(event_type: &str) -> bool {
     matches!(event_type.trim(), "beforeSubmitPrompt" | "UserPromptSubmit")
+}
+
+fn skill_from_claude_prompt_expansion(raw: &Value, source_tool: &str) -> Option<String> {
+    if source_tool != ToolId::Claude.as_str() {
+        return None;
+    }
+    let event_type = string_at(
+        raw,
+        &[
+            "hook_event_name",
+            "hookEventName",
+            "event_type",
+            "eventType",
+        ],
+    )?;
+    if event_type != "UserPromptExpansion" {
+        return None;
+    }
+    let expansion_type = string_at(raw, &["expansion_type", "expansionType"])?;
+    if expansion_type != "slash_command" {
+        return None;
+    }
+    string_at(raw, &["command_name", "commandName"])
 }
 
 fn skill_name_from_read_tool(raw: &Value, tool_name: Option<&str>) -> Option<String> {
@@ -572,11 +613,36 @@ fn u64_at(value: &Value, keys: &[&str]) -> Option<u64> {
 pub fn query_usage_stats(items: &[CapabilityItem]) -> Result<Vec<UsageStats>, String> {
     let ids: Vec<String> = items
         .iter()
-        .filter(|item| item.kind == CapabilityKind::Skill)
+        .filter(|item| {
+            matches!(
+                item.kind,
+                CapabilityKind::Skill | CapabilityKind::Command
+            )
+        })
         .map(|item| item.id.clone())
         .collect();
     UsageStore::new()
         .query_stats(&ids)
+        .map_err(|e| e.to_string())
+}
+
+pub fn record_command_palette_usage(
+    capability_id: &str,
+    pasted: bool,
+    items: &[CapabilityItem],
+) -> Result<(), String> {
+    let settings = Settings::load().map_err(|e| e.to_string())?;
+    if !settings.usage_tracing.enabled {
+        return Ok(());
+    }
+    let exists = items.iter().any(|item| {
+        item.kind == CapabilityKind::Command && item.id == capability_id
+    });
+    if !exists {
+        return Err(format!("unknown command capability: {capability_id}"));
+    }
+    UsageStore::new()
+        .record_palette_command_use(items, capability_id, pasted)
         .map_err(|e| e.to_string())
 }
 
@@ -595,12 +661,24 @@ pub fn purge_unresolved_usage_events() -> Result<u32, String> {
 pub fn sync_tracer_hooks(settings: &Settings) -> Result<(), String> {
     ensure_tracer_script(settings)?;
     for tool in SUPPORTED_TOOLS {
-        let enabled = settings.usage_tracing.enabled
-            && settings.tools.for_tool(tool).enabled
-            && settings.usage_tracing.capture_tools.contains(&tool);
+        let enabled = tracer_hook_enabled(settings, tool);
         sync_tracer_hook_for_tool(settings, tool, enabled)?;
     }
     Ok(())
+}
+
+pub fn synced_tracer_tools(settings: &Settings) -> Vec<ToolId> {
+    SUPPORTED_TOOLS
+        .iter()
+        .copied()
+        .filter(|tool| tracer_hook_enabled(settings, *tool))
+        .collect()
+}
+
+fn tracer_hook_enabled(settings: &Settings, tool: ToolId) -> bool {
+    settings.usage_tracing.enabled
+        && settings.tools.for_tool(tool).enabled
+        && settings.usage_tracing.capture_tools.contains(&tool)
 }
 
 trait ToolLookup {
@@ -712,11 +790,26 @@ fn write_tracer_manifest(hook_dir: &Path, tool: ToolId, command: &str) -> Result
     .map_err(|e| e.to_string())
 }
 
+fn tool_supports_prompt_skill_attribution(source_tool: &str) -> bool {
+    matches!(
+        source_tool,
+        tool if tool == ToolId::Cursor.as_str()
+            || tool == ToolId::Codex.as_str()
+            || tool == ToolId::Claude.as_str()
+    )
+}
+
 fn tracer_events(tool: ToolId) -> Vec<HookEventSpec> {
     let mut events = Vec::new();
-    if tool == ToolId::Cursor {
+    if tool_supports_prompt_skill_attribution(tool.as_str()) {
         events.push(HookEventSpec {
             name: HookCanonicalEvent::UserPromptSubmit,
+            matcher: Some(".*".to_string()),
+        });
+    }
+    if tool == ToolId::Claude {
+        events.push(HookEventSpec {
+            name: HookCanonicalEvent::UserPromptExpansion,
             matcher: Some(".*".to_string()),
         });
     }
@@ -737,6 +830,7 @@ fn hook_event_name(event: HookCanonicalEvent) -> &'static str {
         HookCanonicalEvent::PostToolUse => "PostToolUse",
         HookCanonicalEvent::PostToolUseFailure => "PostToolUseFailure",
         HookCanonicalEvent::UserPromptSubmit => "UserPromptSubmit",
+        HookCanonicalEvent::UserPromptExpansion => "UserPromptExpansion",
         HookCanonicalEvent::Stop => "Stop",
         HookCanonicalEvent::SessionStart => "SessionStart",
         HookCanonicalEvent::SessionEnd => "SessionEnd",
@@ -860,13 +954,120 @@ mod tests {
     }
 
     #[test]
-    fn normalize_event_does_not_prompt_count_non_cursor_tools() {
+    fn normalize_event_extracts_slash_skill_from_claude_prompt_submit() {
         let raw = json!({
-            "event_type": "UserPromptSubmit",
-            "prompt": "$root-cause-investigation debug this"
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "/root-cause-investigation why is usage not tracked?",
+            "model": "claude-sonnet-5"
         });
 
         let input = normalize_event(raw, "claude");
+
+        assert_eq!(input.event_type, "PostSkillUse");
+        assert_eq!(
+            input.skill_name.as_deref(),
+            Some("root-cause-investigation")
+        );
+    }
+
+    #[test]
+    fn normalize_event_extracts_skill_from_claude_prompt_expansion() {
+        let raw = json!({
+            "hook_event_name": "UserPromptExpansion",
+            "expansion_type": "slash_command",
+            "command_name": "root-cause-investigation",
+            "command_args": "help me debug this",
+            "prompt": "/root-cause-investigation help me debug this",
+            "model": "claude-sonnet-5"
+        });
+
+        let input = normalize_event(raw, "claude");
+
+        assert_eq!(input.event_type, "PostSkillUse");
+        assert_eq!(
+            input.skill_name.as_deref(),
+            Some("root-cause-investigation")
+        );
+        assert_eq!(input.source_tool, "claude");
+        assert!(input.metadata.get("prompt").is_none());
+    }
+
+    #[test]
+    fn normalize_event_ignores_non_skill_claude_prompt_expansion() {
+        let raw = json!({
+            "hook_event_name": "UserPromptExpansion",
+            "expansion_type": "mcp_prompt",
+            "command_name": "some-mcp-prompt",
+            "prompt": "/some-mcp-prompt"
+        });
+
+        let input = normalize_event(raw, "claude");
+
+        assert_eq!(input.event_type, "UserPromptExpansion");
+        assert_eq!(input.skill_name, None);
+    }
+
+    #[test]
+    fn normalize_event_extracts_dollar_skill_from_codex_prompt_submit() {
+        let raw = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "$root-cause-investigation debug this",
+            "model": "gpt-5.3-codex"
+        });
+
+        let input = normalize_event(raw, "codex");
+
+        assert_eq!(input.event_type, "PostSkillUse");
+        assert_eq!(
+            input.skill_name.as_deref(),
+            Some("root-cause-investigation")
+        );
+        assert_eq!(input.metadata["model"], "gpt-5.3-codex");
+        assert!(input.metadata.get("prompt").is_none());
+    }
+
+    #[test]
+    fn normalize_event_extracts_slash_skill_from_codex_prompt_submit() {
+        let raw = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "/root-cause-investigation why is usage not tracked?",
+            "model": "gpt-5.5"
+        });
+
+        let input = normalize_event(raw, "codex");
+
+        assert_eq!(input.event_type, "PostSkillUse");
+        assert_eq!(
+            input.skill_name.as_deref(),
+            Some("root-cause-investigation")
+        );
+    }
+
+    #[test]
+    fn normalize_event_extracts_markdown_skill_from_codex_prompt_submit() {
+        let raw = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "[$root-cause-investigation](/Users/ArnoYe/.agentic-arno/skills/arno/cto/root-cause-investigation/SKILL.md) debug this",
+            "model": "gpt-5.5"
+        });
+
+        let input = normalize_event(raw, "codex");
+
+        assert_eq!(input.event_type, "PostSkillUse");
+        assert_eq!(
+            input.skill_name.as_deref(),
+            Some("root-cause-investigation")
+        );
+    }
+
+    #[test]
+    fn normalize_event_keeps_ambiguous_codex_prompt_refs_unresolved() {
+        let raw = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "$root-cause-investigation and $security-review"
+        });
+
+        let input = normalize_event(raw, "codex");
 
         assert_eq!(input.event_type, "UserPromptSubmit");
         assert_eq!(input.skill_name, None);
@@ -1094,23 +1295,31 @@ mod tests {
     }
 
     #[test]
-    fn tracer_manifest_adds_prompt_hook_for_cursor_only() {
+    fn tracer_manifest_adds_prompt_hooks_for_supported_tools() {
         let dir =
             std::env::temp_dir().join(format!("agentic-hub-usage-test-{}", uuid::Uuid::new_v4()));
         let cursor_dir = dir.join("cursor");
+        let codex_dir = dir.join("codex");
         let claude_dir = dir.join("claude");
         fs::create_dir_all(&cursor_dir).unwrap();
+        fs::create_dir_all(&codex_dir).unwrap();
         fs::create_dir_all(&claude_dir).unwrap();
 
         write_tracer_manifest(&cursor_dir, ToolId::Cursor, "true").unwrap();
+        write_tracer_manifest(&codex_dir, ToolId::Codex, "true").unwrap();
         write_tracer_manifest(&claude_dir, ToolId::Claude, "true").unwrap();
 
         let cursor: Value =
             serde_json::from_slice(&fs::read(cursor_dir.join("hook.json")).unwrap()).unwrap();
+        let codex: Value =
+            serde_json::from_slice(&fs::read(codex_dir.join("hook.json")).unwrap()).unwrap();
         let claude: Value =
             serde_json::from_slice(&fs::read(claude_dir.join("hook.json")).unwrap()).unwrap();
         assert!(has_manifest_event(&cursor, "UserPromptSubmit"));
-        assert!(!has_manifest_event(&claude, "UserPromptSubmit"));
+        assert!(has_manifest_event(&codex, "UserPromptSubmit"));
+        assert!(has_manifest_event(&claude, "UserPromptSubmit"));
+        assert!(has_manifest_event(&claude, "UserPromptExpansion"));
+        assert!(!has_manifest_event(&cursor, "UserPromptExpansion"));
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1121,6 +1330,21 @@ mod tests {
             .iter()
             .filter_map(|event| event["name"].as_str())
             .any(|event_name| event_name == name)
+    }
+
+    #[test]
+    fn synced_tracer_tools_lists_enabled_capture_tools_only() {
+        let mut settings = Settings::default();
+        settings.usage_tracing.enabled = true;
+        settings.usage_tracing.capture_tools = vec![ToolId::Codex, ToolId::Cursor];
+        settings.tools.codex.enabled = true;
+        settings.tools.cursor.enabled = true;
+        settings.tools.claude.enabled = false;
+
+        assert_eq!(
+            synced_tracer_tools(&settings),
+            vec![ToolId::Codex, ToolId::Cursor]
+        );
     }
 
     fn test_request(token: &str, body: Value) -> HttpRequest {

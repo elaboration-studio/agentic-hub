@@ -281,7 +281,8 @@ impl ResolvedAdapter {
             (ToolId::Kiro, Skill | Agent) => Some(FileSync),
             // Antigravity IDE ignores symlinks under ~/.gemini/; hard-copy skills.
             (ToolId::Antigravity, Skill) => Some(FileSync),
-            (ToolId::Claude, Skill | Command) => Some(FileSync),
+            // Claude's agent loader does not follow symlinks (same as skills/commands).
+            (ToolId::Claude, Skill | Command | Agent) => Some(FileSync),
             (_, Command) => Some(LinkSync),
             (_, Skill | Agent) => Some(LinkSync),
             (ToolId::Cursor | ToolId::Copilot, Rule) => Some(LinkSync),
@@ -574,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_agent_is_nested_and_link_synced() {
+    fn claude_agent_is_nested_and_file_synced() {
         // Claude scans `~/.claude/agents/` recursively (subfolders allowed;
         // identity is the `name` frontmatter), so agents keep their nesting —
         // flattening would collide same-basename agents from different folders.
@@ -586,7 +587,7 @@ mod tests {
         assert_eq!(claude.layout_for(CapabilityKind::Skill), Layout::Flat);
         assert_eq!(
             claude.projection_mode_for(CapabilityKind::Agent),
-            Some(ProjectionMode::LinkSync)
+            Some(ProjectionMode::FileSync)
         );
 
         let agent = item(CapabilityKind::Agent, "team/reviewer.md");

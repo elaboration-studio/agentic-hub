@@ -578,11 +578,26 @@ tracer hooks for the enabled capture tools. When disabling, stops the collector
 and removes only the built-in tracer hook entries, preserving foreign hooks and
 other Agentic Hub-managed hooks.
 
+### `cmd_sync_usage_tracer_hooks() -> UsageTracerHooksSyncResult`
+
+Reinstalls Agentic Hub-managed tracer hooks for the enabled capture tools and
+ensures the loopback collector is running when tracing is enabled. Returns the
+refreshed tracing status plus the tools that received an active tracer hook.
+Use this after updating Agentic Hub or changing capture tools instead of
+toggling tracing off and on. Restart each agentic tool afterward so it reloads
+its hooks file.
+
 ### `cmd_query_usage_stats(input: { items: CapabilityItem[] }) -> UsageStats[]`
 
-Queries local usage aggregates for the scanned skill rows. Unknown or ambiguous
-events remain stored in the trace database but do not appear in capability row
-counts.
+Queries local usage aggregates for the scanned skill and command rows. Unknown or
+ambiguous events remain stored in the trace database but do not appear in
+capability row counts.
+
+### `cmd_record_command_palette_usage(input: { capabilityId: string, pasted: boolean }) -> ()`
+
+Records a `CommandPaletteUse` event when the user copies or pastes a command from
+the palette. No-op when local tracing is disabled. `pasted` is `true` when the
+palette also posted the body into the focused app.
 
 ## Open / reveal commands
 

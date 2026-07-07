@@ -34,7 +34,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::error::IpcError;
 use crate::palette;
 use crate::paste::{self, PasteOutcome};
-use crate::usage_collector::{self, UsageCollectorState, UsageTracingStatus};
+use crate::usage_collector::{self, UsageCollectorState, UsageTracerHooksSyncResult, UsageTracingStatus};
 use crate::watcher::{self, WatcherState};
 
 type IpcResult<T> = Result<T, IpcError>;
@@ -511,8 +511,43 @@ pub async fn cmd_set_usage_tracing_enabled(
 }
 
 #[tauri::command]
+pub async fn cmd_sync_usage_tracer_hooks(
+    usage_collector: State<'_, UsageCollectorState>,
+) -> IpcResult<UsageTracerHooksSyncResult> {
+    let mut settings = Settings::load()?;
+    if settings.usage_tracing.enabled && settings.usage_tracing.collector_token.is_empty() {
+        settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
+        settings.save()?;
+    }
+    usage_collector
+        .apply_settings(&settings)
+        .map_err(|e| IpcError::new("usage_collector_failed", e))?;
+    usage_collector::sync_tracer_hooks(&settings)
+        .map_err(|e| IpcError::new("usage_hooks_failed", e))?;
+    Ok(UsageTracerHooksSyncResult {
+        status: usage_collector.status(&settings),
+        synced_tools: usage_collector::synced_tracer_tools(&settings),
+    })
+}
+
+#[tauri::command]
 pub async fn cmd_query_usage_stats(items: Vec<CapabilityItem>) -> IpcResult<Vec<UsageStats>> {
     usage_collector::query_usage_stats(&items).map_err(|e| IpcError::new("usage_query_failed", e))
+}
+
+#[tauri::command]
+pub async fn cmd_record_command_palette_usage(
+    capability_id: String,
+    pasted: bool,
+) -> IpcResult<()> {
+    let settings = Settings::load()?;
+    if !settings.usage_tracing.enabled {
+        return Ok(());
+    }
+    let scan = api::scan(&settings);
+    usage_collector::record_command_palette_usage(&capability_id, pasted, &scan.items)
+        .map_err(|e| IpcError::new("usage_record_failed", e))?;
+    Ok(())
 }
 
 // ---- Suites ---------------------------------------------------------------

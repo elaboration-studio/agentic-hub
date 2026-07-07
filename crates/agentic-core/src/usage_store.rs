@@ -19,10 +19,11 @@ use crate::model::{CapabilityItem, CapabilityKind, UsageStats, UsageToolBucket};
 use crate::paths::{home_dir, tildify};
 
 const CURRENT_SCHEMA: u32 = 1;
-const TERMINAL_EVENTS: [&str; 4] = [
+const TERMINAL_EVENTS: [&str; 5] = [
     "PostToolUse",
     "PostToolUseFailure",
     "PostSkillUse",
+    "CommandPaletteUse",
     "McpToolComplete",
 ];
 const METADATA_ALLOWLIST: [&str; 5] = ["branch", "model", "machine", "invocationType", "source"];
@@ -360,6 +361,27 @@ impl UsageStore {
         Ok(removed as u32)
     }
 
+    /// Record a command palette copy or paste against a scanned command id.
+    pub fn record_palette_command_use(
+        &self,
+        items: &[CapabilityItem],
+        capability_id: &str,
+        pasted: bool,
+    ) -> Result<()> {
+        let input = UsageEventInput {
+            source_tool: "agentic-hub".to_string(),
+            event_type: "CommandPaletteUse".to_string(),
+            capability_id: Some(capability_id.to_string()),
+            success: Some(true),
+            metadata: serde_json::json!({
+                "invocationType": if pasted { "paste" } else { "copy" },
+                "source": "palette",
+            }),
+            ..UsageEventInput::default()
+        };
+        self.insert_event(&input, items)
+    }
+
     pub fn has_migration(&self, version: u32) -> Result<bool> {
         let conn = self.connect()?;
         let found: Option<u32> = conn
@@ -378,16 +400,18 @@ pub fn resolve_capability_id(
     capability_id: Option<&str>,
     skill_name: Option<&str>,
 ) -> Option<String> {
+    if let Some(id) = trimmed(capability_id) {
+        if (id.starts_with("skill:") || id.starts_with("command:"))
+            && items.iter().any(|item| item.id == id)
+        {
+            return Some(id);
+        }
+    }
+
     let skills: Vec<&CapabilityItem> = items
         .iter()
         .filter(|item| item.kind == CapabilityKind::Skill)
         .collect();
-
-    if let Some(id) = trimmed(capability_id) {
-        if id.starts_with("skill:") && skills.iter().any(|item| item.id == id) {
-            return Some(id);
-        }
-    }
 
     let name = trimmed(skill_name)?;
     resolve_unique(skills.iter().copied().filter(|item| item.name == name))
@@ -532,6 +556,24 @@ mod tests {
         CapabilityItem {
             id: id.to_string(),
             kind: CapabilityKind::Skill,
+            name: name.to_string(),
+            source_path: PathBuf::from(format!("/src/{relative_path}")),
+            relative_path: PathBuf::from(relative_path),
+            source_id: "default".to_string(),
+            source_label: "Default".to_string(),
+            source: SourceRef {
+                rel_home: "~/.agentic".to_string(),
+                folder: ".agentic".to_string(),
+            },
+            valid: true,
+            validation_errors: Vec::new(),
+        }
+    }
+
+    fn command(id: &str, name: &str, relative_path: &str) -> CapabilityItem {
+        CapabilityItem {
+            id: id.to_string(),
+            kind: CapabilityKind::Command,
             name: name.to_string(),
             source_path: PathBuf::from(format!("/src/{relative_path}")),
             relative_path: PathBuf::from(relative_path),
@@ -711,6 +753,36 @@ mod tests {
         let id = resolve_capability_id(&items, None, Some("root-cause"));
 
         assert_eq!(id, None);
+    }
+
+    #[test]
+    fn resolve_capability_id_matches_command_id() {
+        let items = [command("command:git/commit.md", "commit", "git/commit.md")];
+
+        let id = resolve_capability_id(&items, Some("command:git/commit.md"), None);
+
+        assert_eq!(id.as_deref(), Some("command:git/commit.md"));
+    }
+
+    #[test]
+    fn record_palette_command_use_counts_in_query_stats() {
+        let (_dir, store) = store();
+        let items = [command("command:git/commit.md", "commit", "git/commit.md")];
+
+        store
+            .record_palette_command_use(&items, "command:git/commit.md", false)
+            .unwrap();
+        store
+            .record_palette_command_use(&items, "command:git/commit.md", true)
+            .unwrap();
+
+        let stats = store
+            .query_stats(&["command:git/commit.md".to_string()])
+            .unwrap();
+
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].execution_count, 2);
+        assert_eq!(stats[0].tool_buckets[0].source_tool, "agentic-hub");
     }
 
     #[test]

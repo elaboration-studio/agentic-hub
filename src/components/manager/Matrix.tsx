@@ -4,7 +4,7 @@
 // A shared search box filters both views. Group rows (kinds in flat, folders in
 // tree) carry batch toggles that flip every capability beneath them per tool.
 
-import { Fragment, useEffect, useMemo, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -106,6 +106,10 @@ export function Matrix() {
   const readOnlyItemIds = useManagerStore((s) => s.readOnlyItemIds);
   const lockedSkills = useManagerStore((s) => s.lockedSkills);
   const usageStats = useManagerStore((s) => s.usageStats);
+  const scope = useManagerStore((s) => s.scope);
+  const status = useManagerStore((s) => s.status);
+  const refresh = useManagerStore((s) => s.refresh);
+  const loadWorkspace = useManagerStore((s) => s.loadWorkspace);
   const workspaceId = useWorkspaceStore((s) => s.activeId);
 
   const view = useManagerFiltersStore((s) => s.view);
@@ -189,15 +193,41 @@ export function Matrix() {
     };
   }, [locateId, data, clearLocate]);
 
+  const onRefresh = useCallback(async () => {
+    if (scope === "workspace" && workspaceId) {
+      await loadWorkspace(workspaceId);
+    } else {
+      await refresh();
+    }
+    const { status: nextStatus, error } = useManagerStore.getState();
+    if (nextStatus === "error") {
+      toast.error(error || "Refresh failed.");
+      return;
+    }
+    toast.success("Resources and usage refreshed.");
+  }, [scope, workspaceId, loadWorkspace, refresh]);
+
   if (!data || items.length === 0) {
     return (
-      <Alert>
-        <AlertDescription>
-          {readOnly
-            ? "No agentic resources apply to this project — nothing installed locally or projected from a shared source yet."
-            : "No capabilities found in the configured sources."}
-        </AlertDescription>
-      </Alert>
+      <div className="flex flex-col gap-2.5">
+        <Alert>
+          <AlertDescription>
+            {readOnly
+              ? "No agentic resources apply to this project — nothing installed locally or projected from a shared source yet."
+              : "No capabilities found in the configured sources."}
+          </AlertDescription>
+        </Alert>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-fit gap-2"
+          onClick={() => void onRefresh()}
+          disabled={status === "loading"}
+        >
+          <RefreshCw className={cn("size-4", status === "loading" && "animate-spin")} />
+          Refresh resources and usage
+        </Button>
+      </div>
     );
   }
 
@@ -323,6 +353,20 @@ export function Matrix() {
             </Tooltip>
           </div>
         )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Refresh resources and usage"
+              onClick={() => void onRefresh()}
+              disabled={status === "loading"}
+            >
+              <RefreshCw className={cn("size-4", status === "loading" && "animate-spin")} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh resources and usage</TooltipContent>
+        </Tooltip>
       </div>
       {filtered.length === 0 ? (
         <Alert>
@@ -567,7 +611,8 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
 }
 
 function UsageCell({ item, stats }: { item: CapabilityItem; stats?: UsageStats }) {
-  if (item.kind !== "skill" || !stats || stats.executionCount === 0) {
+  const countable = item.kind === "skill" || item.kind === "command";
+  if (!countable || !stats || stats.executionCount === 0) {
     return (
       <TableCell className="text-right">
         <span className="text-muted-foreground/50">—</span>
@@ -595,7 +640,11 @@ function UsageCell({ item, stats }: { item: CapabilityItem; stats?: UsageStats }
             </div>
             {stats.toolBuckets.map((bucket) => (
               <div key={bucket.sourceTool} className="flex items-center justify-between gap-3 text-xs">
-                <span>{TOOL_LABELS[bucket.sourceTool as ToolId] ?? bucket.sourceTool}</span>
+                <span>
+                  {bucket.sourceTool === "agentic-hub"
+                    ? "Palette"
+                    : (TOOL_LABELS[bucket.sourceTool as ToolId] ?? bucket.sourceTool)}
+                </span>
                 <span className="font-mono tabular-nums">{bucket.executionCount}</span>
               </div>
             ))}

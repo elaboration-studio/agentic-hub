@@ -37,6 +37,7 @@ import type {
   ToolId,
   ToolsSettings,
   UsageStats,
+  UsageTracerHooksSyncResult,
   UsageTracingStatus,
   WorkspaceInventory,
   WorkspaceTarget,
@@ -200,8 +201,16 @@ export const usageTracingStatus = (): Promise<UsageTracingStatus> =>
 export const setUsageTracingEnabled = (enabled: boolean): Promise<UsageTracingStatus> =>
   invoke("cmd_set_usage_tracing_enabled", { enabled });
 
+export const syncUsageTracerHooks = (): Promise<UsageTracerHooksSyncResult> =>
+  invoke("cmd_sync_usage_tracer_hooks");
+
 export const queryUsageStats = (items: CapabilityItem[]): Promise<UsageStats[]> =>
   invoke("cmd_query_usage_stats", { items });
+
+export const recordCommandPaletteUsage = (
+  capabilityId: string,
+  pasted: boolean,
+): Promise<void> => invoke("cmd_record_command_palette_usage", { capabilityId, pasted });
 
 export const onApplyProgress = (
   cb: (e: ApplyProgressEvent) => void,

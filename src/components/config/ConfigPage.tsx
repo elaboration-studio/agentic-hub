@@ -15,10 +15,11 @@ import {
   saveSettings,
   setUsageTracingEnabled,
   skillCliCheck,
+  syncUsageTracerHooks,
   usageTracingStatus,
 } from "@/ipc";
 import type { Settings, SkillCliStatus, ToolId, UsageTracingStatus } from "@/types";
-import { ALL_TOOLS, messageOf, resolveSourceIds } from "@/shared";
+import { ALL_TOOLS, messageOf, resolveSourceIds, TOOL_LABELS } from "@/shared";
 import { getToolProjectionTargets } from "@/lib/toolTargets";
 import { useManagerStore } from "@/state/manager";
 import { Button } from "@/components/ui/button";
@@ -582,6 +583,8 @@ function SkillsSourcePanel({ settings, onChanged }: PanelProps) {
 
 function UsageTracingPanel({ settings, onChanged }: PanelProps) {
   const [busy, setBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncDone, setSyncDone] = useState(false);
   const [status, setStatus] = useState<UsageTracingStatus | null>(null);
 
   const refreshStatus = useCallback(async () => {
@@ -610,6 +613,26 @@ function UsageTracingPanel({ settings, onChanged }: PanelProps) {
     },
     [onChanged],
   );
+
+  const onReloadHooks = useCallback(async () => {
+    setSyncBusy(true);
+    setSyncDone(false);
+    try {
+      const result = await syncUsageTracerHooks();
+      setStatus(result.status);
+      setSyncDone(true);
+      if (result.syncedTools.length > 0) {
+        const labels = result.syncedTools.map((tool) => TOOL_LABELS[tool]).join(", ");
+        toast.success(`Tracer hooks synced to ${labels}. Restart each tool to pick up changes.`);
+      } else {
+        toast.message("Tracer hooks updated. Enable tracing and at least one capture tool to install hooks.");
+      }
+    } catch (e) {
+      toast.error(messageOf(e));
+    } finally {
+      setSyncBusy(false);
+    }
+  }, []);
 
   return (
     <Card className="p-4">
@@ -652,6 +675,21 @@ function UsageTracingPanel({ settings, onChanged }: PanelProps) {
             </button>
           )}
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="ghost"
+            onClick={() => void onReloadHooks()}
+            disabled={syncBusy || !settings.usageTracing.enabled}
+          >
+            {syncBusy ? "Syncing hooks…" : "Reload tracer hooks"}
+          </Button>
+          {syncDone && !syncBusy && settings.usageTracing.enabled && (
+            <span className={hint}>Hooks synced — restart Codex, Claude, or Cursor to apply.</span>
+          )}
+        </div>
+        {!settings.usageTracing.enabled && (
+          <p className={hint}>Enable tracing to push managed tracer hooks to your agentic tools.</p>
+        )}
       </CardContent>
     </Card>
   );

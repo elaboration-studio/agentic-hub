@@ -14,6 +14,7 @@ vi.mock("@/ipc", () => ({
   readCapabilityBody: vi.fn().mockResolvedValue("command body text"),
   copyText: vi.fn().mockResolvedValue(undefined),
   pasteToFrontmost: vi.fn().mockResolvedValue({ pasted: true, needsPermission: false }),
+  recordCommandPaletteUsage: vi.fn().mockResolvedValue(undefined),
   setWatcherEnabled: vi.fn().mockResolvedValue(undefined),
   emitHubWatcherChanged: vi.fn().mockResolvedValue(undefined),
 }));
@@ -24,6 +25,7 @@ import {
   openPath,
   pasteToFrontmost,
   readCapabilityBody,
+  recordCommandPaletteUsage,
   revealPath,
   setWatcherEnabled,
 } from "@/ipc";
@@ -58,6 +60,7 @@ const mocked = {
   readCapabilityBody: vi.mocked(readCapabilityBody),
   copyText: vi.mocked(copyText),
   pasteToFrontmost: vi.mocked(pasteToFrontmost),
+  recordCommandPaletteUsage: vi.mocked(recordCommandPaletteUsage),
   setWatcherEnabled: vi.mocked(setWatcherEnabled),
   emitHubWatcherChanged: vi.mocked(emitHubWatcherChanged),
 };
@@ -387,6 +390,10 @@ describe("search modes — commands", () => {
     expect(mocked.readCapabilityBody).toHaveBeenCalledWith("/shared/commands/git/commit.md");
     expect(mocked.copyText).toHaveBeenCalledWith("command body text");
     expect(mocked.pasteToFrontmost).not.toHaveBeenCalled();
+    expect(mocked.recordCommandPaletteUsage).toHaveBeenCalledWith(
+      "command:git/commit.md",
+      false,
+    );
     expect(mocked.openPath).not.toHaveBeenCalled();
   });
 
@@ -398,15 +405,20 @@ describe("search modes — commands", () => {
     await row.run();
     expect(mocked.copyText).toHaveBeenCalledWith("command body text");
     expect(mocked.pasteToFrontmost).toHaveBeenCalled();
+    expect(mocked.recordCommandPaletteUsage).toHaveBeenCalledWith(
+      "command:git/commit.md",
+      true,
+    );
   });
 
-  it("Alt+Enter opens the source file for editing", async () => {
+  it("Alt+Enter opens the source file for editing without recording usage", async () => {
     const items = [makeCommand("command:git/commit.md", "commit", "git/commit.md")];
     const row = computeSearchResults(ctx({ items, query: "commit" }), "command")[0];
 
     await row.altRun!();
     expect(mocked.openPath).toHaveBeenCalledWith("/shared/commands/git/commit.md", undefined);
     expect(mocked.copyText).not.toHaveBeenCalled();
+    expect(mocked.recordCommandPaletteUsage).not.toHaveBeenCalled();
   });
 });
 

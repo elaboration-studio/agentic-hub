@@ -27,6 +27,7 @@ pub enum HookCanonicalEvent {
     PostToolUse,
     PostToolUseFailure,
     UserPromptSubmit,
+    UserPromptExpansion,
     Stop,
     SessionStart,
     SessionEnd,
@@ -44,6 +45,7 @@ impl HookCanonicalEvent {
             PostToolUse => "PostToolUse",
             PostToolUseFailure => "PostToolUseFailure",
             UserPromptSubmit => "UserPromptSubmit",
+            UserPromptExpansion => "UserPromptExpansion",
             Stop => "Stop",
             SessionStart => "SessionStart",
             SessionEnd => "SessionEnd",
@@ -62,11 +64,11 @@ impl HookCanonicalEvent {
             PostToolUse => "postToolUse",
             PostToolUseFailure => "postToolUseFailure",
             UserPromptSubmit => "beforeSubmitPrompt",
+            UserPromptExpansion | PostCompact | Notification | PermissionRequest => return None,
             Stop => "stop",
             SessionStart => "sessionStart",
             SessionEnd => "sessionEnd",
             PreCompact => "preCompact",
-            PostCompact | Notification | PermissionRequest => return None,
         })
     }
 

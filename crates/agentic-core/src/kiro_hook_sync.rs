@@ -26,7 +26,7 @@ fn kiro_trigger(event: HookCanonicalEvent) -> Option<&'static str> {
         Stop => Some("Stop"),
         SessionStart => Some("SessionStart"),
         PostToolUseFailure | SessionEnd | PreCompact | PostCompact | Notification
-        | PermissionRequest => None,
+        | PermissionRequest | HookCanonicalEvent::UserPromptExpansion => None,
     }
 }
 

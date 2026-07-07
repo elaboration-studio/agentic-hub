@@ -567,11 +567,11 @@ mod tests {
     }
 
     #[test]
-    fn build_plan_enable_creates_link_and_skips_rules() {
+    fn build_plan_enable_creates_managed_copy_and_skips_rules() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("src/foo.md");
         write(&source, "agent");
-        let agents_dir = dir.path().join("codex-agents");
+        let agents_dir = dir.path().join("claude-agents");
         let adapter = adapter_with(ToolId::Claude, |s| {
             s.tools.claude.agents_path = agents_dir.clone();
         });
@@ -588,7 +588,7 @@ mod tests {
 
         let ops = build_plan(&[agent.clone(), rule], &adapter, &desired, false);
         assert_eq!(ops.len(), 1, "rule excluded from build_plan");
-        assert_eq!(ops[0].kind, OperationKind::CreateLink);
+        assert_eq!(ops[0].kind, OperationKind::CreateManagedCopy);
         assert_eq!(ops[0].item_id, agent.id);
         assert_eq!(ops[0].source_path.as_ref(), Some(&source));
     }
@@ -638,9 +638,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("src/foo.md");
         write(&source, "agent body");
-        let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Claude, |s| {
-            s.tools.claude.agents_path = agents_dir.clone();
+        let agents_dir = dir.path().join("openstandard-agents");
+        let adapter = adapter_with(ToolId::Openstandard, |s| {
+            s.tools.openstandard.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         // A real (user-owned) file occupies the target -> ForeignFile.
@@ -660,6 +660,37 @@ mod tests {
         // With force: a take-over ReplaceLink carrying the source + force flag.
         let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, true);
         assert_eq!(ops[0].kind, OperationKind::ReplaceLink);
+        assert!(ops[0].force);
+        assert_eq!(ops[0].source_path.as_ref(), Some(&source));
+    }
+
+    #[test]
+    fn foreign_file_managed_takeover_only_with_force_claude_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/foo.md");
+        write(&source, "agent body");
+        let agents_dir = dir.path().join("claude-agents");
+        let adapter = adapter_with(ToolId::Claude, |s| {
+            s.tools.claude.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
+        let target = adapter.target_path_for(&agent).unwrap();
+        write(&target, "user owned");
+        assert_eq!(
+            inspect_managed_copy(&agent, &target, &agents_dir).0,
+            LinkState::ForeignFile
+        );
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        assert_eq!(ops[0].kind, OperationKind::SkipConflict);
+        assert!(!ops[0].force);
+        assert!(ops[0].source_path.is_none());
+
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, true);
+        assert_eq!(ops[0].kind, OperationKind::ReplaceManagedCopy);
         assert!(ops[0].force);
         assert_eq!(ops[0].source_path.as_ref(), Some(&source));
     }
@@ -735,9 +766,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("src/foo.md");
         write(&source, "agent");
-        let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Claude, |s| {
-            s.tools.claude.agents_path = agents_dir.clone();
+        let agents_dir = dir.path().join("openstandard-agents");
+        let adapter = adapter_with(ToolId::Openstandard, |s| {
+            s.tools.openstandard.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         let target = adapter.target_path_for(&agent).unwrap();
@@ -780,9 +811,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("src/foo.md");
         write(&source, "agent");
-        let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Claude, |s| {
-            s.tools.claude.agents_path = agents_dir.clone();
+        let agents_dir = dir.path().join("openstandard-agents");
+        let adapter = adapter_with(ToolId::Openstandard, |s| {
+            s.tools.openstandard.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         let target = adapter.target_path_for(&agent).unwrap();
@@ -843,9 +874,9 @@ mod tests {
         write(&source, "agent");
         let other = dir.path().join("src/other.md");
         write(&other, "other");
-        let agents_dir = dir.path().join("codex-agents");
-        let adapter = adapter_with(ToolId::Claude, |s| {
-            s.tools.claude.agents_path = agents_dir.clone();
+        let agents_dir = dir.path().join("openstandard-agents");
+        let adapter = adapter_with(ToolId::Openstandard, |s| {
+            s.tools.openstandard.agents_path = agents_dir.clone();
         });
         let agent = item(CapabilityKind::Agent, "foo.md", source.clone());
         let target = adapter.target_path_for(&agent).unwrap();
@@ -1009,6 +1040,35 @@ mod tests {
 
         assert!(toml_target.is_file());
         assert_eq!(fs::read_to_string(&user_md).unwrap(), "user's own notes");
+    }
+
+    #[test]
+    fn codex_agent_enable_cleans_up_orphaned_managed_markdown_copy() {
+        // Pre-TOML managed copies were real `.md` files; the manifest moved to
+        // `.toml` but the old file was left behind. Re-apply must remove it.
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("src/cto.md");
+        write(&source, "---\nname: cto\n---\nBody.\n");
+        let agents_dir = dir.path().join("codex-agents");
+        let adapter = adapter_with(ToolId::Codex, |s| {
+            s.tools.codex.agents_path = agents_dir.clone();
+        });
+        let agent = item(CapabilityKind::Agent, "cto.md", source);
+        let toml_target = adapter.target_path_for(&agent).unwrap();
+        let legacy_md = toml_target.with_extension("md");
+        fs::create_dir_all(&agents_dir).unwrap();
+        write(&legacy_md, "---\nname: cto\n---\nStale copy.\n");
+
+        let mut desired = HashMap::new();
+        desired.insert(agent.id.clone(), true);
+        let ops = build_plan(std::slice::from_ref(&agent), &adapter, &desired, false);
+        crate::applier::apply(&ops, |_, _, _, _| {});
+
+        assert!(toml_target.is_file(), "toml written");
+        assert!(
+            !legacy_md.exists(),
+            "orphaned agent-spec markdown was cleaned up"
+        );
     }
 
     #[test]

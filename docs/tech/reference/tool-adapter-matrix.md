@@ -24,7 +24,7 @@ Single-page reference table for every tool adapter: target paths, projection mod
 | `skillLayout` | `Nested` | `Flat` | `Nested` | `Nested` | `Nested` |
 | `agentLayout` | `Flat` | `Nested` | `Flat` | `Nested` | `Nested` |
 | Skill projection | symlink | **managed copy** (flat) | symlink | symlink | symlink |
-| Agent projection | **managed copy → TOML** (`codex_agent_toml`, flat) | symlink (nested) | **managed copy** (flat) | symlink | symlink |
+| Agent projection | **managed copy → TOML** (`codex_agent_toml`, flat) | **managed copy** (nested) | **managed copy** (flat) | symlink | symlink |
 | Rule projection mode | `markdown_section_sync` | `markdown_section_sync` | `link_sync` | `markdown_section_sync` | `markdown_section_sync` |
 | Rule target | `~/.codex/AGENTS.md` (managed block) | `~/.claude/CLAUDE.md` (managed block) | symlinks under `~/.cursor/rules/` | `~/.openclaw/workspace/SOUL.md` (managed block) | `~/.agents/AGENTS.md` (managed block) |
 | Mirrored rule files | optional at `~/.codex/agentic-rules/` (annotated when present) | optional at `~/.claude/rules/` (rarely used) | n/a (rules are real files via symlink) | optional at `~/.openclaw/agentic-rules/` | optional at `~/.agents/rules/` |
@@ -64,9 +64,9 @@ The Antigravity `skillsPath` default was `~/.gemini/skills` before v0.10.1, whic
 
 Codex loads subagents only from `*.toml` files (`name` / `description` / `developer_instructions`); a symlinked markdown spec is ignored. So Codex is the one tool whose **agent** projection is neither a plain symlink nor a verbatim managed copy: it uses the `codex_agent_toml` projection mode. The markdown source (YAML frontmatter `name` / `description` + body as `developer_instructions`) is rendered to a Codex subagent TOML (`crates/agentic-core/src/codex_agent.rs`) and written as a **managed copy** at `<name>.toml` (the adapter renames the `.md` source stem to `.toml`). Because the on-disk bytes are derived (not a byte-for-byte copy of the source), staleness is detected by re-rendering the expected TOML and comparing content, not by source hash. The applier carries the intent via `PlannedOperation.content_transform = CodexAgentToml`; absent that field, managed copies are written verbatim. On enable, any superseded `<name>.md` symlink the hub previously created is removed (self-heal); a user-authored `.md` at that path is never touched.
 
-### Why Cursor agents, Claude skills, and Kiro capabilities are managed copies
+### Why Cursor agents, Claude skills/agents, and Kiro capabilities are managed copies
 
-Cursor loads agent files into memory at launch, and Claude's skill loader does not follow symlinks — for both, a symlink is unreliable. Kiro ignores symlinks for skills and agents under `~/.kiro/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401), [#8265](https://github.com/kirodotdev/Kiro/issues/8265)), so those kinds hard-copy too. Kiro shared rules use the AGENTS.md managed block instead. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
+Cursor loads agent files into memory at launch, and Claude's skill and agent loaders do not follow symlinks — for all three, a symlink is unreliable. Kiro ignores symlinks for skills and agents under `~/.kiro/` ([#6401](https://github.com/kirodotdev/Kiro/issues/6401), [#8265](https://github.com/kirodotdev/Kiro/issues/8265)), so those kinds hard-copy too. Kiro shared rules use the AGENTS.md managed block instead. Managed copies are real files/folders recorded in a per-root `.agentic-hub-managed.json` manifest (`{ version, entries: { <relPath>: { itemId, sourcePath, sourceHash } } }`) that lets us detect drift (`stale` state) and explicitly refresh on user action. For skill folders the `sourceHash` is the `SKILL.md` hash.
 
 ### Why Claude commands are managed copies (and the others symlink)
 
@@ -116,11 +116,12 @@ Notes:
 
 - Global Codex / Cursor / OpenClaw / OpenStandard: symlink (nested)
 - Global Claude: managed copy (flat) — Claude's skill loader does not follow symlinks
+- Global Claude agents: managed copy (nested) — Claude's agent loader does not follow symlinks
 - Workspace: hard copy (nested)
 
 ### Agent
 
-- Global Claude / OpenClaw / OpenStandard: symlink — **nested** (Claude scans `~/.claude/agents/` recursively; identity is the `name` frontmatter)
+- Global Claude / OpenClaw / OpenStandard: managed copy (Claude agents, nested) or symlink (OpenClaw / OpenStandard agents, nested)
 - Global Codex: managed copy rendered to TOML (`codex_agent_toml`) — **flat** (Codex loads only top-level `*.toml` subagents)
 - Global Cursor: managed copy (per-root manifest) — **flat** (Cursor's subagent loader is non-recursive; identity is the filename)
 - Flat collisions resolve via `resolve_target_collisions`; a layout change self-heals via `prune_other_paths_for_item`

@@ -37,8 +37,9 @@ which capabilities are worth maintaining.
 - Remote sync or cloud analytics.
 - A standalone analytics dashboard.
 - Inferring skill usage from free-form prompts, transcripts, or raw source code.
-  Cursor v1 may count an explicit skill reference such as `$root-cause-investigation`
-  or a `SKILL.md` link from prompt-submit hook input; the raw prompt is never
+  Cursor and Codex v1 may count an explicit skill reference such as `$root-cause-investigation`
+  or a `SKILL.md` link from prompt-submit hook input; Claude slash commands count via
+  `UserPromptExpansion.command_name`; the raw prompt is never
   persisted.
 - Editing or deleting usage events from the UI.
 - Non-skill capability analytics beyond storing raw terminal events.
@@ -52,9 +53,10 @@ with a short timeout; hook failures never block the calling agentic tool.
 Config also shows stored, resolved, and unresolved local event counts so users
 can distinguish collection failures from attribution gaps.
 
-The Manager matrix adds a `Usage` column after `Source`. Skill rows show the
-total attributed execution count. Hovering the number shows per-tool counts and
-the last-used timestamp. Non-skill rows show `-` in v1.
+The Manager matrix adds a `Usage` column after `Source`. Skill and command rows
+show the total attributed execution count. Hovering the number shows per-tool
+counts (or `Palette` for command palette usage) and the last-used timestamp.
+Other capability kinds show `-` in v1.
 
 ## Acceptance criteria
 
@@ -66,6 +68,7 @@ the last-used timestamp. Non-skill rows show `-` in v1.
 - [ ] Events with missing or ambiguous skill names are stored without incrementing any skill row.
 - [ ] The Manager matrix shows a `Usage` column after `Source`.
 - [ ] Hovering a skill's usage count shows per-tool counts.
+- [ ] Command palette copy/paste increments usage for the matching command row when tracing is enabled.
 - [ ] No raw prompts, source snippets, or tool arguments are persisted.
 - [ ] Config shows stored/resolved/unresolved event diagnostics.
 

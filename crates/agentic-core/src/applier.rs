@@ -163,7 +163,7 @@ fn write_managed(op: &PlannedOperation, source: &Path, atomic: bool) -> Result<(
                 atomic,
             )
             .map_err(Fail::Io)?;
-            remove_superseded_markdown(target, source);
+            remove_superseded_markdown(target, source, &op.target_root);
         }
         None => {
             managed_copy::write_managed_copy(source, target, &op.target_root, &op.item_id, atomic)
@@ -183,18 +183,37 @@ fn target_stem(target: &Path) -> String {
         .unwrap_or_default()
 }
 
-/// Remove the markdown symlink the pre-TOML Codex design projected at
-/// `<stem>.md`, but only when it is our own symlink (points at this agent's
-/// source). A user's real markdown file at that path is never touched.
-fn remove_superseded_markdown(toml_target: &Path, source: &Path) {
+/// Remove the markdown projection the pre-TOML Codex design left at
+/// `<stem>.md`. Cleans up our symlinks, manifest-tracked managed copies, and
+/// orphaned agent-spec markdown files. A user's unrelated notes file (no agent
+/// frontmatter) at that path is never touched.
+fn remove_superseded_markdown(toml_target: &Path, source: &Path, target_root: &Path) {
     let legacy = toml_target.with_extension("md");
-    if is_symlink(&legacy) {
-        if let Ok(dest) = fs::read_link(&legacy) {
-            if dest == source {
-                let _ = fs::remove_file(&legacy);
-            }
-        }
+    if !legacy.is_file() {
+        return;
     }
+    if is_symlink(&legacy) {
+        if fs::read_link(&legacy).ok().as_deref() == Some(source) {
+            let _ = fs::remove_file(&legacy);
+        }
+        return;
+    }
+    if is_managed_copy(&legacy, target_root) {
+        let _ = managed_copy::remove_managed_copy(&legacy, target_root);
+        return;
+    }
+    if looks_like_agent_spec_markdown(&legacy) {
+        let _ = fs::remove_file(&legacy);
+    }
+}
+
+/// True when `path` looks like a hub-projected agent markdown spec (YAML
+/// frontmatter with `name:`), not arbitrary user notes at the same basename.
+fn looks_like_agent_spec_markdown(path: &Path) -> bool {
+    let Ok(content) = fs::read_to_string(path) else {
+        return false;
+    };
+    content.starts_with("---\n") && content.contains("\nname:")
 }
 
 fn ensure_parent(target: &Path) -> Result<(), Fail> {

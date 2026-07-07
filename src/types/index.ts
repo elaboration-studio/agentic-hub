@@ -49,6 +49,7 @@ export type { UsageTracingConfig } from "./generated/UsageTracingConfig";
 export type { UsageStats } from "./generated/UsageStats";
 export type { UsageToolBucket } from "./generated/UsageToolBucket";
 export type { UsageTracingStatus } from "./generated/UsageTracingStatus";
+export type { UsageTracerHooksSyncResult } from "./generated/UsageTracerHooksSyncResult";
 export type { SkillFavorite } from "./generated/SkillFavorite";
 export type { SkillFavoritesState } from "./generated/SkillFavoritesState";
 export type { SkillCliStatus } from "./generated/SkillCliStatus";
