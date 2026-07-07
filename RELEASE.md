@@ -5,19 +5,20 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.10.3] — 2026-07-04
+## [0.11.0] — 2026-07-07
 
 ### Added
 
-- **Local skill usage tracing.** Opt-in, local-only tracing records explicit
-  skill/tool completion events into `~/.agentic-hub/usage/trace.db` and adds a
-  Manager Usage column with per-tool hover breakdowns.
-- **Global Manager shows unmanaged tool installs.** The Global view merges Hub
-  source-root resources with read-only rows discovered from enabled tools'
-  native global folders (`~/.codex`, `~/.claude`, `~/.cursor`, and peers).
-  Unmanaged rows are labeled by tool source, filterable via the Source filter,
-  and support Open / Reveal without toggles, Apply, or sync. Duplicates already
-  represented by Hub-managed projection state are suppressed.
+- **Local usage tracing.** Opt-in, local-only tracing records explicit skill,
+  agent, and command usage into `~/.agentic-hub/usage/trace.db`. The Manager
+  matrix adds a **Usage** column with per-tool hover breakdowns so you can see
+  which capabilities Codex, Claude Code, Cursor, and other enabled tools actually
+  invoke.
+- **Agent usage counts.** Agent specs are attributed when invoked via explicit
+  slash commands (`/cto`), Claude `@agent-*` mentions, or a single Read of an
+  agent markdown file under an `/agents/` path.
+- **Command palette usage counts.** Copy and paste actions from the global
+  command palette are recorded against command capabilities.
 
 ### Known Issues
 

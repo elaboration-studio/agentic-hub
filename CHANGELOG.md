@@ -8,11 +8,18 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-07-07
+
 ### Added
 
-- **Local skill usage tracing.** Optional, local-only tracing records explicit
-  skill/tool completion events into `~/.agentic-hub/usage/trace.db`, joins
-  counts onto Manager skill rows, and shows per-tool buckets on hover.
+- **Local usage tracing.** Opt-in, local-only tracing records explicit skill,
+  agent, and command usage into `~/.agentic-hub/usage/trace.db`. The Manager
+  matrix adds a **Usage** column with per-tool hover breakdowns.
+- **Agent usage counts.** Agent specs are attributed when invoked via explicit
+  slash commands, Claude `@agent-*` mentions, or a single Read of an agent
+  markdown file under an `/agents/` path.
+- **Command palette usage counts.** Copy and paste actions from the global
+  command palette are recorded against command capabilities.
 
 ## [0.10.3] — 2026-07-04
 
