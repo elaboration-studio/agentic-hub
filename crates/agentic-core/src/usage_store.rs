@@ -19,10 +19,11 @@ use crate::model::{CapabilityItem, CapabilityKind, UsageStats, UsageToolBucket};
 use crate::paths::{home_dir, tildify};
 
 const CURRENT_SCHEMA: u32 = 1;
-const TERMINAL_EVENTS: [&str; 5] = [
+const TERMINAL_EVENTS: [&str; 6] = [
     "PostToolUse",
     "PostToolUseFailure",
     "PostSkillUse",
+    "PostAgentUse",
     "CommandPaletteUse",
     "McpToolComplete",
 ];
@@ -176,7 +177,12 @@ impl UsageStore {
             .filter(|s| !s.is_empty())
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| dedupe_hash(input, &event_id, &timestamp));
-        let event_type = canonical_event_type(&input.event_type);
+        let mut event_type = canonical_event_type(&input.event_type);
+        if let Some(id) = capability_id.as_deref() {
+            if id.starts_with("agent:") && event_type == "PostSkillUse" {
+                event_type = "PostAgentUse".to_string();
+            }
+        }
         let metadata_json = serde_json::to_string(&sanitize_metadata(&input.metadata))?;
         let success = success_value(&event_type, input.success);
         let workspace = input.workspace.as_deref().and_then(normalize_path_field);
@@ -401,38 +407,55 @@ pub fn resolve_capability_id(
     skill_name: Option<&str>,
 ) -> Option<String> {
     if let Some(id) = trimmed(capability_id) {
-        if (id.starts_with("skill:") || id.starts_with("command:"))
+        if (id.starts_with("skill:") || id.starts_with("command:") || id.starts_with("agent:"))
             && items.iter().any(|item| item.id == id)
         {
             return Some(id);
         }
     }
 
-    let skills: Vec<&CapabilityItem> = items
-        .iter()
-        .filter(|item| item.kind == CapabilityKind::Skill)
-        .collect();
-
     let name = trimmed(skill_name)?;
-    resolve_unique(skills.iter().copied().filter(|item| item.name == name))
+    let skill_match = resolve_for_kind(items, &name, CapabilityKind::Skill);
+    let agent_match = resolve_for_kind(items, &name, CapabilityKind::Agent);
+    match (skill_match, agent_match) {
+        (Some(item), None) | (None, Some(item)) => Some(item.id.clone()),
+        (Some(_), Some(_)) => None,
+        (None, None) => None,
+    }
+}
+
+fn resolve_for_kind<'a>(
+    items: &'a [CapabilityItem],
+    name: &str,
+    kind: CapabilityKind,
+) -> Option<&'a CapabilityItem> {
+    let filtered: Vec<&CapabilityItem> = items
+        .iter()
+        .filter(|item| item.kind == kind)
+        .collect();
+    resolve_unique(filtered.iter().copied().filter(|item| item.name == name))
         .or_else(|| {
-            resolve_unique(
-                skills
-                    .iter()
-                    .copied()
-                    .filter(|item| item.relative_path.to_string_lossy().replace('\\', "/") == name),
-            )
+            resolve_unique(filtered.iter().copied().filter(|item| {
+                item.relative_path.to_string_lossy().replace('\\', "/") == name
+            }))
         })
         .or_else(|| {
-            let target = normalize_skill_name(&name);
+            resolve_unique(filtered.iter().copied().filter(|item| {
+                item.relative_path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| stem == name)
+            }))
+        })
+        .or_else(|| {
+            let target = normalize_skill_name(name);
             resolve_unique(
-                skills
+                filtered
                     .iter()
                     .copied()
                     .filter(|item| normalize_skill_name(&item.name) == target),
             )
         })
-        .map(|item| item.id.clone())
 }
 
 fn resolve_unique<'a>(
@@ -556,6 +579,24 @@ mod tests {
         CapabilityItem {
             id: id.to_string(),
             kind: CapabilityKind::Skill,
+            name: name.to_string(),
+            source_path: PathBuf::from(format!("/src/{relative_path}")),
+            relative_path: PathBuf::from(relative_path),
+            source_id: "default".to_string(),
+            source_label: "Default".to_string(),
+            source: SourceRef {
+                rel_home: "~/.agentic".to_string(),
+                folder: ".agentic".to_string(),
+            },
+            valid: true,
+            validation_errors: Vec::new(),
+        }
+    }
+
+    fn agent(id: &str, name: &str, relative_path: &str) -> CapabilityItem {
+        CapabilityItem {
+            id: id.to_string(),
+            kind: CapabilityKind::Agent,
             name: name.to_string(),
             source_path: PathBuf::from(format!("/src/{relative_path}")),
             relative_path: PathBuf::from(relative_path),
@@ -762,6 +803,47 @@ mod tests {
         let id = resolve_capability_id(&items, Some("command:git/commit.md"), None);
 
         assert_eq!(id.as_deref(), Some("command:git/commit.md"));
+    }
+
+    #[test]
+    fn resolve_capability_id_matches_agent_name() {
+        let items = [agent("agent:cto.md", "cto", "cto.md")];
+
+        let id = resolve_capability_id(&items, None, Some("cto"));
+
+        assert_eq!(id.as_deref(), Some("agent:cto.md"));
+    }
+
+    #[test]
+    fn resolve_capability_id_returns_none_when_skill_and_agent_share_name() {
+        let items = [
+            skill("skill:cto", "cto", "cto"),
+            agent("agent:cto.md", "cto", "cto.md"),
+        ];
+
+        let id = resolve_capability_id(&items, None, Some("cto"));
+
+        assert_eq!(id, None);
+    }
+
+    #[test]
+    fn insert_event_promotes_prompt_skill_use_to_post_agent_use() {
+        let (_dir, store) = store();
+        let items = [agent("agent:cto.md", "cto", "cto.md")];
+        let mut input = event("cto", "agent-cto");
+        input.event_type = "PostSkillUse".to_string();
+
+        store.insert_event(&input, &items).unwrap();
+
+        let conn = store.connect().unwrap();
+        let event_type: String = conn
+            .query_row(
+                "SELECT event_type FROM usage_events WHERE dedupe_hash = 'agent-cto'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_type, "PostAgentUse");
     }
 
     #[test]

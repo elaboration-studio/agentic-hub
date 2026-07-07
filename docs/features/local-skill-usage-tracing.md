@@ -28,6 +28,9 @@ which capabilities are worth maintaining.
 - Local SQLite persistence under `~/.agentic-hub/usage/trace.db`.
 - Loopback-only event collection from managed tracer hooks.
 - Skill usage counts joined onto existing Manager matrix rows.
+- Agent spec usage counts joined onto existing Manager matrix rows when invoked
+  via explicit slash (`/cto`), Claude `@agent-*` mention, or a single Read of an
+  agent markdown file under an `/agents/` path.
 - A `Usage` table column with hover details by source tool.
 - Accurate-only skill attribution: unresolved or ambiguous events are stored but
   do not increment a visible skill count.
@@ -53,17 +56,17 @@ with a short timeout; hook failures never block the calling agentic tool.
 Config also shows stored, resolved, and unresolved local event counts so users
 can distinguish collection failures from attribution gaps.
 
-The Manager matrix adds a `Usage` column after `Source`. Skill and command rows
-show the total attributed execution count. Hovering the number shows per-tool
-counts (or `Palette` for command palette usage) and the last-used timestamp.
-Other capability kinds show `-` in v1.
+The Manager matrix adds a `Usage` column after `Source`. Skill, agent, and
+command rows show the total attributed execution count. Hovering the number
+shows per-tool counts (or `Palette` for command palette usage) and the last-used
+timestamp. Rule and hook rows show `-` in v1.
 
 ## Acceptance criteria
 
 - [ ] Existing settings files load with tracing disabled by default.
 - [ ] Enabling tracing starts the local collector and installs managed tracer hooks for supported enabled tools.
 - [ ] Disabling tracing stops the collector and removes managed tracer hooks.
-- [ ] A valid terminal event with a resolvable skill name is stored and increments that skill row.
+- [ ] A valid terminal event with a resolvable skill or agent name is stored and increments that row.
 - [ ] Duplicate events with the same dedupe hash are ignored.
 - [ ] Events with missing or ambiguous skill names are stored without incrementing any skill row.
 - [ ] The Manager matrix shows a `Usage` column after `Source`.

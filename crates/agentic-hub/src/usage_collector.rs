@@ -27,7 +27,7 @@ const TOKEN_HEADER: &str = "x-agentic-hub-token";
 const SOURCE_TOOL_HEADER: &str = "x-agentic-hub-source-tool";
 const TRACER_SCRIPT: &str = "usage-tracer.sh";
 const TRACER_ID_PREFIX: &str = "agentic-hub-usage-tracer";
-const SUPPORTED_TOOLS: [ToolId; 3] = [ToolId::Codex, ToolId::Claude, ToolId::Cursor];
+const SUPPORTED_TOOLS: [ToolId; 4] = [ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro];
 
 #[cfg_attr(
     feature = "ts-export",
@@ -310,19 +310,20 @@ fn normalize_event(raw: Value, source_tool: &str) -> UsageEventInput {
         ],
     )
     .unwrap_or_else(|| "unknown".to_string());
-    let explicit_skill = if tool_supports_prompt_skill_attribution(source_tool)
+    let explicit_ref = if tool_supports_prompt_capability_attribution(source_tool)
         && raw_event_type.trim() != "UserPromptExpansion"
     {
-        explicit_skill_reference(&raw)
+        explicit_capability_reference(&raw)
     } else {
         None
     };
     let tool_name = string_at(&raw, &["tool_name", "toolName", "tool"]);
     let read_skill = skill_name_from_read_tool(&raw, tool_name.as_deref());
-    let expansion_skill = skill_from_claude_prompt_expansion(&raw, source_tool);
-    let event_type = if expansion_skill.is_some() {
-        "PostSkillUse".to_string()
-    } else if prompt_submit_event(&raw_event_type) && explicit_skill.is_some() {
+    let read_agent = agent_name_from_read_tool(&raw, tool_name.as_deref());
+    let expansion_ref = capability_from_claude_prompt_expansion(&raw, source_tool);
+    let event_type = if expansion_ref.is_some()
+        || (prompt_submit_event(&raw_event_type) && explicit_ref.is_some())
+    {
         "PostSkillUse".to_string()
     } else {
         canonical_event_type(&raw_event_type)
@@ -342,9 +343,10 @@ fn normalize_event(raw: Value, source_tool: &str) -> UsageEventInput {
                     &["skill_name", "skillName", "skill", "name"],
                 )
             })
-            .or(explicit_skill)
-            .or(expansion_skill)
-            .or(read_skill),
+            .or(explicit_ref)
+            .or(expansion_ref)
+            .or(read_skill)
+            .or(read_agent),
         capability_id: string_at(&raw, &["capability_id", "capabilityId"]),
         workspace: string_at(
             &raw,
@@ -379,7 +381,7 @@ fn prompt_submit_event(event_type: &str) -> bool {
     matches!(event_type.trim(), "beforeSubmitPrompt" | "UserPromptSubmit")
 }
 
-fn skill_from_claude_prompt_expansion(raw: &Value, source_tool: &str) -> Option<String> {
+fn capability_from_claude_prompt_expansion(raw: &Value, source_tool: &str) -> Option<String> {
     if source_tool != ToolId::Claude.as_str() {
         return None;
     }
@@ -431,6 +433,10 @@ fn skill_name_from_skill_md_path(path: &str) -> Option<String> {
     let mut refs = BTreeSet::new();
     insert_skill_ref(name, &mut refs);
     refs.into_iter().next()
+}
+
+fn explicit_capability_reference(raw: &Value) -> Option<String> {
+    explicit_skill_reference(raw)
 }
 
 fn explicit_skill_reference(raw: &Value) -> Option<String> {
@@ -499,7 +505,10 @@ fn collect_skill_refs_from_text(text: &str, refs: &mut BTreeSet<String>) {
     collect_markdown_skill_refs(text, refs);
     collect_dollar_skill_refs(text, refs);
     collect_slash_skill_refs(text, refs);
+    collect_slash_capability_refs(text, refs);
+    collect_at_agent_refs(text, refs);
     collect_skill_md_path_refs(text, refs);
+    collect_agent_md_path_refs(text, refs);
 }
 
 fn collect_markdown_skill_refs(text: &str, refs: &mut BTreeSet<String>) {
@@ -616,7 +625,7 @@ pub fn query_usage_stats(items: &[CapabilityItem]) -> Result<Vec<UsageStats>, St
         .filter(|item| {
             matches!(
                 item.kind,
-                CapabilityKind::Skill | CapabilityKind::Command
+                CapabilityKind::Skill | CapabilityKind::Command | CapabilityKind::Agent
             )
         })
         .map(|item| item.id.clone())
@@ -790,12 +799,100 @@ fn write_tracer_manifest(hook_dir: &Path, tool: ToolId, command: &str) -> Result
     .map_err(|e| e.to_string())
 }
 
+fn collect_slash_capability_refs(text: &str, refs: &mut BTreeSet<String>) {
+    for token in text.split_whitespace() {
+        let Some(rest) = token.strip_prefix('/') else {
+            continue;
+        };
+        let cleaned = rest.trim_end_matches(|ch: char| {
+            !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_'
+        });
+        if cleaned.is_empty() || !is_capability_token(cleaned) {
+            continue;
+        }
+        refs.insert(cleaned.to_string());
+    }
+}
+
+fn collect_at_agent_refs(text: &str, refs: &mut BTreeSet<String>) {
+    for token in text.split_whitespace() {
+        let Some(rest) = token.strip_prefix('@') else {
+            continue;
+        };
+        let name = rest
+            .strip_prefix("agent-")
+            .unwrap_or(rest)
+            .trim_end_matches(|ch: char| {
+                !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_'
+            });
+        if name.is_empty() || !is_capability_token(name) {
+            continue;
+        }
+        refs.insert(name.to_string());
+    }
+}
+
+fn is_capability_token(token: &str) -> bool {
+    token
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
+fn collect_agent_md_path_refs(text: &str, refs: &mut BTreeSet<String>) {
+    let mut rest = text;
+    while let Some(idx) = rest.find("/agents/") {
+        let after = &rest[idx + "/agents/".len()..];
+        let segment = after
+            .split(['/', ' ', '\n', ')', ']'])
+            .next()
+            .unwrap_or(after);
+        let stem = Path::new(segment)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(segment);
+        if is_capability_token(stem) {
+            refs.insert(stem.to_string());
+        }
+        rest = after;
+    }
+}
+
+fn agent_name_from_read_tool(raw: &Value, tool_name: Option<&str>) -> Option<String> {
+    if tool_name != Some("Read") {
+        return None;
+    }
+    let path = nested_string_at(
+        raw,
+        &["tool_input", "toolInput", "input"],
+        &[
+            "path",
+            "file_path",
+            "filePath",
+            "target_file",
+            "targetFile",
+        ],
+    )?;
+    if !path.contains("/agents/") || !path.ends_with(".md") {
+        return None;
+    }
+    Path::new(&path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| is_capability_token(stem))
+        .map(str::to_string)
+}
+
+fn tool_supports_prompt_capability_attribution(source_tool: &str) -> bool {
+    tool_supports_prompt_skill_attribution(source_tool)
+}
+
 fn tool_supports_prompt_skill_attribution(source_tool: &str) -> bool {
     matches!(
         source_tool,
         tool if tool == ToolId::Cursor.as_str()
             || tool == ToolId::Codex.as_str()
             || tool == ToolId::Claude.as_str()
+            || tool == ToolId::Kiro.as_str()
     )
 }
 
@@ -1024,6 +1121,63 @@ mod tests {
         );
         assert_eq!(input.metadata["model"], "gpt-5.3-codex");
         assert!(input.metadata.get("prompt").is_none());
+    }
+
+    #[test]
+    fn normalize_event_extracts_slash_agent_from_cursor_prompt_submit() {
+        let raw = json!({
+            "event_type": "beforeSubmitPrompt",
+            "prompt": "/cto investigate this bug with root-cause-investigation",
+            "model": "claude-sonnet"
+        });
+
+        let input = normalize_event(raw, "cursor");
+
+        assert_eq!(input.event_type, "PostSkillUse");
+        assert_eq!(input.skill_name.as_deref(), Some("cto"));
+    }
+
+    #[test]
+    fn normalize_event_extracts_at_agent_from_claude_prompt_submit() {
+        let raw = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "@agent-cto investigate this bug",
+            "model": "claude-sonnet-5"
+        });
+
+        let input = normalize_event(raw, "claude");
+
+        assert_eq!(input.event_type, "PostSkillUse");
+        assert_eq!(input.skill_name.as_deref(), Some("cto"));
+    }
+
+    #[test]
+    fn normalize_event_extracts_agent_from_read_tool() {
+        let raw = json!({
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Read",
+            "tool_input": {
+                "file_path": "/Users/me/.cursor/agents/cto.md"
+            }
+        });
+
+        let input = normalize_event(raw, "cursor");
+
+        assert_eq!(input.event_type, "PostToolUse");
+        assert_eq!(input.skill_name.as_deref(), Some("cto"));
+    }
+
+    #[test]
+    fn normalize_event_keeps_ambiguous_slash_prompt_refs_unresolved() {
+        let raw = json!({
+            "event_type": "beforeSubmitPrompt",
+            "prompt": "/cto and /ceo review this"
+        });
+
+        let input = normalize_event(raw, "cursor");
+
+        assert_eq!(input.event_type, "UserPromptSubmit");
+        assert_eq!(input.skill_name, None);
     }
 
     #[test]

@@ -59,24 +59,27 @@ Tables:
 
 ## Resolution rules
 
-The core resolves a skill event against the currently scanned local skills:
+The core resolves a reference name against the currently scanned local skills
+and agents:
 
-1. Exact `capability_id` if it starts with `skill:` and exists in the scan.
-2. Exact `skill_name` match against `CapabilityItem.name`.
-3. Exact `skill_name` match against a skill's source-relative path without the
-   leading `skill:` prefix.
+1. Exact `capability_id` if it starts with `skill:`, `command:`, or `agent:` and
+   exists in the scan.
+2. Exact name match against `CapabilityItem.name` for one kind only.
+3. Exact name match against a capability's source-relative path or file stem.
 4. Normalized slug match against `CapabilityItem.name`.
 
-If no match exists, or if more than one skill matches at the same stage, the
+If no match exists, or if both a skill and an agent match the same name, the
 event is stored with `capability_id = null` and excluded from visible counts.
+Resolved agent prompt events are stored as `PostAgentUse`; skills stay
+`PostSkillUse`.
 
-Cursor- and Codex-specific prompt-submit events may produce `PostSkillUse` only when the
-payload contains a single explicit skill reference such as
-`$root-cause-investigation` or a `.../root-cause-investigation/SKILL.md` link.
-Claude slash-command invocations produce `PostSkillUse` from `UserPromptExpansion`
-when `expansion_type` is `slash_command` and `command_name` resolves to one local
-skill. Claude prompt-submit and Codex/Cursor prompt-submit paths use the same
-conservative explicit-reference rules. The collector extracts only the skill slug
+Cursor- and Codex-specific prompt-submit events may produce `PostSkillUse` only
+when the payload contains a single explicit reference such as `/cto`,
+`$root-cause-investigation`, or a `.../SKILL.md` link. Claude slash-command
+invocations produce `PostSkillUse` from `UserPromptExpansion` when
+`expansion_type` is `slash_command` and `command_name` resolves to one local
+skill or agent. Claude `@agent-*` mentions and single Read calls under an
+`/agents/` path are counted the same way. The collector extracts only the slug
 and discards the raw prompt text. Ambiguous prompt references stay unresolved.
 
 ## Collector flow

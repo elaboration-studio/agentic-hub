@@ -611,7 +611,7 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
 }
 
 function UsageCell({ item, stats }: { item: CapabilityItem; stats?: UsageStats }) {
-  const countable = item.kind === "skill" || item.kind === "command";
+  const countable = item.kind === "skill" || item.kind === "command" || item.kind === "agent";
   if (!countable || !stats || stats.executionCount === 0) {
     return (
       <TableCell className="text-right">
