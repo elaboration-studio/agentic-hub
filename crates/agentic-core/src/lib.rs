@@ -11,6 +11,7 @@ pub mod adapter_registry;
 pub mod api;
 pub mod applier;
 pub mod cli_tools;
+pub mod client_telemetry;
 pub mod codex_agent;
 pub mod copilot_hook_sync;
 pub mod error;
@@ -42,6 +43,9 @@ pub use adapter_registry::{
 pub use api::{AdapterStatus, InspectResult};
 pub use cli_tools::{
     bundled_catalog, check_tool, merge_catalogs, AuthState, CliTool, CliToolStatus,
+};
+pub use client_telemetry::{
+    should_record_daily_active, utc_date_yyyy_mm_dd, ClientTelemetryState, ClientTelemetryStore,
 };
 pub use error::{CoreError, Result};
 pub use hook_sync::{HookEventSpec, HookManifest};

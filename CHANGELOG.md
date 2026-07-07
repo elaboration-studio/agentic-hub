@@ -8,6 +8,13 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Daily-active telemetry.** When usage telemetry is enabled, the app sends at
+  most one `daily_active` ping per UTC day on first real engagement (window
+  focus, palette summon, or dock reopen), with a stable anonymous `clientId` so
+  unique active desktop installs can be counted in Aptabase.
+
 ## [0.11.0] — 2026-07-07
 
 ### Added

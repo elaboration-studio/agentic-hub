@@ -157,6 +157,11 @@ pub fn run() {
                 }
                 return;
             }
+            if window.label() == main_window::MAIN_LABEL {
+                if let WindowEvent::Focused(true) = event {
+                    telemetry::record_client_engagement(window.app_handle());
+                }
+            }
             // The install window closes normally (it is rebuilt per open), but
             // kill any in-flight install so an abandoned window never strands a
             // running `npx`.
@@ -249,6 +254,7 @@ pub fn run() {
                 }
                 // Nudge the frontend to run a throttled update scan on re-open.
                 let _ = app.emit("app-reopened", ());
+                telemetry::record_client_engagement(app);
             }
             RunEvent::Exit => {
                 main_window::persist_main_window(app);

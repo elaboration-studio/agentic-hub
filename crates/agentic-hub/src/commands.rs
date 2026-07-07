@@ -108,6 +108,7 @@ pub async fn cmd_show_main(app: AppHandle) -> IpcResult<()> {
         let _ = win.set_focus();
     }
     palette::hide_palette(&app);
+    crate::telemetry::record_client_engagement(&app);
     Ok(())
 }
 

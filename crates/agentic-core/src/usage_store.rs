@@ -149,7 +149,13 @@ impl UsageStore {
     }
 
     /// Insert a normalized event. Duplicate `dedupe_hash` values are ignored.
+    ///
+    /// Events without an explicit `capability_id` or `skill_name` are ignored so
+    /// generic tool calls do not accumulate as unresolved noise.
     pub fn insert_event(&self, input: &UsageEventInput, items: &[CapabilityItem]) -> Result<()> {
+        if !has_attribution_signal(input) {
+            return Ok(());
+        }
         let conn = self.connect()?;
         let event_id = input
             .event_id
@@ -358,6 +364,20 @@ impl UsageStore {
         Ok(removed as u32)
     }
 
+    /// Delete unresolved rows that never carried a skill or capability reference.
+    pub fn purge_unattributed_events(&self) -> Result<u32> {
+        let conn = self.connect()?;
+        let removed = conn.execute(
+            r#"
+            DELETE FROM usage_events
+            WHERE capability_id IS NULL
+              AND (skill_name IS NULL OR trim(skill_name) = '')
+            "#,
+            [],
+        )?;
+        Ok(removed as u32)
+    }
+
     pub fn cleanup_before(&self, cutoff_iso: &str) -> Result<u32> {
         let conn = self.connect()?;
         let removed = conn.execute(
@@ -399,6 +419,11 @@ impl UsageStore {
             .optional()?;
         Ok(found.is_some())
     }
+}
+
+fn has_attribution_signal(input: &UsageEventInput) -> bool {
+    trimmed(input.capability_id.as_deref()).is_some()
+        || trimmed(input.skill_name.as_deref()).is_some()
 }
 
 pub fn resolve_capability_id(
@@ -865,6 +890,48 @@ mod tests {
         assert_eq!(stats.len(), 1);
         assert_eq!(stats[0].execution_count, 2);
         assert_eq!(stats[0].tool_buckets[0].source_tool, "agentic-hub");
+    }
+
+    #[test]
+    fn insert_event_skips_unattributed_post_tool_use() {
+        let (_dir, store) = store();
+        let items = [skill("skill:tdd", "tdd", "tdd")];
+        let input = UsageEventInput {
+            source_tool: "cursor".to_string(),
+            event_type: "PostToolUse".to_string(),
+            tool_name: Some("Read".to_string()),
+            dedupe_hash: Some("generic-read".to_string()),
+            success: Some(true),
+            ..UsageEventInput::default()
+        };
+
+        store.insert_event(&input, &items).unwrap();
+
+        assert_eq!(store.event_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn purge_unattributed_events_keeps_ambiguous_skill_rows() {
+        let (_dir, store) = store();
+        let items = [skill("skill:tdd", "tdd", "tdd")];
+        store.insert_event(&event("tdd", "resolved"), &items).unwrap();
+        store.insert_event(&event("missing", "ambiguous"), &items).unwrap();
+        let noise = UsageEventInput {
+            source_tool: "cursor".to_string(),
+            event_type: "PostToolUse".to_string(),
+            tool_name: Some("Grep".to_string()),
+            dedupe_hash: Some("noise".to_string()),
+            success: Some(true),
+            ..UsageEventInput::default()
+        };
+        store.insert_event(&noise, &items).unwrap();
+
+        let removed = store.purge_unattributed_events().unwrap();
+
+        assert_eq!(removed, 0);
+        assert_eq!(store.event_count().unwrap(), 2);
+        assert_eq!(store.resolved_event_count().unwrap(), 1);
+        assert_eq!(store.unresolved_event_count().unwrap(), 1);
     }
 
     #[test]

@@ -129,9 +129,9 @@ entries are preserved verbatim.
 | Ambiguous skill name | Event stored, visible count unchanged | Rename or disambiguate skill |
 | SQLite write error | Hook still continues | Surface status error in Config |
 
-Config status also exposes stored, resolved, and unresolved event counts. A high
-unresolved count with a running collector means hooks are arriving but payloads
-do not contain a safely resolvable skill identity.
+A high unresolved count with a running collector usually means hooks are
+arriving with a skill reference that could not be matched to one local
+capability. Generic tool calls without a skill signal are no longer stored.
 
 ## Tests
 

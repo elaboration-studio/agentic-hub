@@ -106,6 +106,7 @@ mod imp {
                     let _ = win.center();
                 }
                 panel.show_and_make_key();
+                crate::telemetry::record_client_engagement(app);
             }
         });
     }
@@ -142,6 +143,7 @@ mod imp {
                 let _ = win.center();
                 let _ = win.show();
                 let _ = win.set_focus();
+                crate::telemetry::record_client_engagement(app);
             }
         }
     }
