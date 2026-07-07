@@ -135,6 +135,52 @@ impl Default for TelemetryConfig {
     }
 }
 
+/// Local-only skill/tool usage tracing. Separate from anonymous Aptabase
+/// telemetry: this never leaves the machine and is disabled by default.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTracingConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_usage_capture_tools")]
+    pub capture_tools: Vec<ToolId>,
+    #[serde(default = "default_usage_retention_days")]
+    pub retention_days: u32,
+    #[serde(default = "default_usage_collector_port")]
+    pub collector_port: u16,
+    #[serde(default)]
+    pub collector_token: String,
+}
+
+impl Default for UsageTracingConfig {
+    fn default() -> Self {
+        UsageTracingConfig {
+            enabled: false,
+            capture_tools: default_usage_capture_tools(),
+            retention_days: default_usage_retention_days(),
+            collector_port: default_usage_collector_port(),
+            collector_token: String::new(),
+        }
+    }
+}
+
+fn default_usage_capture_tools() -> Vec<ToolId> {
+    vec![ToolId::Codex, ToolId::Claude, ToolId::Cursor]
+}
+
+fn default_usage_retention_days() -> u32 {
+    90
+}
+
+fn default_usage_collector_port() -> u16 {
+    17_321
+}
+
 /// Per-tool target paths and toggles. Mirrors the IPC `ToolSettings` shape.
 #[cfg_attr(
     feature = "ts-export",
@@ -286,6 +332,9 @@ pub struct Settings {
     /// Anonymous usage telemetry (Aptabase). Defaults to enabled.
     #[serde(default)]
     pub telemetry: TelemetryConfig,
+    /// Local-only skill/tool usage tracing. Defaults to disabled.
+    #[serde(default)]
+    pub usage_tracing: UsageTracingConfig,
     /// Last main-window geometry; `None` uses `tauri.conf.json` defaults.
     #[serde(default)]
     pub main_window: Option<MainWindowState>,
@@ -512,6 +561,7 @@ impl Default for Settings {
             paste_into_focused: false,
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
+            usage_tracing: UsageTracingConfig::default(),
             main_window: None,
             tools: ToolsSettings::default(),
         }
@@ -784,6 +834,7 @@ impl Settings {
             paste_into_focused: false,
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
+            usage_tracing: UsageTracingConfig::default(),
             main_window: None,
             tools: ToolsSettings {
                 codex: tool("codex"),
@@ -949,7 +1000,10 @@ mod tests {
             ..Default::default()
         };
         s.tools.antigravity.skills_path = PathBuf::from("/custom/gemini/skills");
-        assert!(s.migrate_antigravity_skills_path(), "marker set on first run");
+        assert!(
+            s.migrate_antigravity_skills_path(),
+            "marker set on first run"
+        );
         assert_eq!(
             s.tools.antigravity.skills_path,
             PathBuf::from("/custom/gemini/skills")
@@ -971,14 +1025,13 @@ mod tests {
             ..Default::default()
         };
         assert!(s.migrate_kiro_rules_agents_md());
-        assert!(
-            s.tools
-                .kiro
-                .instructions_path
-                .as_ref()
-                .unwrap()
-                .ends_with(".kiro/steering/AGENTS.md")
-        );
+        assert!(s
+            .tools
+            .kiro
+            .instructions_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".kiro/steering/AGENTS.md"));
         assert!(s.kiro_rules_agents_md_migrated);
         assert!(!s.migrate_kiro_rules_agents_md());
     }
@@ -1003,14 +1056,13 @@ mod tests {
             .unwrap()
             .ends_with(".kiro/hooks"));
         assert!(s.tools.kiro.commands_path.is_none());
-        assert!(
-            s.tools
-                .kiro
-                .instructions_path
-                .as_ref()
-                .unwrap()
-                .ends_with(".kiro/steering/AGENTS.md")
-        );
+        assert!(s
+            .tools
+            .kiro
+            .instructions_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".kiro/steering/AGENTS.md"));
         assert!(!s.tools.copilot.enabled);
         assert!(s.tools.copilot.skills_path.ends_with(".copilot/skills"));
         assert!(s

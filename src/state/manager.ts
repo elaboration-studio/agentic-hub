@@ -11,6 +11,7 @@ import {
   inspect,
   loadSettings,
   plan,
+  queryUsageStats,
   scan,
   scanInstalledTools,
   scanWorkspace,
@@ -28,6 +29,7 @@ import type {
   Settings,
   ToolCapabilityState,
   ToolId,
+  UsageStats,
 } from "../types";
 import {
   enabledTools,
@@ -88,6 +90,9 @@ interface ManagerState {
   // recorded in `skills-lock.json`. Drives the row badge + "Update" action.
   // Empty in global scope.
   lockedSkills: Map<string, { name: string; source: string }>;
+  // Capability id -> local usage stats. Empty when tracing is disabled or the
+  // usage DB is unavailable.
+  usageStats: Map<string, UsageStats>;
 
   refresh: () => Promise<void>;
   loadWorkspace: (id: string) => Promise<void>;
@@ -177,6 +182,15 @@ async function loadOwnership(): Promise<Map<string, OwnershipInfo>> {
   return map;
 }
 
+async function loadUsageStats(items: CapabilityItem[]): Promise<Map<string, UsageStats>> {
+  try {
+    const rows = await queryUsageStats(items);
+    return new Map(rows.map((row) => [row.capabilityId, row]));
+  } catch {
+    return new Map();
+  }
+}
+
 function computePending(
   desired: DesiredMap,
   currentMap: Map<string, ToolCapabilityState>,
@@ -234,6 +248,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   pendingKeys: [],
   ownership: new Map(),
   lockedSkills: new Map(),
+  usageStats: new Map(),
 
   refresh: async () => {
     set({ status: "loading", error: "" });
@@ -254,7 +269,10 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       const desired = seedDesired(result);
       const currentMap = buildCurrentMap(result);
       const tools = enabledTools(settings);
-      const ownership = await loadOwnership();
+      const [ownership, usageStats] = await Promise.all([
+        loadOwnership(),
+        loadUsageStats(allItems),
+      ]);
       set({
         data: { settings, items: allItems, scanErrors: [...errors, ...installed.errors], result },
         desired,
@@ -264,6 +282,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         pendingKeys: [],
         ownership,
         lockedSkills: new Map(),
+        usageStats,
         readOnlyItemIds,
         watching: settings.watcherEnabled,
         readOnly: false,
@@ -303,6 +322,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           { name: l.name, source: l.source },
         ]),
       );
+      const usageStats = await loadUsageStats(items);
       set({
         data: {
           settings,
@@ -317,6 +337,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         pendingKeys: [],
         ownership: new Map(),
         lockedSkills,
+        usageStats,
         readOnlyItemIds: new Set(),
         readOnly: true,
         status: "ready",

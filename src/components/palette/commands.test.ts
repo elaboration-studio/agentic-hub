@@ -91,6 +91,13 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     paletteShortcut: "Cmd+Alt+A",
     pasteIntoFocused: false,
     skills: { enabled: false, favoritesPath: null },
+    usageTracing: {
+      enabled: false,
+      captureTools: ["codex", "claude", "cursor"],
+      retentionDays: 90,
+      collectorPort: 17321,
+      collectorToken: "",
+    },
     telemetry: { enabled: false },
     mainWindow: null,
     tools: {

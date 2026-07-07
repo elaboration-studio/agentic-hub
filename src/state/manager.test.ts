@@ -10,6 +10,7 @@ vi.mock("@/ipc", () => ({
   inspect: vi.fn(),
   plan: vi.fn(),
   apply: vi.fn(),
+  queryUsageStats: vi.fn(),
   syncRules: vi.fn(),
   syncHooks: vi.fn(),
   setWatcherEnabled: vi.fn(),
@@ -24,6 +25,7 @@ import {
   inspect,
   loadSettings,
   plan,
+  queryUsageStats,
   scan,
   scanInstalledTools,
   scanWorkspace,
@@ -53,6 +55,7 @@ const mocked = {
   inspect: vi.mocked(inspect),
   plan: vi.mocked(plan),
   apply: vi.mocked(apply),
+  queryUsageStats: vi.mocked(queryUsageStats),
   syncRules: vi.mocked(syncRules),
   syncHooks: vi.mocked(syncHooks),
   setWatcherEnabled: vi.mocked(setWatcherEnabled),
@@ -88,6 +91,13 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     paletteShortcut: "Cmd+Alt+A",
     pasteIntoFocused: false,
     skills: { enabled: false, favoritesPath: null },
+    usageTracing: {
+      enabled: false,
+      captureTools: ["codex", "claude", "cursor"],
+      retentionDays: 90,
+      collectorPort: 17321,
+      collectorToken: "",
+    },
     telemetry: { enabled: false },
     mainWindow: null,
     tools: {
@@ -162,6 +172,7 @@ function seedHappyPath(result?: Partial<InspectResult>) {
 beforeEach(() => {
   vi.clearAllMocks();
   useManagerStore.setState(useManagerStore.getInitialState(), true);
+  mocked.queryUsageStats.mockResolvedValue([]);
 });
 
 describe("manager store — refresh", () => {
@@ -197,6 +208,47 @@ describe("manager store — refresh", () => {
     ]);
     expect(s.readOnlyItemIds.has("installed::codex::skill:manual")).toBe(true);
     expect(s.desired["codex::installed::codex::skill:manual"]).toBe(true);
+  });
+
+  it("loads usage stats keyed by capability id during refresh", async () => {
+    seedHappyPath();
+    mocked.queryUsageStats.mockResolvedValue([
+      {
+        capabilityId: "skill:a",
+        executionCount: 4,
+        successCount: 3,
+        failureCount: 1,
+        lastUsedAt: "2026-07-06T10:00:00Z",
+        toolBuckets: [
+          {
+            sourceTool: "codex",
+            executionCount: 3,
+            successCount: 3,
+            failureCount: 0,
+            lastUsedAt: "2026-07-06T10:00:00Z",
+          },
+          {
+            sourceTool: "claude",
+            executionCount: 1,
+            successCount: 0,
+            failureCount: 1,
+            lastUsedAt: "2026-07-05T10:00:00Z",
+          },
+        ],
+      },
+    ]);
+
+    await useManagerStore.getState().refresh();
+    const s = useManagerStore.getState();
+
+    expect(mocked.queryUsageStats).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "skill:a" }),
+    ]);
+    expect(s.usageStats.get("skill:a")?.executionCount).toBe(4);
+    expect(s.usageStats.get("skill:a")?.toolBuckets.map((b) => b.sourceTool)).toEqual([
+      "codex",
+      "claude",
+    ]);
   });
 
   it("suppresses installed rows already represented by managed inspect states", async () => {

@@ -363,6 +363,103 @@ pub fn sync_json_hooks(
     Ok((HookSyncOutcome::Wrote, notes))
 }
 
+/// Add or remove one managed hook id while preserving every other managed and
+/// foreign entry. Used by built-in app hooks whose lifecycle is independent of
+/// the user's shared hook source forest.
+pub fn sync_single_json_hook(
+    adapter: &ResolvedAdapter,
+    item: &CapabilityItem,
+    manifest: &HookManifest,
+    enabled: bool,
+) -> Result<(HookSyncOutcome, Vec<String>), HookSyncError> {
+    let target = match &adapter.hooks_file {
+        Some(t) if adapter.hooks_enabled => t.clone(),
+        _ => return Ok((HookSyncOutcome::NoOp, vec![])),
+    };
+    let tool = adapter.tool_id;
+    let cursor_shape = tool == ToolId::Cursor;
+    let existed = target.exists();
+    let mut root: Map<String, Value> = match read_root(&target) {
+        RootRead::Missing => Map::new(),
+        RootRead::Ok(map) => map,
+        RootRead::Foreign => {
+            return Err(HookSyncError {
+                path: target,
+                code: "conflict_real_file_at_target".to_string(),
+                message: "Hook config path is not a regular file".to_string(),
+            })
+        }
+        RootRead::Broken => {
+            return Err(HookSyncError {
+                path: target,
+                code: "hook_target_broken_json".to_string(),
+                message: "Hook config file is not valid JSON; refusing to overwrite".to_string(),
+            })
+        }
+    };
+
+    let mut next: Map<String, Value> = Map::new();
+    if let Some(Value::Object(existing)) = root.get("hooks") {
+        for (event, arr) in existing {
+            if let Some(items) = arr.as_array() {
+                let kept: Vec<Value> = items
+                    .iter()
+                    .filter(|e| !is_managed_hook(e, &manifest.id))
+                    .cloned()
+                    .collect();
+                if !kept.is_empty() {
+                    next.insert(event.clone(), Value::Array(kept));
+                }
+            }
+        }
+    }
+
+    let mut notes = Vec::new();
+    if enabled {
+        for (event_key, value) in build_desired(tool, cursor_shape, &[(item, manifest)], &mut notes)
+        {
+            next.entry(event_key)
+                .or_insert_with(|| Value::Array(Vec::new()))
+                .as_array_mut()
+                .expect("event value is an array")
+                .push(value);
+        }
+    }
+
+    let hooks_empty = next.is_empty();
+    if hooks_empty {
+        root.remove("hooks");
+    } else {
+        if cursor_shape {
+            root.entry("version".to_string()).or_insert(json!(1));
+        }
+        root.insert("hooks".to_string(), Value::Object(next));
+    }
+
+    if hooks_empty {
+        let hooks_only_file = cursor_shape || matches!(tool, ToolId::Codex | ToolId::Openstandard);
+        let no_foreign = root.keys().all(|k| k == "version");
+        if existed && hooks_only_file && no_foreign {
+            fs::remove_file(&target).map_err(|e| io_err(&target, &e))?;
+            return Ok((HookSyncOutcome::Removed, notes));
+        }
+        if !existed && root.is_empty() {
+            return Ok((HookSyncOutcome::NoOp, notes));
+        }
+    }
+
+    atomic_write_json(&target, &Value::Object(root)).map_err(|e| io_err(&target, &e))?;
+    Ok((HookSyncOutcome::Wrote, notes))
+}
+
+fn is_managed_hook(value: &Value, hook_id: &str) -> bool {
+    value
+        .get("_agenticHub")
+        .and_then(|marker| marker.get("hookId"))
+        .and_then(Value::as_str)
+        == Some(hook_id)
+}
+
 fn build_desired(
     tool: ToolId,
     cursor_shape: bool,

@@ -9,6 +9,9 @@ file verbatim as the GitHub Release body. For the full version history see
 
 ### Added
 
+- **Local skill usage tracing.** Opt-in, local-only tracing records explicit
+  skill/tool completion events into `~/.agentic-hub/usage/trace.db` and adds a
+  Manager Usage column with per-tool hover breakdowns.
 - **Global Manager shows unmanaged tool installs.** The Global view merges Hub
   source-root resources with read-only rows discovered from enabled tools'
   native global folders (`~/.codex`, `~/.claude`, `~/.cursor`, and peers).

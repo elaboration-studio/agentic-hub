@@ -32,6 +32,7 @@ pub mod skill_lock;
 pub mod skill_source;
 pub mod suite_binding_store;
 pub mod suite_store;
+pub mod usage_store;
 pub mod workspace_inventory;
 pub mod workspace_target_store;
 
@@ -49,14 +50,16 @@ pub use model::{
     HookSyncError, HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError,
     RuleSyncOutcome, ScanError, ScanResult, SourceRef, SuiteBinding, SuiteCapabilityRef,
     SuiteDefinition, SuiteValidationResult, SyncHooksResult, SyncRulesResult, ToolCapabilityState,
-    ToolId, WorkspaceTarget, WorkspaceTargetsState,
+    ToolId, UsageStats, UsageToolBucket, WorkspaceTarget, WorkspaceTargetsState,
 };
 pub use open_targets::is_openable;
 pub use planner::{build_plan, inspect_tool};
 pub use reconcile::{reconcile_all, reconcile_tool, ReconcileToolOutcome};
 pub use scaffold::{scaffold_demo, ScaffoldMode, ScaffoldResult};
 pub use scanner::{scan, scan_all};
-pub use settings::{Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings};
+pub use settings::{
+    Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings, UsageTracingConfig,
+};
 pub use skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
 pub use skill_lock::{parse_local_lock, read_local_lock, LocalSkillLock, LockedSkillEntry};
 pub use skill_source::{
@@ -65,6 +68,7 @@ pub use skill_source::{
 };
 pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
+pub use usage_store::{default_path as usage_store_path, UsageEventInput, UsageStore};
 pub use workspace_inventory::{
     scan_installed_tools, scan_workspace, InstalledToolInventory, LockedSkill, WorkspaceInventory,
 };

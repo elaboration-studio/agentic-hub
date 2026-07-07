@@ -12,6 +12,7 @@ mod menu;
 mod palette;
 mod paste;
 mod telemetry;
+mod usage_collector;
 mod watcher;
 
 use agentic_core::settings::{default_palette_shortcut, Settings};
@@ -20,6 +21,7 @@ use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_global_shortcut::ShortcutState;
 use telemetry::TelemetryState;
+use usage_collector::UsageCollectorState;
 use watcher::WatcherState;
 
 /// Register the `tauri-nspanel` plugin on macOS so the palette window can be
@@ -75,6 +77,7 @@ pub fn run() {
         )
         .manage(WatcherState::default())
         .manage(TelemetryState::default())
+        .manage(UsageCollectorState::default())
         .manage(install_window::InstallContextState::default())
         .manage(install_window::InstallState::default())
         .menu(menu::build_menu)
@@ -111,9 +114,17 @@ pub fn run() {
             if settings.migrate_kiro_rules_agents_md() {
                 let _ = settings.save();
             }
+            if settings.usage_tracing.enabled && settings.usage_tracing.collector_token.is_empty() {
+                settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
+                let _ = settings.save();
+            }
             // Start the source watcher on launch when enabled in settings.
             if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());
+            }
+            if settings.usage_tracing.enabled {
+                let _ = app.state::<UsageCollectorState>().apply_settings(&settings);
+                let _ = usage_collector::sync_tracer_hooks(&settings);
             }
             // Seed the live telemetry consent flag, then record app start if the
             // user has opted in. No-op (and no network) when disabled.
@@ -193,6 +204,9 @@ pub fn run() {
             commands::cmd_apply,
             commands::cmd_sync_rules,
             commands::cmd_sync_hooks,
+            commands::cmd_usage_tracing_status,
+            commands::cmd_set_usage_tracing_enabled,
+            commands::cmd_query_usage_stats,
             commands::cmd_list_suites,
             commands::cmd_get_suite,
             commands::cmd_create_suite,

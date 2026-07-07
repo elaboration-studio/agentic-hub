@@ -602,6 +602,42 @@ pub struct SuiteOwnership {
     pub from_base: bool,
 }
 
+/// Per-agentic-tool usage bucket for one capability.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageToolBucket {
+    pub source_tool: String,
+    pub execution_count: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    #[serde(default)]
+    pub last_used_at: Option<String>,
+}
+
+/// Aggregated local usage stats for one scanned capability.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageStats {
+    pub capability_id: String,
+    pub execution_count: u32,
+    pub success_count: u32,
+    pub failure_count: u32,
+    #[serde(default)]
+    pub last_used_at: Option<String>,
+    #[serde(default)]
+    pub tool_buckets: Vec<UsageToolBucket>,
+}
+
 /// A remembered per-project workspace directory (workspace scope).
 #[cfg_attr(
     feature = "ts-export",

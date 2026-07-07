@@ -247,10 +247,9 @@ impl ResolvedAdapter {
     pub fn layout_for(&self, kind: CapabilityKind) -> Layout {
         use CapabilityKind::{Agent, Skill};
         match (self.tool_id, kind) {
-            (
-                ToolId::Claude | ToolId::Kiro | ToolId::Copilot | ToolId::Antigravity,
-                Skill,
-            ) => Layout::Flat,
+            (ToolId::Claude | ToolId::Kiro | ToolId::Copilot | ToolId::Antigravity, Skill) => {
+                Layout::Flat
+            }
             (ToolId::Cursor | ToolId::Codex | ToolId::Kiro | ToolId::Copilot, Agent) => {
                 Layout::Flat
             }
@@ -619,12 +618,11 @@ mod tests {
             Some(ProjectionMode::MarkdownSectionSync)
         );
         assert!(!kiro.uses_managed_copy(CapabilityKind::Rule));
-        assert!(
-            kiro.instructions_path
-                .as_ref()
-                .unwrap()
-                .ends_with(".kiro/steering/AGENTS.md")
-        );
+        assert!(kiro
+            .instructions_path
+            .as_ref()
+            .unwrap()
+            .ends_with(".kiro/steering/AGENTS.md"));
         assert_eq!(
             kiro.projection_mode_for(CapabilityKind::Hook),
             Some(ProjectionMode::KiroHookFile)
@@ -657,11 +655,10 @@ mod tests {
         settings.tools.kiro.instructions_path = None;
 
         let kiro = resolve(&settings, ToolId::Kiro);
-        assert!(
-            kiro.instructions_path
-                .as_ref()
-                .is_some_and(|path| path.ends_with(".kiro/steering/AGENTS.md"))
-        );
+        assert!(kiro
+            .instructions_path
+            .as_ref()
+            .is_some_and(|path| path.ends_with(".kiro/steering/AGENTS.md")));
     }
 
     #[test]
@@ -759,9 +756,7 @@ mod tests {
             ag.projection_mode_for(CapabilityKind::Hook),
             Some(ProjectionMode::JsonSection)
         );
-        assert!(ag
-            .skills_path
-            .ends_with(".gemini/config/skills"));
+        assert!(ag.skills_path.ends_with(".gemini/config/skills"));
 
         let skill = item(CapabilityKind::Skill, "dev/repo-research");
         let skill_target = ag.target_path_for(&skill).unwrap();

@@ -36,6 +36,8 @@ import type {
   SyncRulesResult,
   ToolId,
   ToolsSettings,
+  UsageStats,
+  UsageTracingStatus,
   WorkspaceInventory,
   WorkspaceTarget,
   WorkspaceTargetsState,
@@ -189,6 +191,17 @@ export const syncHooks = (
   desiredEnabledByItemId: DesiredMap,
 ): Promise<SyncHooksResult> =>
   invoke("cmd_sync_hooks", { input: { toolId, items, desiredEnabledByItemId } });
+
+// ---- Local usage tracing --------------------------------------------------
+
+export const usageTracingStatus = (): Promise<UsageTracingStatus> =>
+  invoke("cmd_usage_tracing_status");
+
+export const setUsageTracingEnabled = (enabled: boolean): Promise<UsageTracingStatus> =>
+  invoke("cmd_set_usage_tracing_enabled", { enabled });
+
+export const queryUsageStats = (items: CapabilityItem[]): Promise<UsageStats[]> =>
+  invoke("cmd_query_usage_stats", { items });
 
 export const onApplyProgress = (
   cb: (e: ApplyProgressEvent) => void,

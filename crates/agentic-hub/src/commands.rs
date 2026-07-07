@@ -12,7 +12,7 @@ use agentic_core::managed_copy::now_iso8601;
 use agentic_core::model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, PlannedOperation, ScanResult,
     SuiteBinding, SuiteDefinition, SuiteOwnership, SyncHooksResult, SyncRulesResult, ToolId,
-    WorkspaceTarget, WorkspaceTargetsState,
+    UsageStats, WorkspaceTarget, WorkspaceTargetsState,
 };
 use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
@@ -34,6 +34,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::error::IpcError;
 use crate::palette;
 use crate::paste::{self, PasteOutcome};
+use crate::usage_collector::{self, UsageCollectorState, UsageTracingStatus};
 use crate::watcher::{self, WatcherState};
 
 type IpcResult<T> = Result<T, IpcError>;
@@ -56,6 +57,7 @@ pub async fn cmd_save_settings(
     app: AppHandle,
     watcher: State<'_, WatcherState>,
     telemetry: State<'_, crate::telemetry::TelemetryState>,
+    usage_collector: State<'_, UsageCollectorState>,
     mut settings: Settings,
 ) -> IpcResult<()> {
     if !agentic_core::settings::is_valid_shortcut(&settings.palette_shortcut) {
@@ -73,6 +75,15 @@ pub async fn cmd_save_settings(
     // Mirror the telemetry consent flag so a mid-session toggle takes effect at
     // once (gates the next tracked event without needing a restart).
     telemetry.set_enabled(settings.telemetry.enabled);
+    if settings.usage_tracing.enabled && settings.usage_tracing.collector_token.is_empty() {
+        settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
+        settings.save()?;
+    }
+    usage_collector
+        .apply_settings(&settings)
+        .map_err(|e| IpcError::new("usage_collector_failed", e))?;
+    usage_collector::sync_tracer_hooks(&settings)
+        .map_err(|e| IpcError::new("usage_hooks_failed", e))?;
     // Source roots may have changed; re-subscribe if the watcher is running.
     watcher.restart_if_running(app.clone());
     // The summon accelerator may have changed; re-register it now.
@@ -468,6 +479,40 @@ pub async fn cmd_sync_hooks(input: SyncHooksInput) -> IpcResult<SyncHooksResult>
         input.tool_id,
         &input.desired_enabled_by_item_id,
     ))
+}
+
+#[tauri::command]
+pub async fn cmd_usage_tracing_status(
+    usage_collector: State<'_, UsageCollectorState>,
+) -> IpcResult<UsageTracingStatus> {
+    let settings = Settings::load()?;
+    Ok(usage_collector.status(&settings))
+}
+
+#[tauri::command]
+pub async fn cmd_set_usage_tracing_enabled(
+    app: AppHandle,
+    usage_collector: State<'_, UsageCollectorState>,
+    enabled: bool,
+) -> IpcResult<UsageTracingStatus> {
+    let mut settings = Settings::load()?;
+    settings.usage_tracing.enabled = enabled;
+    if enabled && settings.usage_tracing.collector_token.is_empty() {
+        settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
+    }
+    settings.save()?;
+    usage_collector
+        .apply_settings(&settings)
+        .map_err(|e| IpcError::new("usage_collector_failed", e))?;
+    usage_collector::sync_tracer_hooks(&settings)
+        .map_err(|e| IpcError::new("usage_hooks_failed", e))?;
+    let _ = app.emit("sources-changed", ());
+    Ok(usage_collector.status(&settings))
+}
+
+#[tauri::command]
+pub async fn cmd_query_usage_stats(items: Vec<CapabilityItem>) -> IpcResult<Vec<UsageStats>> {
+    usage_collector::query_usage_stats(&items).map_err(|e| IpcError::new("usage_query_failed", e))
 }
 
 // ---- Suites ---------------------------------------------------------------

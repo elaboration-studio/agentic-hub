@@ -41,11 +41,17 @@ pub enum CoreError {
     #[error("skills.sh search failed: {0}")]
     SkillSearch(String),
 
+    #[error("usage store failed: {0}")]
+    UsageStore(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Sqlite(#[from] rusqlite::Error),
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;
@@ -67,6 +73,10 @@ mod tests {
         assert_eq!(
             CoreError::NotADirectory(PathBuf::from("/x")).to_string(),
             "path is not a directory: /x"
+        );
+        assert_eq!(
+            CoreError::UsageStore("busy".into()).to_string(),
+            "usage store failed: busy"
         );
     }
 

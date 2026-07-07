@@ -561,6 +561,29 @@ The destination is the first configured source root (the legacy `sharedRoot`
 when no sources are set). The empty-state in the manager calls this with
 `merge`; the bundled tree is embedded in the binary via `include_dir!`.
 
+## Local usage tracing commands
+
+### `cmd_usage_tracing_status() -> UsageTracingStatus`
+
+Returns whether local tracing is enabled, whether the loopback collector is
+running, the configured collector port, the local SQLite path
+(`~/.agentic-hub/usage/trace.db`), and the tools supported by the built-in tracer
+hook.
+
+### `cmd_set_usage_tracing_enabled(input: { enabled: boolean }) -> UsageTracingStatus`
+
+Persists the opt-in tracing flag. When enabling, generates a local collector
+token if needed, starts the `127.0.0.1` collector, and syncs Agentic Hub-managed
+tracer hooks for the enabled capture tools. When disabling, stops the collector
+and removes only the built-in tracer hook entries, preserving foreign hooks and
+other Agentic Hub-managed hooks.
+
+### `cmd_query_usage_stats(input: { items: CapabilityItem[] }) -> UsageStats[]`
+
+Queries local usage aggregates for the scanned skill rows. Unknown or ambiguous
+events remain stored in the trace database but do not appear in capability row
+counts.
+
 ## Open / reveal commands
 
 These let the UI open a capability's original file in the user's preferred

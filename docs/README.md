@@ -39,6 +39,7 @@ User-facing feature designs aligned with each milestone.
 - [kiro-tool-adapter.md](features/kiro-tool-adapter.md) — opt-in Kiro projection and workspace inventory
 - [copilot-tool-adapter.md](features/copilot-tool-adapter.md) — opt-in GitHub Copilot projection and workspace inventory
 - [antigravity-tool-adapter.md](features/antigravity-tool-adapter.md) — opt-in Google Antigravity projection and workspace inventory
+- [local-skill-usage-tracing.md](features/local-skill-usage-tracing.md) — opt-in local skill usage counts surfaced in the Manager matrix
 
 ### `tech/modules/` — subsystem deep dives
 
@@ -60,6 +61,7 @@ Detailed technical design for each subsystem of the projection engine and adjace
 - [watcher.md](tech/modules/watcher.md) — source watcher + reconcile engine, auto-enable heuristic, debounce, loop avoidance
 - [tauri-ipc-contract.md](tech/modules/tauri-ipc-contract.md) — complete IPC command surface and event schemas
 - [agentic-demo-scaffold.md](tech/modules/agentic-demo-scaffold.md) — bundled tree embedding, scaffold modes, atomic writes
+- [local-usage-tracing.md](tech/modules/local-usage-tracing.md) — local SQLite usage store, loopback collector, and skill-count query contract
 
 ### `tech/reference/` — stable reference
 

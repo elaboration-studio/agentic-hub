@@ -25,6 +25,7 @@ uuid = { version = "1", features = ["v4"] }
 # `skills` CLI uses). Blocking client: the provider methods are sync. `rustls`
 # avoids a system OpenSSL build dependency for the Linux bundles.
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
+rusqlite = { version = "0.40.1", features = ["bundled"] }
 ts-rs = { version = "10", optional = true }
 toml = "1.0.7"
 

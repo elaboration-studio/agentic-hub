@@ -13,9 +13,11 @@ import {
   rescanResync,
   revealPath,
   saveSettings,
+  setUsageTracingEnabled,
   skillCliCheck,
+  usageTracingStatus,
 } from "@/ipc";
-import type { Settings, SkillCliStatus, ToolId } from "@/types";
+import type { Settings, SkillCliStatus, ToolId, UsageTracingStatus } from "@/types";
 import { ALL_TOOLS, messageOf, resolveSourceIds } from "@/shared";
 import { getToolProjectionTargets } from "@/lib/toolTargets";
 import { useManagerStore } from "@/state/manager";
@@ -58,6 +60,7 @@ export function ConfigPage() {
       <PastePanel {...props} />
       <SuiteFilePanel {...props} />
       <SkillsSourcePanel {...props} />
+      <UsageTracingPanel {...props} />
       <ToolsPanel {...props} />
       <WatcherPanel {...props} />
       <TelemetryPanel {...props} />
@@ -572,6 +575,83 @@ function SkillsSourcePanel({ settings, onChanged }: PanelProps) {
             </div>
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function UsageTracingPanel({ settings, onChanged }: PanelProps) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<UsageTracingStatus | null>(null);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      setStatus(await usageTracingStatus());
+    } catch (e) {
+      toast.error(messageOf(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus, settings.usageTracing.enabled]);
+
+  const persist = useCallback(
+    async (enabled: boolean) => {
+      setBusy(true);
+      try {
+        setStatus(await setUsageTracingEnabled(enabled));
+        onChanged();
+      } catch (e) {
+        toast.error(messageOf(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onChanged],
+  );
+
+  return (
+    <Card className="p-4">
+      <CardHeader className="flex-row items-center justify-between p-0">
+        <CardTitle className={sectionTitle}>Local usage tracing</CardTitle>
+        <Switch
+          checked={settings.usageTracing.enabled}
+          disabled={busy}
+          onCheckedChange={(v) => void persist(v)}
+          aria-label="Enable local skill usage tracing"
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 p-0">
+        <p className={hint}>
+          Off by default. When enabled, Agentic Hub installs managed tracer hooks
+          for supported enabled tools and stores normalized skill usage events in
+          a local SQLite database. Nothing is synced remotely.
+        </p>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span>
+            Collector:{" "}
+            <span className={status?.collectorRunning ? "text-success" : "text-warning"}>
+              {status?.collectorRunning ? "running" : "stopped"}
+            </span>
+          </span>
+          <span>Port: {status?.collectorPort ?? settings.usageTracing.collectorPort}</span>
+          {status && (
+            <span>
+              Events: {status.storedEventCount} stored · {status.resolvedEventCount} resolved ·{" "}
+              {status.unresolvedEventCount} unresolved
+            </span>
+          )}
+          {status?.dbPath && (
+            <button
+              type="button"
+              className="truncate underline"
+              onClick={() => void revealPath(status.dbPath).catch((e) => toast.error(messageOf(e)))}
+            >
+              Reveal local DB
+            </button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

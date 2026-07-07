@@ -8,6 +8,12 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Local skill usage tracing.** Optional, local-only tracing records explicit
+  skill/tool completion events into `~/.agentic-hub/usage/trace.db`, joins
+  counts onto Manager skill rows, and shows per-tool buckets on hover.
+
 ## [0.10.3] — 2026-07-04
 
 ### Added

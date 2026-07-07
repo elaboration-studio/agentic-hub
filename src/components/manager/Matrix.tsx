@@ -28,6 +28,7 @@ import type {
   Settings,
   ToolCapabilityState,
   ToolId,
+  UsageStats,
 } from "@/types";
 import { openPath, openUpdateWindow, revealPath } from "@/ipc";
 import {
@@ -37,6 +38,7 @@ import {
   KIND_ORDER,
   messageOf,
   originalFile,
+  TOOL_LABELS,
   type KindFilter,
   type ToolDef,
   type View,
@@ -103,6 +105,7 @@ export function Matrix() {
   const readOnly = useManagerStore((s) => s.readOnly);
   const readOnlyItemIds = useManagerStore((s) => s.readOnlyItemIds);
   const lockedSkills = useManagerStore((s) => s.lockedSkills);
+  const usageStats = useManagerStore((s) => s.usageStats);
   const workspaceId = useWorkspaceStore((s) => s.activeId);
 
   const view = useManagerFiltersStore((s) => s.view);
@@ -211,6 +214,7 @@ export function Matrix() {
     readOnlyItemIds,
     locateId,
     lockedSkills,
+    usageStats,
     workspaceId,
   };
   const effectiveCollapsed = query.trim() ? EMPTY_COLLAPSE : collapsed;
@@ -330,6 +334,7 @@ export function Matrix() {
             <TableRow className="hover:bg-card">
               <TableHead className={STICKY_HEAD}>Capability</TableHead>
               <TableHead className={cn("w-32", STICKY_HEAD)}>Source</TableHead>
+              <TableHead className={cn("w-24 text-right", STICKY_HEAD)}>Usage</TableHead>
               {tools.map((t) => {
                 const adapter = adapterMap.get(t.id);
                 const off = adapter && !adapter.available;
@@ -384,6 +389,7 @@ interface BodyContext {
   locateId: string;
   // Namespaced item id -> skills.sh install behind it (workspace scope only).
   lockedSkills: Map<string, { name: string; source: string }>;
+  usageStats: Map<string, UsageStats>;
   // The active workspace id, needed to target an update run. "" in global scope.
   workspaceId: string;
 }
@@ -560,6 +566,51 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
   );
 }
 
+function UsageCell({ item, stats }: { item: CapabilityItem; stats?: UsageStats }) {
+  if (item.kind !== "skill" || !stats || stats.executionCount === 0) {
+    return (
+      <TableCell className="text-right">
+        <span className="text-muted-foreground/50">—</span>
+      </TableCell>
+    );
+  }
+
+  return (
+    <TableCell className="text-right">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="rounded px-1.5 py-0.5 font-mono text-xs tabular-nums text-primary hover:bg-primary/10"
+            aria-label={`${item.name} usage count`}
+          >
+            {stats.executionCount}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent align="end" className="max-w-[260px]">
+          <div className="flex min-w-[180px] flex-col gap-1">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-semibold">Total</span>
+              <span className="font-mono tabular-nums">{stats.executionCount}</span>
+            </div>
+            {stats.toolBuckets.map((bucket) => (
+              <div key={bucket.sourceTool} className="flex items-center justify-between gap-3 text-xs">
+                <span>{TOOL_LABELS[bucket.sourceTool as ToolId] ?? bucket.sourceTool}</span>
+                <span className="font-mono tabular-nums">{bucket.executionCount}</span>
+              </div>
+            ))}
+            {stats.lastUsedAt && (
+              <div className="border-t pt-1 text-[11px] text-muted-foreground">
+                Last used {stats.lastUsedAt}
+              </div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TableCell>
+  );
+}
+
 function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge?: boolean) {
   const located = !!ctx.locateId && item.id === ctx.locateId;
   return (
@@ -595,6 +646,7 @@ function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge
         <RowActions item={item} ctx={ctx} />
       </TableCell>
       <TableCell>{item.sourceLabel}</TableCell>
+      <UsageCell item={item} stats={ctx.usageStats.get(item.id)} />
       <ToolCells
         item={item}
         tools={ctx.tools}
@@ -620,6 +672,7 @@ function renderFlat(items: CapabilityItem[], ctx: BodyContext): ReactNode {
           <TableCell className="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
             {KIND_LABEL[kind]} <span className="ml-1.5 text-primary">{rows.length}</span>
           </TableCell>
+          <TableCell />
           <TableCell />
           <AggregateCells items={rows} ctx={ctx} />
         </TableRow>
@@ -705,6 +758,7 @@ function renderNodes(
             <span className="font-semibold">{node.name}</span>
             <span className="ml-1.5 text-primary">{leaves.length}</span>
           </TableCell>
+          <TableCell />
           <TableCell />
           <AggregateCells items={leaves} ctx={ctx} />
         </TableRow>,

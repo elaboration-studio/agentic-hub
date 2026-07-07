@@ -5,6 +5,7 @@ import type { SkillsConfig } from "./SkillsConfig";
 import type { SourceConfig } from "./SourceConfig";
 import type { TelemetryConfig } from "./TelemetryConfig";
 import type { ToolsSettings } from "./ToolsSettings";
+import type { UsageTracingConfig } from "./UsageTracingConfig";
 
 /**
  * Global settings persisted at `~/.agentic-hub/config.json`.
@@ -50,13 +51,13 @@ codexAgentsPathMigrated: boolean,
  * `~/.gemini/skills` (the pre-0.10.1 default) to `~/.gemini/config/skills`
  * once, then sets this so a later deliberate choice of the old path sticks.
  */
-antigravitySkillsPathMigrated: boolean,
+antigravitySkillsPathMigrated: boolean, 
 /**
  * One-time migration marker: sets Kiro `instructionsPath` to
  * `~/.kiro/steering/AGENTS.md` when absent so shared rules project into the
  * AGENTS.md managed block instead of per-file steering copies.
  */
-kiroRulesAgentsMdMigrated: boolean,
+kiroRulesAgentsMdMigrated: boolean, 
 /**
  * Preferred editor for opening a capability's original file. Defaults to
  * the OS default app.
@@ -81,6 +82,10 @@ skills: SkillsConfig,
  * Anonymous usage telemetry (Aptabase). Defaults to enabled.
  */
 telemetry: TelemetryConfig, 
+/**
+ * Local-only skill/tool usage tracing. Defaults to disabled.
+ */
+usageTracing: UsageTracingConfig, 
 /**
  * Last main-window geometry; `None` uses `tauri.conf.json` defaults.
  */
