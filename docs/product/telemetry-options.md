@@ -89,8 +89,11 @@ WebView · CSP impact · consent ergonomics · where it sends from (Rust vs fron
 ## Decision (2026-06-15)
 
 **Adopted: Aptabase, opt-in, off by default** (decision D15). The desktop shell
-tracks only `app_started` / `app_exited` from Rust via `tauri-plugin-aptabase`,
-gated on `Settings.telemetry.enabled`. The WebView never calls out, so there is
+tracks `app_started` / `app_exited` from Rust via `tauri-plugin-aptabase`, plus
+at most one `daily_active` ping per UTC day when the user actually engages with
+the app (window focus, palette summon, dock reopen). Each installation carries a
+stable anonymous `clientId` so unique active clients can be counted in Aptabase.
+Gated on `Settings.telemetry.enabled`. The WebView never calls out, so there is
 no JS binding and no ACL surface. The recommendation below stands as the
 rationale.
 

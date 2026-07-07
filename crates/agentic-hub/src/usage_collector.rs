@@ -116,6 +116,11 @@ impl UsageCollectorState {
             return Err("usage tracing token is empty".to_string());
         }
 
+        UsageStore::new()
+            .ensure_ready()
+            .map_err(|e| e.to_string())?;
+        let _ = UsageStore::new().purge_unattributed_events();
+
         let mut inner = self
             .inner
             .lock()
@@ -652,18 +657,6 @@ pub fn record_command_palette_usage(
     }
     UsageStore::new()
         .record_palette_command_use(items, capability_id, pasted)
-        .map_err(|e| e.to_string())
-}
-
-pub fn re_resolve_usage_events(items: &[CapabilityItem]) -> Result<u32, String> {
-    UsageStore::new()
-        .re_resolve_events(items)
-        .map_err(|e| e.to_string())
-}
-
-pub fn purge_unresolved_usage_events() -> Result<u32, String> {
-    UsageStore::new()
-        .purge_unresolved_events()
         .map_err(|e| e.to_string())
 }
 
