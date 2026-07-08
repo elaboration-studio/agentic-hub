@@ -77,6 +77,9 @@ interface ManagerState {
   // Global scope can include unmanaged tool-installed rows. Those individual
   // rows are audit-only even while normal source-root rows remain editable.
   readOnlyItemIds: Set<string>;
+  // Settings-managed Agentic Hub rows are visible and must remain in sync
+  // payloads, but their toggles are controlled from Config.
+  settingsManagedItemIds: Set<string>;
 
   // Derived (recomputed on data/desired change).
   tools: ToolDef[];
@@ -130,6 +133,10 @@ function namespaceItem(it: CapabilityItem): CapabilityItem {
 
 function namespaceState(s: ToolCapabilityState): ToolCapabilityState {
   return { ...s, itemId: WORKSPACE_ID_PREFIX + s.itemId };
+}
+
+function isSettingsManagedItem(it: CapabilityItem): boolean {
+  return it.sourceId === "agentic-hub";
 }
 
 function filterInstalledInventory(
@@ -242,6 +249,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   conflicts: null,
   readOnly: false,
   readOnlyItemIds: new Set(),
+  settingsManagedItemIds: new Set(),
   tools: [],
   workspaceTools: [],
   currentMap: new Map(),
@@ -266,6 +274,9 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         adapterStatuses: managedResult.adapterStatuses,
       };
       const allItems = [...items, ...installed.items];
+      const settingsManagedItemIds = new Set(
+        allItems.filter(isSettingsManagedItem).map((it) => it.id),
+      );
       const desired = seedDesired(result);
       const currentMap = buildCurrentMap(result);
       const tools = enabledTools(settings);
@@ -284,6 +295,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         lockedSkills: new Map(),
         usageStats,
         readOnlyItemIds,
+        settingsManagedItemIds,
         watching: settings.watcherEnabled,
         readOnly: false,
         status: "ready",
@@ -339,6 +351,9 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         lockedSkills,
         usageStats,
         readOnlyItemIds: new Set(),
+        settingsManagedItemIds: new Set(
+          items.filter(isSettingsManagedItem).map((it) => it.id),
+        ),
         readOnly: true,
         status: "ready",
       });
@@ -362,8 +377,9 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   setWatching: (watching) => set({ watching }),
 
   toggle: (tool, itemId) => {
-    const { currentMap, desired, ownership, readOnly, readOnlyItemIds } = get();
-    if (readOnly || readOnlyItemIds.has(itemId)) return;
+    const { currentMap, desired, ownership, readOnly, readOnlyItemIds, settingsManagedItemIds } =
+      get();
+    if (readOnly || readOnlyItemIds.has(itemId) || settingsManagedItemIds.has(itemId)) return;
     const k = key(tool, itemId);
     // Suite-managed cells are locked: a binding owns them.
     if (!currentMap.has(k) || ownership.has(k)) return;
@@ -372,11 +388,12 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   },
 
   toggleMany: (tool, itemIds, value) => {
-    const { currentMap, desired, ownership, readOnly, readOnlyItemIds } = get();
+    const { currentMap, desired, ownership, readOnly, readOnlyItemIds, settingsManagedItemIds } =
+      get();
     if (readOnly) return;
     const next = { ...desired };
     for (const id of itemIds) {
-      if (readOnlyItemIds.has(id)) continue;
+      if (readOnlyItemIds.has(id) || settingsManagedItemIds.has(id)) continue;
       const k = key(tool, id);
       if (currentMap.has(k) && !ownership.has(k)) next[k] = value;
     }

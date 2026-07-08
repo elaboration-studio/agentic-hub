@@ -128,6 +128,10 @@ function buildCurrentMap(states: ToolCapabilityState[]): Map<string, ToolCapabil
   return map;
 }
 
+function isSettingsManagedItem(item?: CapabilityItem): boolean {
+  return item?.sourceId === "agentic-hub";
+}
+
 // Suite-managed cells, keyed by `key(tool, itemId)`. A failure must not break
 // the panel, so it degrades to an empty (no-lock) map.
 async function loadOwnership(): Promise<Map<string, CapabilityOwnership>> {
@@ -355,7 +359,8 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
     // Flip one tool for this item, applied immediately. No-op on locked cells.
     toggleCapability: async (tool, itemId) => {
       await ensureInspected();
-      const { currentMap, ownership } = get();
+      const { currentMap, items, ownership } = get();
+      if (isSettingsManagedItem(items.find((it) => it.id === itemId))) return;
       if (ownership.has(key(tool, itemId))) return;
       const on = currentMap.get(key(tool, itemId))?.state === "enabled";
       try {
@@ -368,8 +373,9 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
     // Enable/disable this item across every unlocked, projectable enabled tool.
     toggleCapabilityAll: async (itemId, enable) => {
       await ensureInspected();
-      const { settings, currentMap, ownership } = get();
+      const { settings, currentMap, items, ownership } = get();
       if (!settings) return;
+      if (isSettingsManagedItem(items.find((it) => it.id === itemId))) return;
       try {
         for (const t of enabledTools(settings)) {
           const k = key(t.id, itemId);

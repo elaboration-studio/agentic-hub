@@ -175,6 +175,21 @@ Items that fail validation surface as `invalid` in the manager, consistent with 
 
 Before planning, `filter_desired_enabled_for_tool(tool_id, desired, items, manifests)` strips any hook whose effective targets exclude `tool_id` from the desired-enabled set, returning one note per dropped item. Effective targets = `manifest.targets` ∩ `{tools where hooks_enabled}`. This guarantees a stale UI toggle cannot reach the planner and become a silent no-op.
 
+## Settings-managed internal hooks
+
+`agentic-core::internal_hooks` contributes virtual hook items and manifests for
+Agentic Hub-owned behavior. The initial registry entry is the local usage tracer
+(`hook:agentic-hub-usage-tracer-{tool}`), whose source identity is
+`Agentic Hub` / `agentic-hub`.
+
+These hooks are included in scans and inspection results when enabled by
+settings, but they are not suite-selectable and are locked in Manager/palette
+toggles. `api::sync_hooks` merges enabled internal hooks into every hook sync for
+their target tool, independent of the caller's desired map, so Manager applies,
+suite full resets, and watcher reconcile cannot accidentally remove them.
+Virtual hooks use a stable manifest hash instead of reading `hook.json` from a
+source root.
+
 ## Workspace mode
 
 None. Hook projection is a **global-scope** write operation. Workspace scope is a

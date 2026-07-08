@@ -16,6 +16,7 @@ pub mod codex_agent;
 pub mod copilot_hook_sync;
 pub mod error;
 pub mod hook_sync;
+pub mod internal_hooks;
 pub mod kiro_hook_sync;
 pub mod managed_copy;
 pub mod model;
@@ -49,6 +50,11 @@ pub use client_telemetry::{
 };
 pub use error::{CoreError, Result};
 pub use hook_sync::{HookEventSpec, HookManifest};
+pub use internal_hooks::{
+    is_internal_item, usage_tracer_enabled, usage_tracer_hook_dir, usage_tracer_hook_id,
+    usage_tracer_item, usage_tracer_manifest, usage_tracer_root, USAGE_TRACER_SCRIPT,
+    USAGE_TRACER_TOOLS,
+};
 pub use model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, ContentTransform,
     HookSyncError, HookSyncOutcome, LinkState, OperationKind, PlannedOperation, RuleSyncError,

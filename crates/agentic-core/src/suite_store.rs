@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CoreError, Result};
+use crate::internal_hooks;
 use crate::managed_copy::now_iso8601;
 use crate::model::{CapabilityItem, SuiteCapabilityRef, SuiteDefinition, SuiteValidationResult};
 use crate::paths::home_dir;
@@ -257,7 +258,10 @@ impl SuiteStore {
         let mut stale_ids = Vec::new();
         let mut absent_ids = Vec::new();
         for r in &suite.capabilities {
-            if items.iter().any(|i| r.matches_item(i)) {
+            if items
+                .iter()
+                .any(|i| !internal_hooks::is_internal_item(i) && r.matches_item(i))
+            {
                 valid_ids.push(r.cap.clone());
             } else if matches!(&r.source, Some(s) if !source_present(sources, s)) {
                 absent_ids.push(r.cap.clone());
@@ -283,7 +287,9 @@ impl SuiteStore {
             if r.source.is_some() {
                 continue;
             }
-            let mut hits = items.iter().filter(|i| i.id == r.cap);
+            let mut hits = items
+                .iter()
+                .filter(|i| !internal_hooks::is_internal_item(i) && i.id == r.cap);
             if let (Some(first), None) = (hits.next(), hits.next()) {
                 r.source = Some(first.source.clone());
                 changed = true;

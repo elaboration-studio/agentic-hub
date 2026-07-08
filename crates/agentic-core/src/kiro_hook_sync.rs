@@ -25,8 +25,13 @@ fn kiro_trigger(event: HookCanonicalEvent) -> Option<&'static str> {
         UserPromptSubmit => Some("UserPromptSubmit"),
         Stop => Some("Stop"),
         SessionStart => Some("SessionStart"),
-        PostToolUseFailure | SessionEnd | PreCompact | PostCompact | Notification
-        | PermissionRequest | HookCanonicalEvent::UserPromptExpansion => None,
+        PostToolUseFailure
+        | SessionEnd
+        | PreCompact
+        | PostCompact
+        | Notification
+        | PermissionRequest
+        | HookCanonicalEvent::UserPromptExpansion => None,
     }
 }
 
@@ -171,7 +176,7 @@ pub fn inspect_kiro_hooks(
         let Some(target) = hook_target(adapter, &m.id) else {
             continue;
         };
-        let hash = hook_sync::source_hash(&item.source_path);
+        let hash = hook_sync::projection_source_hash(item, m);
         let state = match read_managed_entries(&target, &m.id) {
             FileRead::Missing => LinkState::Disabled,
             FileRead::Foreign | FileRead::ForeignContent => LinkState::ForeignFile,
@@ -258,7 +263,7 @@ pub fn sync_kiro_hooks(
     for (item, m) in enabled {
         let target = hooks_dir.join(format!("{}.json", m.id));
         refuse_unmanaged_target(&target, read_managed_entries(&target, &m.id))?;
-        let hash = hook_sync::source_hash(&item.source_path);
+        let hash = hook_sync::projection_source_hash(item, m);
         let entries = build_hooks_array(item, m, &hash, &mut notes);
         if entries.is_empty() {
             match read_managed_entries(&target, &m.id) {

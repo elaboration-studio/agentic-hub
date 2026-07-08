@@ -76,6 +76,19 @@ CRUD rules:
 
 The marker key `_agenticHub` is preserved verbatim from the VS Code extension for migration parity.
 
+## Agentic Hub internal hooks
+
+Some hooks are owned by Agentic Hub settings rather than by a user source root.
+The local usage tracer is the first built-in hook source: when tracing is
+enabled, the scanner adds read-only `Agentic Hub` hook rows such as
+`hook:agentic-hub-usage-tracer-cursor`. These rows are visible in the Manager so
+their projection state is clear, but their toggles are controlled from Config.
+
+Normal hook sync always includes enabled internal hooks for their target tool,
+even when the caller's desired map came from a suite apply or a Manager toggle.
+That prevents a later full-reset sync from deleting Agentic Hub-owned entries
+that were not present in the user source-root hook list.
+
 ## State semantics
 
 | LinkState | Meaning |

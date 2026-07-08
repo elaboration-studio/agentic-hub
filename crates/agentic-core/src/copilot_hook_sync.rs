@@ -170,7 +170,7 @@ pub fn inspect_copilot_hooks(
         let Some(target) = hook_target(adapter, &m.id) else {
             continue;
         };
-        let hash = hook_sync::source_hash(&item.source_path);
+        let hash = hook_sync::projection_source_hash(item, m);
         let state = match read_managed_hooks(&target, &m.id) {
             FileRead::Missing => LinkState::Disabled,
             FileRead::Foreign | FileRead::ForeignContent => LinkState::ForeignFile,
@@ -256,7 +256,7 @@ pub fn sync_copilot_hooks(
     for (item, m) in enabled {
         let target = hooks_dir.join(format!("{}.json", m.id));
         refuse_unmanaged_target(&target, read_managed_hooks(&target, &m.id))?;
-        let hash = hook_sync::source_hash(&item.source_path);
+        let hash = hook_sync::projection_source_hash(item, m);
         let hooks = build_hooks_object(item, m, &hash, &mut notes);
         if hooks.is_empty() {
             match read_managed_hooks(&target, &m.id) {

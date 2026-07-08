@@ -234,6 +234,21 @@ pub struct ToolsSettings {
     pub antigravity: ToolSettings,
 }
 
+impl ToolsSettings {
+    pub fn for_tool(&self, tool: ToolId) -> &ToolSettings {
+        match tool {
+            ToolId::Codex => &self.codex,
+            ToolId::Claude => &self.claude,
+            ToolId::Cursor => &self.cursor,
+            ToolId::Openclaw => &self.openclaw,
+            ToolId::Openstandard => &self.openstandard,
+            ToolId::Kiro => &self.kiro,
+            ToolId::Copilot => &self.copilot,
+            ToolId::Antigravity => &self.antigravity,
+        }
+    }
+}
+
 fn default_openstandard() -> ToolSettings {
     ToolSettings::defaults_for(ToolId::Openstandard)
 }

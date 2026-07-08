@@ -138,6 +138,20 @@ function makeInstalledItem(tool: ToolId, id: string): CapabilityItem {
   };
 }
 
+function makeAgenticHubHook(tool: ToolId): CapabilityItem {
+  const id = `hook:agentic-hub-usage-tracer-${tool}`;
+  return {
+    ...makeItem(id),
+    kind: "hook",
+    name: `agentic-hub-usage-tracer-${tool}`,
+    sourcePath: `/hub/hooks/agentic-hub-usage-tracer-${tool}`,
+    relativePath: `agentic-hub-usage-tracer-${tool}`,
+    sourceId: "agentic-hub",
+    sourceLabel: "Agentic Hub",
+    source: { relHome: "~/.agentic-hub", folder: ".agentic-hub" },
+  };
+}
+
 function makeState(tool: ToolId, itemId: string, state: LinkState): ToolCapabilityState {
   return { tool, itemId, targetPath: `/${tool}/${itemId}`, state, currentLinkTarget: null };
 }
@@ -647,6 +661,39 @@ describe("manager store — apply pipeline", () => {
       "codex",
       [expect.objectContaining({ id: "skill:a" })],
       { "skill:a": false },
+    );
+  });
+
+  it("keeps Agentic Hub hook rows read-only while preserving them in sync payloads", async () => {
+    const hook = makeAgenticHubHook("cursor");
+    const item = makeItem("skill:a");
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [item, hook], errors: [] });
+    mocked.scanInstalledTools.mockResolvedValue({ items: [], states: [], errors: [] });
+    mocked.inspect.mockResolvedValue({
+      states: [
+        makeState("cursor", "skill:a", "disabled"),
+        makeState("cursor", hook.id, "enabled"),
+      ],
+      adapterStatuses: [{ tool: "cursor", available: true, unavailableReason: null }],
+    });
+    mocked.suiteOwnership.mockResolvedValue([]);
+    await useManagerStore.getState().refresh();
+
+    useManagerStore.getState().toggle("cursor", hook.id);
+    expect(useManagerStore.getState().desired[`cursor::${hook.id}`]).toBe(true);
+
+    useManagerStore.getState().toggle("cursor", "skill:a");
+    useManagerStore.getState().requestApply();
+
+    await vi.waitFor(() => expect(mocked.syncHooks).toHaveBeenCalled());
+    expect(mocked.syncHooks).toHaveBeenCalledWith(
+      "cursor",
+      expect.arrayContaining([
+        expect.objectContaining({ id: "skill:a" }),
+        expect.objectContaining({ id: hook.id }),
+      ]),
+      { "skill:a": true, [hook.id]: true },
     );
   });
 

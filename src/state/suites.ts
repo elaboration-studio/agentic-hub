@@ -14,6 +14,10 @@ import {
 import type { CapabilityItem, SuiteCapabilityRef, SuiteDefinition } from "../types";
 import { messageOf } from "../shared";
 
+function isSuiteSelectableItem(item: CapabilityItem | undefined): boolean {
+  return item?.sourceId !== "agentic-hub";
+}
+
 export interface Draft {
   name: string;
   description: string;
@@ -112,11 +116,13 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
     try {
       // Attach each selected id's source from the live scan so the saved suite
       // is portable. Ids absent from the scan stay unqualified (source: null).
-      const sourceOf = new Map(items.map((it) => [it.id, it.source]));
-      const capabilities: SuiteCapabilityRef[] = draft.capabilities.map((cap) => ({
-        cap,
-        source: sourceOf.get(cap) ?? null,
-      }));
+      const itemById = new Map(items.map((it) => [it.id, it]));
+      const capabilities: SuiteCapabilityRef[] = draft.capabilities
+        .filter((cap) => isSuiteSelectableItem(itemById.get(cap)))
+        .map((cap) => ({
+          cap,
+          source: itemById.get(cap)?.source ?? null,
+        }));
       const payload = {
         name: draft.name.trim(),
         description: draft.description.trim() || null,

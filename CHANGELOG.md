@@ -8,17 +8,35 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-07-08
+
+### Added
+
+- **First-class internal hooks projection.** Agentic Hub-owned hooks (starting with
+  the local usage tracer) appear as read-only `Agentic Hub` rows in the Manager
+  so their projection state is visible alongside user source-root hooks.
+- **Settings-managed hook sync preservation.** Enabled internal hooks are merged
+  into every hook sync for their target tool, so Manager applies, suite full
+  resets, and watcher reconcile cannot remove tracer hooks that are absent from
+  user hook lists.
+
+### Changed
+
+- **Usage tracer hook definitions live in `internal_hooks`.** The Tauri usage
+  collector delegates tracer manifests and paths to `agentic-core`, removing
+  duplicated hook metadata from the hub crate.
+- **Manager and suite UI lock internal hook toggles.** Settings-managed rows stay
+  in sync payloads but cannot be toggled from the Manager matrix, suite editor,
+  or command palette; Config remains the control surface for usage tracing.
+
+## [0.11.0] — 2026-07-07
+
 ### Added
 
 - **Daily-active telemetry.** When usage telemetry is enabled, the app sends at
   most one `daily_active` ping per UTC day on first real engagement (window
   focus, palette summon, or dock reopen), with a stable anonymous `clientId` so
   unique active desktop installs can be counted in Aptabase.
-
-## [0.11.0] — 2026-07-07
-
-### Added
-
 - **Local usage tracing.** Opt-in, local-only tracing records explicit skill,
   agent, and command usage into `~/.agentic-hub/usage/trace.db`. The Manager
   matrix adds a **Usage** column with per-tool hover breakdowns.
