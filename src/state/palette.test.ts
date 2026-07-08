@@ -180,6 +180,20 @@ function makeItem(id: string): CapabilityItem {
   };
 }
 
+function makeAgenticHubHook(tool: ToolId): CapabilityItem {
+  const id = `hook:agentic-hub-usage-tracer-${tool}`;
+  return {
+    ...makeItem(id),
+    kind: "hook",
+    name: `agentic-hub-usage-tracer-${tool}`,
+    sourcePath: `/hub/hooks/agentic-hub-usage-tracer-${tool}`,
+    relativePath: `agentic-hub-usage-tracer-${tool}`,
+    sourceId: "agentic-hub",
+    sourceLabel: "Agentic Hub",
+    source: { relHome: "~/.agentic-hub", folder: ".agentic-hub" },
+  };
+}
+
 async function loadReady(suites: SuiteDefinition[] = [makeSuite("s1", "Backend")]) {
   mocked.loadSettings.mockResolvedValue(makeSettings());
   mocked.scan.mockResolvedValue({ items: [makeItem("skill:tdd")], errors: [] });
@@ -471,6 +485,39 @@ describe("palette store — capability-tools (inline per-tool toggle)", () => {
     expect(mocked.syncRules).toHaveBeenCalledWith("claude", expect.any(Array), desired);
     expect(mocked.syncHooks).toHaveBeenCalledWith("claude", expect.any(Array), desired);
     expect(mocked.emitSourcesChanged).toHaveBeenCalled();
+  });
+
+  it("toggleCapability keeps Agentic Hub hooks locked but preserves them in sync maps", async () => {
+    const hook = makeAgenticHubHook("claude");
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({
+      items: [makeItem("skill:tdd"), hook],
+      errors: [],
+    });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
+    mocked.inspect.mockResolvedValue({
+      states: [
+        inspectState("claude", "skill:tdd", false),
+        inspectState("claude", hook.id, true),
+      ],
+      adapterStatuses: [],
+    });
+
+    await usePaletteStore.getState().load();
+    await flush();
+    await usePaletteStore.getState().toggleCapability("claude", hook.id);
+    expect(mocked.plan).not.toHaveBeenCalled();
+
+    await usePaletteStore.getState().toggleCapability("claude", "skill:tdd");
+    expect(mocked.syncHooks).toHaveBeenCalledWith(
+      "claude",
+      expect.arrayContaining([
+        expect.objectContaining({ id: "skill:tdd" }),
+        expect.objectContaining({ id: hook.id }),
+      ]),
+      { "skill:tdd": true, [hook.id]: true },
+    );
   });
 
   it("toggleCapability applies the plan ops and re-inspects to reconcile", async () => {

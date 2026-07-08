@@ -182,6 +182,20 @@ pub fn source_hash(hook_dir: &Path) -> String {
         .unwrap_or_default()
 }
 
+pub fn manifest_hash(manifest: &HookManifest) -> String {
+    serde_json::to_vec(manifest)
+        .map(|bytes| hash_bytes(&bytes))
+        .unwrap_or_default()
+}
+
+pub fn projection_source_hash(item: &CapabilityItem, manifest: &HookManifest) -> String {
+    if crate::internal_hooks::is_internal_item(item) {
+        manifest_hash(manifest)
+    } else {
+        source_hash(&item.source_path)
+    }
+}
+
 /// Replace every `${HOOK_DIR}` with the hook's absolute source folder.
 pub fn expand_hook_dir(command: &str, source_path: &Path) -> String {
     command.replace("${HOOK_DIR}", &source_path.to_string_lossy())
@@ -220,7 +234,7 @@ pub fn inspect_hooks(
             RootRead::Foreign => LinkState::ForeignFile,
             RootRead::Broken => LinkState::Broken,
             RootRead::Ok(root) => match find_managed_hash(root, &m.id) {
-                Some(hash) if hash == source_hash(&item.source_path) => LinkState::Enabled,
+                Some(hash) if hash == projection_source_hash(item, m) => LinkState::Enabled,
                 Some(_) => LinkState::Stale,
                 None => LinkState::Disabled,
             },
@@ -470,7 +484,7 @@ fn build_desired(
 ) -> Vec<(String, Value)> {
     let mut desired = Vec::new();
     for (item, m) in enabled {
-        let hash = source_hash(&item.source_path);
+        let hash = projection_source_hash(item, m);
         for spec in &m.events {
             if cursor_shape {
                 match spec.name.cursor_key() {

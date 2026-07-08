@@ -13,6 +13,7 @@ use crate::adapter_registry;
 use crate::api;
 use crate::applier;
 use crate::hook_sync;
+use crate::internal_hooks;
 use crate::model::{
     ApplyResult, CapabilityItem, LinkState, SyncHooksResult, SyncRulesResult, ToolCapabilityState,
     ToolId,
@@ -95,11 +96,15 @@ pub fn compute_reconcile_desired(
 /// Inspect every applicable state (link/file/rule + hooks) for one tool.
 fn states_for_tool(
     items: &[CapabilityItem],
+    settings: &Settings,
     adapter: &adapter_registry::ResolvedAdapter,
 ) -> Vec<ToolCapabilityState> {
-    let manifests = hook_sync::load_manifests(items);
-    let mut states = planner::inspect_tool(items, adapter);
-    states.extend(hook_sync::inspect_hooks(items, &manifests, adapter));
+    let mut items = items.to_vec();
+    internal_hooks::append_items(&mut items, settings);
+    let mut manifests = hook_sync::load_manifests(&items);
+    internal_hooks::insert_manifests(&mut manifests, settings);
+    let mut states = planner::inspect_tool(&items, adapter);
+    states.extend(hook_sync::inspect_hooks(&items, &manifests, adapter));
     states
 }
 
@@ -112,7 +117,7 @@ pub fn reconcile_tool(
     prev_known_ids: &HashSet<String>,
 ) -> ReconcileToolOutcome {
     let adapter = adapter_registry::resolve(settings, tool);
-    let states = states_for_tool(items, &adapter);
+    let states = states_for_tool(items, settings, &adapter);
     let desired = compute_reconcile_desired(items, &states, prev_known_ids);
 
     // The watcher reconciles non-destructively; never take over real files.
@@ -268,6 +273,13 @@ mod tests {
         api::apply(&ops);
     }
 
+    fn enable_usage_tracing(mut settings: Settings, tools: Vec<ToolId>) -> Settings {
+        settings.usage_tracing.enabled = true;
+        settings.usage_tracing.capture_tools = tools;
+        settings.usage_tracing.collector_token = "test-token".into();
+        settings
+    }
+
     fn state_of(
         items: &[CapabilityItem],
         settings: &Settings,
@@ -398,6 +410,32 @@ mod tests {
         let written = fs::read_to_string(&instr).unwrap();
         assert!(written.contains("rule body v2 fresh"), "block refreshed");
         assert!(!written.contains("rule body v1"), "old body replaced");
+    }
+
+    #[test]
+    fn reconcile_keeps_settings_managed_usage_tracer_hook() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{ "id": "fmt", "command": "run", "events": [{"name":"Stop"}] }"#,
+        );
+        let settings = enable_usage_tracing(
+            Settings::sandboxed(root.path(), tools.path()),
+            vec![ToolId::Cursor],
+        );
+
+        let scanned = api::scan(&settings);
+        let known: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
+        let mut desired = HashMap::new();
+        desired.insert("hook:fmt".to_string(), true);
+        api::sync_hooks(&scanned.items, &settings, ToolId::Cursor, &desired);
+
+        reconcile_tool(&scanned.items, &settings, ToolId::Cursor, &known);
+
+        let hooks_path = settings.tools.cursor.hooks_file.as_ref().unwrap();
+        let written = fs::read_to_string(hooks_path).unwrap_or_default();
+        assert!(written.contains("\"hookId\": \"agentic-hub-usage-tracer-cursor\""));
     }
 
     #[test]

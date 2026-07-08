@@ -106,6 +106,11 @@ supported enabled tools using the same `_agenticHub` marker style as normal hook
 projection. The hook command forwards stdin to the collector and exits `0`
 whether the collector is available or not.
 
+Tracer hooks are also registered as virtual `Agentic Hub` hook rows in the
+Manager. They are visible for inspection and included in hook sync payloads, but
+cannot be toggled from the Manager or palette; Config remains the only control
+surface for enabling/disabling tracing.
+
 When tracing is disabled, the managed tracer hook is removed. User-authored hook
 entries are preserved verbatim.
 

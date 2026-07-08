@@ -34,7 +34,9 @@ use tauri_plugin_opener::OpenerExt;
 use crate::error::IpcError;
 use crate::palette;
 use crate::paste::{self, PasteOutcome};
-use crate::usage_collector::{self, UsageCollectorState, UsageTracerHooksSyncResult, UsageTracingStatus};
+use crate::usage_collector::{
+    self, UsageCollectorState, UsageTracerHooksSyncResult, UsageTracingStatus,
+};
 use crate::watcher::{self, WatcherState};
 
 type IpcResult<T> = Result<T, IpcError>;
@@ -142,12 +144,8 @@ pub struct ScanInput {
 
 #[tauri::command]
 pub async fn cmd_scan(input: ScanInput) -> IpcResult<ScanResult> {
-    // Reuse `resolve_sources` (slug assignment, tilde expansion, legacy
-    // single-root fallback) by routing through a transient Settings.
-    let settings = Settings {
-        sources: input.sources,
-        ..Settings::default()
-    };
+    let mut settings = Settings::load()?;
+    settings.sources = input.sources;
     Ok(api::scan(&settings))
 }
 
@@ -172,10 +170,8 @@ pub async fn cmd_inspect(
     items: Vec<CapabilityItem>,
     tools: ToolsSettings,
 ) -> IpcResult<InspectResult> {
-    let settings = Settings {
-        tools,
-        ..Settings::default()
-    };
+    let mut settings = Settings::load()?;
+    settings.tools = tools;
     Ok(api::inspect(&items, &settings))
 }
 

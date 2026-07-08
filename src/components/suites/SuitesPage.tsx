@@ -124,6 +124,7 @@ export function SuitesPage() {
   const visibleItems = useMemo(() => {
     const q = capSearch.trim().toLowerCase();
     return items.filter((it) => {
+      if (it.sourceId === "agentic-hub") return false;
       if (!KIND_ORDER.includes(it.kind)) return false;
       if (kindFilter !== "all" && it.kind !== kindFilter) return false;
       if (!q) return true;

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::adapter_registry::{self, ProjectionMode, ResolvedAdapter};
 use crate::applier;
 use crate::hook_sync;
+use crate::internal_hooks;
 use crate::model::{
     ApplyResult, ApplySuiteResult, CapabilityItem, CapabilityKind, HookSyncOutcome, LinkState,
     PlannedOperation, RuleSyncOutcome, ScanResult, SuiteBinding, SuiteDefinition, SuiteOwnership,
@@ -53,14 +54,31 @@ pub struct InspectResult {
 pub fn scan(settings: &Settings) -> ScanResult {
     let mut result = scanner::scan_all(&settings.resolve_sources());
     hook_sync::annotate_validation(&mut result.items);
+    internal_hooks::append_items(&mut result.items, settings);
     result
+}
+
+fn items_with_internal_hooks(items: &[CapabilityItem], settings: &Settings) -> Vec<CapabilityItem> {
+    let mut all = items.to_vec();
+    internal_hooks::append_items(&mut all, settings);
+    all
+}
+
+fn hook_manifests(
+    items: &[CapabilityItem],
+    settings: &Settings,
+) -> HashMap<String, hook_sync::HookManifest> {
+    let mut manifests = hook_sync::load_manifests(items);
+    internal_hooks::insert_manifests(&mut manifests, settings);
+    manifests
 }
 
 /// Inspect current per-tool state for every enabled tool.
 pub fn inspect(items: &[CapabilityItem], settings: &Settings) -> InspectResult {
     let mut states: Vec<ToolCapabilityState> = Vec::new();
     let mut adapter_statuses: Vec<AdapterStatus> = Vec::new();
-    let manifests = hook_sync::load_manifests(items);
+    let items = items_with_internal_hooks(items, settings);
+    let manifests = hook_manifests(&items, settings);
 
     for tool in ToolId::ALL {
         let adapter = adapter_registry::resolve(settings, tool);
@@ -76,8 +94,8 @@ pub fn inspect(items: &[CapabilityItem], settings: &Settings) -> InspectResult {
                     available: true,
                     unavailable_reason: None,
                 });
-                states.extend(planner::inspect_tool(items, &adapter));
-                states.extend(inspect_hooks_for_adapter(items, &manifests, &adapter));
+                states.extend(planner::inspect_tool(&items, &adapter));
+                states.extend(inspect_hooks_for_adapter(&items, &manifests, &adapter));
             }
         }
     }
@@ -169,12 +187,19 @@ pub fn sync_hooks(
     desired_enabled: &HashMap<String, bool>,
 ) -> SyncHooksResult {
     let adapter = adapter_registry::resolve(settings, tool);
-    let manifests = hook_sync::load_manifests(items);
+    let items = items_with_internal_hooks(items, settings);
+    let manifests = hook_manifests(&items, settings);
 
     let enabled: Vec<(&CapabilityItem, &hook_sync::HookManifest)> = items
         .iter()
         .filter(|it| it.kind == CapabilityKind::Hook)
-        .filter(|it| desired_enabled.get(&it.id).copied().unwrap_or(false))
+        .filter(|it| {
+            if internal_hooks::is_internal_item(it) {
+                internal_hooks::item_enabled_for_tool(settings, it, tool)
+            } else {
+                desired_enabled.get(&it.id).copied().unwrap_or(false)
+            }
+        })
         .filter_map(|it| manifests.get(&it.id).map(|m| (it, m)))
         .filter(|(_, m)| m.effective_targets().contains(&tool))
         .collect();
@@ -240,17 +265,24 @@ pub fn enabled_item_ids(
     tool: ToolId,
 ) -> HashSet<String> {
     let adapter = adapter_registry::resolve(settings, tool);
-    let manifests = hook_sync::load_manifests(items);
-    let mut ids: HashSet<String> = planner::inspect_tool(items, &adapter)
+    let items = items_with_internal_hooks(items, settings);
+    let manifests = hook_manifests(&items, settings);
+    let mut ids: HashSet<String> = planner::inspect_tool(&items, &adapter)
         .into_iter()
         .filter(|s| s.state == LinkState::Enabled)
         .map(|s| s.item_id)
         .collect();
-    for s in inspect_hooks_for_adapter(items, &manifests, &adapter) {
+    for s in inspect_hooks_for_adapter(&items, &manifests, &adapter) {
         if s.state == LinkState::Enabled {
             ids.insert(s.item_id);
         }
     }
+    ids.retain(|id| {
+        items
+            .iter()
+            .find(|it| it.id == *id)
+            .map_or(true, |it| !internal_hooks::is_internal_item(it))
+    });
     ids
 }
 
@@ -258,6 +290,7 @@ pub fn enabled_item_ids(
 pub fn suite_matched_ids(items: &[CapabilityItem], suite: &SuiteDefinition) -> HashSet<String> {
     items
         .iter()
+        .filter(|it| !internal_hooks::is_internal_item(it))
         .filter(|it| suite.capabilities.iter().any(|r| r.matches_item(it)))
         .map(|it| it.id.clone())
         .collect()
@@ -326,26 +359,31 @@ pub fn apply_suite(
     manual_to_preserve: &[&str],
 ) -> ApplySuiteResult {
     let preserve: HashSet<&str> = manual_to_preserve.iter().copied().collect();
+    let items = items_with_internal_hooks(items, settings);
     let desired: HashMap<String, bool> = items
         .iter()
         .map(|it| {
-            let in_suite = suite.capabilities.iter().any(|r| r.matches_item(it));
+            let in_suite = !internal_hooks::is_internal_item(it)
+                && suite.capabilities.iter().any(|r| r.matches_item(it));
             (it.id.clone(), in_suite || preserve.contains(it.id.as_str()))
         })
         .collect();
 
     let adapter = adapter_registry::resolve(settings, tool);
     // Suite apply is a non-destructive full reset; never take over real files.
-    let ops = planner::build_plan(items, &adapter, &desired, false);
+    let ops = planner::build_plan(&items, &adapter, &desired, false);
     let apply_result = applier::apply(&ops, |_, _, _, _| {});
-    let _ = sync_rules(items, settings, tool, &desired);
-    let _ = sync_hooks(items, settings, tool, &desired);
+    let _ = sync_rules(&items, settings, tool, &desired);
+    let _ = sync_hooks(&items, settings, tool, &desired);
 
     let local = settings.resolve_sources();
     let mut skipped_stale = 0u32;
     let mut skipped_absent_source = 0u32;
     for r in &suite.capabilities {
-        if items.iter().any(|it| r.matches_item(it)) {
+        if items
+            .iter()
+            .any(|it| !internal_hooks::is_internal_item(it) && r.matches_item(it))
+        {
             continue;
         }
         match &r.source {
@@ -356,8 +394,8 @@ pub fn apply_suite(
         }
     }
 
-    let enabled_after = enabled_item_ids(items, settings, tool);
-    let manual_item_ids = manual_extras_from_enabled(&enabled_after, suite, items);
+    let enabled_after = enabled_item_ids(&items, settings, tool);
+    let manual_item_ids = manual_extras_from_enabled(&enabled_after, suite, &items);
 
     ApplySuiteResult {
         apply_result,
@@ -430,6 +468,9 @@ pub fn suite_ownership(
             continue;
         };
         for it in items {
+            if internal_hooks::is_internal_item(it) {
+                continue;
+            }
             if selected.capabilities.iter().any(|r| r.matches_item(it)) {
                 out.push(SuiteOwnership {
                     tool: b.tool_id,
@@ -640,6 +681,90 @@ mod tests {
         }
     }
 
+    fn enable_usage_tracing(mut settings: Settings, tools: Vec<ToolId>) -> Settings {
+        settings.usage_tracing.enabled = true;
+        settings.usage_tracing.capture_tools = tools;
+        settings.usage_tracing.collector_token = "test-token".into();
+        settings
+    }
+
+    fn hook_file(settings: &Settings, tool: ToolId) -> String {
+        let path = match tool {
+            ToolId::Cursor => settings.tools.cursor.hooks_file.as_ref(),
+            ToolId::Claude => settings.tools.claude.hooks_file.as_ref(),
+            ToolId::Codex => settings.tools.codex.hooks_file.as_ref(),
+            _ => None,
+        }
+        .unwrap();
+        fs::read_to_string(path).unwrap_or_default()
+    }
+
+    #[test]
+    fn scan_includes_settings_managed_usage_tracer_hooks() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        let settings = enable_usage_tracing(
+            Settings::sandboxed(root.path(), tools.path()),
+            vec![ToolId::Cursor],
+        );
+
+        let scanned = scan(&settings);
+        let tracer = scanned
+            .items
+            .iter()
+            .find(|it| it.id == "hook:agentic-hub-usage-tracer-cursor")
+            .expect("virtual tracer hook should be visible");
+
+        assert_eq!(tracer.source_id, "agentic-hub");
+        assert_eq!(tracer.source_label, "Agentic Hub");
+        assert_eq!(tracer.kind, CapabilityKind::Hook);
+    }
+
+    #[test]
+    fn inspect_reports_settings_managed_usage_tracer_disabled_when_config_off() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        let mut settings = Settings::sandboxed(root.path(), tools.path());
+        settings.usage_tracing.enabled = true;
+        settings.usage_tracing.capture_tools = vec![ToolId::Claude];
+        let scanned = scan(&settings);
+
+        let result = inspect(&scanned.items, &settings);
+
+        assert!(scanned
+            .items
+            .iter()
+            .any(|it| it.id == "hook:agentic-hub-usage-tracer-cursor"));
+        assert!(result.states.iter().any(|s| {
+            s.tool == ToolId::Cursor
+                && s.item_id == "hook:agentic-hub-usage-tracer-cursor"
+                && s.state == LinkState::Disabled
+        }));
+    }
+
+    #[test]
+    fn sync_hooks_preserves_settings_managed_usage_tracer() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{ "id": "fmt", "command": "run", "events": [{"name":"Stop"}] }"#,
+        );
+        let settings = enable_usage_tracing(
+            Settings::sandboxed(root.path(), tools.path()),
+            vec![ToolId::Cursor],
+        );
+        let scanned = scan(&settings);
+
+        let mut desired = HashMap::new();
+        desired.insert("hook:fmt".to_string(), true);
+        sync_hooks(&scanned.items, &settings, ToolId::Cursor, &desired);
+
+        let written = hook_file(&settings, ToolId::Cursor);
+        assert!(written.contains("\"hookId\": \"fmt\""));
+        assert!(written.contains("\"hookId\": \"agentic-hub-usage-tracer-cursor\""));
+    }
+
     #[test]
     fn apply_suite_removes_dropped_managed_copy_on_reapply() {
         let root = tempfile::tempdir().unwrap();
@@ -797,6 +922,40 @@ mod tests {
             enabled_ids(&settings, &scanned.items, ToolId::Claude).is_empty(),
             "hook cleared by the full reset"
         );
+    }
+
+    #[test]
+    fn apply_suite_empty_keeps_settings_managed_usage_tracer() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{ "id": "fmt", "command": "run", "events": [{"name":"Stop"}] }"#,
+        );
+        let settings = enable_usage_tracing(
+            Settings::sandboxed(root.path(), tools.path()),
+            vec![ToolId::Cursor],
+        );
+        let scanned = scan(&settings);
+
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Cursor,
+            &suite("with-hook", &["hook:fmt"]),
+            &[],
+        );
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Cursor,
+            &suite("empty", &[]),
+            &[],
+        );
+
+        let written = hook_file(&settings, ToolId::Cursor);
+        assert!(!written.contains("\"hookId\": \"fmt\""));
+        assert!(written.contains("\"hookId\": \"agentic-hub-usage-tracer-cursor\""));
     }
 
     #[test]

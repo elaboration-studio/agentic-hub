@@ -7,12 +7,15 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use agentic_core::adapter_registry;
-use agentic_core::hook_sync::{self, HookCanonicalEvent, HookEventSpec, HookManifest};
+use agentic_core::hook_sync::{self, HookCanonicalEvent};
 use agentic_core::managed_copy::now_iso8601;
-use agentic_core::model::{CapabilityItem, CapabilityKind, SourceRef, ToolId, UsageStats};
-use agentic_core::paths::home_dir;
+use agentic_core::model::{CapabilityItem, CapabilityKind, ToolId, UsageStats};
 use agentic_core::settings::Settings;
-use agentic_core::{api, UsageEventInput, UsageStore};
+use agentic_core::{
+    api, usage_tracer_enabled, usage_tracer_hook_dir, usage_tracer_item, usage_tracer_manifest,
+    usage_tracer_root, HookManifest, UsageEventInput, UsageStore, USAGE_TRACER_SCRIPT,
+    USAGE_TRACER_TOOLS,
+};
 use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::async_runtime;
@@ -25,9 +28,6 @@ const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 256 * 1024;
 const TOKEN_HEADER: &str = "x-agentic-hub-token";
 const SOURCE_TOOL_HEADER: &str = "x-agentic-hub-source-tool";
-const TRACER_SCRIPT: &str = "usage-tracer.sh";
-const TRACER_ID_PREFIX: &str = "agentic-hub-usage-tracer";
-const SUPPORTED_TOOLS: [ToolId; 4] = [ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro];
 
 #[cfg_attr(
     feature = "ts-export",
@@ -83,7 +83,7 @@ impl UsageCollectorState {
             collector_running: running,
             collector_port: settings.usage_tracing.collector_port,
             db_path: store.path().to_path_buf(),
-            supported_tools: SUPPORTED_TOOLS.to_vec(),
+            supported_tools: USAGE_TRACER_TOOLS.to_vec(),
             stored_event_count: store.event_count().unwrap_or(0),
             resolved_event_count: store.resolved_event_count().unwrap_or(0),
             unresolved_event_count: store.unresolved_event_count().unwrap_or(0),
@@ -416,13 +416,7 @@ fn skill_name_from_read_tool(raw: &Value, tool_name: Option<&str>) -> Option<Str
     let path = nested_string_at(
         raw,
         &["tool_input", "toolInput", "input"],
-        &[
-            "path",
-            "file_path",
-            "filePath",
-            "target_file",
-            "targetFile",
-        ],
+        &["path", "file_path", "filePath", "target_file", "targetFile"],
     )?;
     skill_name_from_skill_md_path(&path)
 }
@@ -649,9 +643,9 @@ pub fn record_command_palette_usage(
     if !settings.usage_tracing.enabled {
         return Ok(());
     }
-    let exists = items.iter().any(|item| {
-        item.kind == CapabilityKind::Command && item.id == capability_id
-    });
+    let exists = items
+        .iter()
+        .any(|item| item.kind == CapabilityKind::Command && item.id == capability_id);
     if !exists {
         return Err(format!("unknown command capability: {capability_id}"));
     }
@@ -662,44 +656,19 @@ pub fn record_command_palette_usage(
 
 pub fn sync_tracer_hooks(settings: &Settings) -> Result<(), String> {
     ensure_tracer_script(settings)?;
-    for tool in SUPPORTED_TOOLS {
-        let enabled = tracer_hook_enabled(settings, tool);
+    for tool in USAGE_TRACER_TOOLS {
+        let enabled = usage_tracer_enabled(settings, tool);
         sync_tracer_hook_for_tool(settings, tool, enabled)?;
     }
     Ok(())
 }
 
 pub fn synced_tracer_tools(settings: &Settings) -> Vec<ToolId> {
-    SUPPORTED_TOOLS
+    USAGE_TRACER_TOOLS
         .iter()
         .copied()
-        .filter(|tool| tracer_hook_enabled(settings, *tool))
+        .filter(|tool| usage_tracer_enabled(settings, *tool))
         .collect()
-}
-
-fn tracer_hook_enabled(settings: &Settings, tool: ToolId) -> bool {
-    settings.usage_tracing.enabled
-        && settings.tools.for_tool(tool).enabled
-        && settings.usage_tracing.capture_tools.contains(&tool)
-}
-
-trait ToolLookup {
-    fn for_tool(&self, tool: ToolId) -> &agentic_core::settings::ToolSettings;
-}
-
-impl ToolLookup for agentic_core::settings::ToolsSettings {
-    fn for_tool(&self, tool: ToolId) -> &agentic_core::settings::ToolSettings {
-        match tool {
-            ToolId::Codex => &self.codex,
-            ToolId::Claude => &self.claude,
-            ToolId::Cursor => &self.cursor,
-            ToolId::Openclaw => &self.openclaw,
-            ToolId::Openstandard => &self.openstandard,
-            ToolId::Kiro => &self.kiro,
-            ToolId::Copilot => &self.copilot,
-            ToolId::Antigravity => &self.antigravity,
-        }
-    }
 }
 
 fn sync_tracer_hook_for_tool(
@@ -707,23 +676,11 @@ fn sync_tracer_hook_for_tool(
     tool: ToolId,
     enabled: bool,
 ) -> Result<(), String> {
-    let hook_dir = tracer_hook_dir(tool);
+    let hook_dir = usage_tracer_hook_dir(tool);
     fs::create_dir_all(&hook_dir).map_err(|e| e.to_string())?;
-    let command = tracer_command(settings, tool, &hook_dir);
-    write_tracer_manifest(&hook_dir, tool, &command)?;
-    let manifest = HookManifest {
-        id: tracer_hook_id(tool),
-        name: Some("Agentic Hub Usage Tracer".to_string()),
-        description: Some(
-            "Forward terminal hook events to Agentic Hub's local usage collector.".to_string(),
-        ),
-        events: tracer_events(tool),
-        command,
-        timeout: Some(2),
-        loop_limit: None,
-        targets: Some(vec![tool]),
-    };
-    let item = tracer_item(tool, &hook_dir);
+    let manifest = usage_tracer_manifest(settings, tool, &hook_dir);
+    write_tracer_manifest(&hook_dir, &manifest)?;
+    let item = usage_tracer_item(tool, &hook_dir);
     let adapter = adapter_registry::resolve(settings, tool);
     hook_sync::sync_single_json_hook(&adapter, &item, &manifest, enabled)
         .map(|_| ())
@@ -731,7 +688,7 @@ fn sync_tracer_hook_for_tool(
 }
 
 fn ensure_tracer_script(_settings: &Settings) -> Result<(), String> {
-    let path = tracer_root().join(TRACER_SCRIPT);
+    let path = usage_tracer_root().join(USAGE_TRACER_SCRIPT);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -767,20 +724,21 @@ fn set_executable(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn write_tracer_manifest(hook_dir: &Path, tool: ToolId, command: &str) -> Result<(), String> {
-    let events: Vec<Value> = tracer_events(tool)
-        .into_iter()
-        .map(|event| json!({ "name": hook_event_name(event.name), "matcher": event.matcher }))
+fn write_tracer_manifest(hook_dir: &Path, manifest: &HookManifest) -> Result<(), String> {
+    let events: Vec<Value> = manifest
+        .events
+        .iter()
+        .map(|event| json!({ "name": hook_event_name(event.name), "matcher": event.matcher.as_deref() }))
         .collect();
     let body = json!({
         "$schema": "agentic-hub.hook.v1",
-        "id": tracer_hook_id(tool),
-        "name": "Agentic Hub Usage Tracer",
-        "description": "Forward terminal hook events to Agentic Hub's local usage collector.",
+        "id": &manifest.id,
+        "name": manifest.name.as_deref(),
+        "description": manifest.description.as_deref(),
         "events": events,
-        "command": command,
-        "timeout": 2,
-        "targets": [tool.as_str()]
+        "command": &manifest.command,
+        "timeout": manifest.timeout,
+        "targets": manifest.effective_targets().iter().map(|tool| tool.as_str()).collect::<Vec<_>>()
     });
     fs::write(
         hook_dir.join("hook.json"),
@@ -797,9 +755,8 @@ fn collect_slash_capability_refs(text: &str, refs: &mut BTreeSet<String>) {
         let Some(rest) = token.strip_prefix('/') else {
             continue;
         };
-        let cleaned = rest.trim_end_matches(|ch: char| {
-            !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_'
-        });
+        let cleaned =
+            rest.trim_end_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_');
         if cleaned.is_empty() || !is_capability_token(cleaned) {
             continue;
         }
@@ -815,9 +772,7 @@ fn collect_at_agent_refs(text: &str, refs: &mut BTreeSet<String>) {
         let name = rest
             .strip_prefix("agent-")
             .unwrap_or(rest)
-            .trim_end_matches(|ch: char| {
-                !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_'
-            });
+            .trim_end_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_');
         if name.is_empty() || !is_capability_token(name) {
             continue;
         }
@@ -857,13 +812,7 @@ fn agent_name_from_read_tool(raw: &Value, tool_name: Option<&str>) -> Option<Str
     let path = nested_string_at(
         raw,
         &["tool_input", "toolInput", "input"],
-        &[
-            "path",
-            "file_path",
-            "filePath",
-            "target_file",
-            "targetFile",
-        ],
+        &["path", "file_path", "filePath", "target_file", "targetFile"],
     )?;
     if !path.contains("/agents/") || !path.ends_with(".md") {
         return None;
@@ -889,31 +838,6 @@ fn tool_supports_prompt_skill_attribution(source_tool: &str) -> bool {
     )
 }
 
-fn tracer_events(tool: ToolId) -> Vec<HookEventSpec> {
-    let mut events = Vec::new();
-    if tool_supports_prompt_skill_attribution(tool.as_str()) {
-        events.push(HookEventSpec {
-            name: HookCanonicalEvent::UserPromptSubmit,
-            matcher: Some(".*".to_string()),
-        });
-    }
-    if tool == ToolId::Claude {
-        events.push(HookEventSpec {
-            name: HookCanonicalEvent::UserPromptExpansion,
-            matcher: Some(".*".to_string()),
-        });
-    }
-    events.push(HookEventSpec {
-        name: HookCanonicalEvent::PostToolUse,
-        matcher: Some(".*".to_string()),
-    });
-    events.push(HookEventSpec {
-        name: HookCanonicalEvent::PostToolUseFailure,
-        matcher: Some(".*".to_string()),
-    });
-    events
-}
-
 fn hook_event_name(event: HookCanonicalEvent) -> &'static str {
     match event {
         HookCanonicalEvent::PreToolUse => "PreToolUse",
@@ -929,58 +853,6 @@ fn hook_event_name(event: HookCanonicalEvent) -> &'static str {
         HookCanonicalEvent::Notification => "Notification",
         HookCanonicalEvent::PermissionRequest => "PermissionRequest",
     }
-}
-
-fn tracer_command(settings: &Settings, tool: ToolId, hook_dir: &Path) -> String {
-    let script = hook_dir
-        .parent()
-        .map(|parent| parent.join(TRACER_SCRIPT))
-        .unwrap_or_else(|| hook_dir.join(TRACER_SCRIPT));
-    format!(
-        "/bin/sh '{}' 'http://127.0.0.1:{}/events' '{}' '{}'",
-        shell_escape_path(&script),
-        settings.usage_tracing.collector_port,
-        shell_escape(&settings.usage_tracing.collector_token),
-        tool.as_str()
-    )
-}
-
-fn shell_escape_path(path: &Path) -> String {
-    shell_escape(&path.to_string_lossy())
-}
-
-fn shell_escape(value: &str) -> String {
-    value.replace('\'', "'\\''")
-}
-
-fn tracer_item(tool: ToolId, hook_dir: &Path) -> CapabilityItem {
-    CapabilityItem {
-        id: format!("hook:{}", tracer_hook_id(tool)),
-        kind: CapabilityKind::Hook,
-        name: tracer_hook_id(tool),
-        source_path: hook_dir.to_path_buf(),
-        relative_path: PathBuf::from(tracer_hook_id(tool)),
-        source_id: "agentic-hub".to_string(),
-        source_label: "Agentic Hub".to_string(),
-        source: SourceRef {
-            rel_home: "~/.agentic-hub".to_string(),
-            folder: ".agentic-hub".to_string(),
-        },
-        valid: true,
-        validation_errors: Vec::new(),
-    }
-}
-
-fn tracer_hook_id(tool: ToolId) -> String {
-    format!("{TRACER_ID_PREFIX}-{}", tool.as_str())
-}
-
-fn tracer_hook_dir(tool: ToolId) -> PathBuf {
-    tracer_root().join(tracer_hook_id(tool))
-}
-
-fn tracer_root() -> PathBuf {
-    home_dir().join(".agentic-hub").join("hooks")
 }
 
 #[cfg(test)]
@@ -1452,9 +1324,22 @@ mod tests {
         fs::create_dir_all(&codex_dir).unwrap();
         fs::create_dir_all(&claude_dir).unwrap();
 
-        write_tracer_manifest(&cursor_dir, ToolId::Cursor, "true").unwrap();
-        write_tracer_manifest(&codex_dir, ToolId::Codex, "true").unwrap();
-        write_tracer_manifest(&claude_dir, ToolId::Claude, "true").unwrap();
+        let settings = Settings::default();
+        write_tracer_manifest(
+            &cursor_dir,
+            &usage_tracer_manifest(&settings, ToolId::Cursor, &cursor_dir),
+        )
+        .unwrap();
+        write_tracer_manifest(
+            &codex_dir,
+            &usage_tracer_manifest(&settings, ToolId::Codex, &codex_dir),
+        )
+        .unwrap();
+        write_tracer_manifest(
+            &claude_dir,
+            &usage_tracer_manifest(&settings, ToolId::Claude, &claude_dir),
+        )
+        .unwrap();
 
         let cursor: Value =
             serde_json::from_slice(&fs::read(cursor_dir.join("hook.json")).unwrap()).unwrap();
