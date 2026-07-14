@@ -39,6 +39,8 @@ import type {
   UsageStats,
   UsageTracerHooksSyncResult,
   UsageTracingStatus,
+  UsageDashboard,
+  UsageDateRange,
   WorkspaceInventory,
   WorkspaceTarget,
   WorkspaceTargetsState,
@@ -206,6 +208,11 @@ export const syncUsageTracerHooks = (): Promise<UsageTracerHooksSyncResult> =>
 
 export const queryUsageStats = (items: CapabilityItem[]): Promise<UsageStats[]> =>
   invoke("cmd_query_usage_stats", { items });
+
+export const queryUsageDashboard = (
+  items: CapabilityItem[],
+  range: UsageDateRange,
+): Promise<UsageDashboard> => invoke("cmd_query_usage_dashboard", { items, range });
 
 export const recordCommandPaletteUsage = (
   capabilityId: string,

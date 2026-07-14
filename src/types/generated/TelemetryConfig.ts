@@ -2,7 +2,8 @@
 
 /**
  * Anonymous usage telemetry (Aptabase). On by default; the user can disable it
- * in Config. The desktop shell tracks only coarse lifecycle events (app
- * start/exit) from Rust — the WebView never calls out.
+ * in Config. The desktop shell tracks coarse lifecycle events (`app_started`,
+ * `app_exited`) plus at most one `daily_active` ping per UTC day when the user
+ * actually engages with the app — from Rust only; the WebView never calls out.
  */
 export type TelemetryConfig = { enabled: boolean, };

@@ -25,6 +25,7 @@ export function Header(props: { route: Route; onNavigate: (route: Route) => void
           <TabsTrigger value="manager">Manager</TabsTrigger>
           <TabsTrigger value="suites">Suites</TabsTrigger>
           <TabsTrigger value="skills">Resources</TabsTrigger>
+          <TabsTrigger value="statistics">Statistics</TabsTrigger>
           <TabsTrigger value="config">Config</TabsTrigger>
         </TabsList>
       </Tabs>

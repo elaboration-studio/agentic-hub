@@ -8,6 +8,14 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Statistics page.** New top-level tab beside Config with overview cards,
+  recharts bar charts (activity over time, by kind, by source tool), workspace
+  breakdown, top-used table, and unused-installed pruning list. Driven by
+  `cmd_query_usage_dashboard` over `~/.agentic-hub/usage/trace.db` with
+  7d / 30d / 90d / all-time filters.
+
 ## [0.11.1] — 2026-07-08
 
 ### Added

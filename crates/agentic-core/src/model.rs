@@ -638,6 +638,152 @@ pub struct UsageStats {
     pub tool_buckets: Vec<UsageToolBucket>,
 }
 
+/// Date window for usage dashboard queries.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UsageDateRange {
+    Last7Days,
+    Last30Days,
+    Last90Days,
+    AllTime,
+}
+
+/// High-level counters for the Statistics overview card row.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageDashboardOverview {
+    pub total_events: u32,
+    pub terminal_events: u32,
+    pub resolved_events: u32,
+    pub unresolved_events: u32,
+    pub traced_capabilities: u32,
+    pub installed_countable: u32,
+    pub unused_countable: u32,
+}
+
+/// Terminal usage grouped by capability kind prefix.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageKindBucket {
+    pub kind: String,
+    pub execution_count: u32,
+}
+
+/// Terminal usage grouped by emitting agentic tool.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageSourceBucket {
+    pub source_tool: String,
+    pub execution_count: u32,
+}
+
+/// Daily terminal usage for time-series charts.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageDayBucket {
+    pub day: String,
+    pub execution_count: u32,
+}
+
+/// One heavily used capability joined with scan metadata.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTopRow {
+    pub capability_id: String,
+    pub name: String,
+    pub kind: CapabilityKind,
+    pub source_label: String,
+    pub relative_path: String,
+    pub execution_count: u32,
+    #[serde(default)]
+    pub last_used_at: Option<String>,
+    #[serde(default)]
+    pub tool_buckets: Vec<UsageToolBucket>,
+}
+
+/// Installed skill/command/agent with zero attributed terminal usage.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageUnusedRow {
+    pub capability_id: String,
+    pub name: String,
+    pub kind: CapabilityKind,
+    pub source_label: String,
+    pub relative_path: String,
+}
+
+/// Terminal usage grouped by workspace path.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageWorkspaceBucket {
+    pub workspace: String,
+    pub execution_count: u32,
+}
+
+/// Aggregated local usage dashboard payload for the Statistics page.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageDashboard {
+    pub overview: UsageDashboardOverview,
+    #[serde(default)]
+    pub by_kind: Vec<UsageKindBucket>,
+    #[serde(default)]
+    pub by_source_tool: Vec<UsageSourceBucket>,
+    #[serde(default)]
+    pub by_day: Vec<UsageDayBucket>,
+    #[serde(default)]
+    pub top_capabilities: Vec<UsageTopRow>,
+    #[serde(default)]
+    pub unused_capabilities: Vec<UsageUnusedRow>,
+    #[serde(default)]
+    pub by_workspace: Vec<UsageWorkspaceBucket>,
+}
+
 /// A remembered per-project workspace directory (workspace scope).
 #[cfg_attr(
     feature = "ts-export",

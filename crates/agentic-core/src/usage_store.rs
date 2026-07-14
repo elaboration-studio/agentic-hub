@@ -15,7 +15,11 @@ use sha2::{Digest, Sha256};
 
 use crate::error::Result;
 use crate::managed_copy::now_iso8601;
-use crate::model::{CapabilityItem, CapabilityKind, UsageStats, UsageToolBucket};
+use crate::model::{
+    CapabilityItem, CapabilityKind, UsageDashboard, UsageDashboardOverview, UsageDateRange,
+    UsageDayBucket, UsageKindBucket, UsageSourceBucket, UsageStats, UsageToolBucket, UsageTopRow,
+    UsageUnusedRow, UsageWorkspaceBucket,
+};
 use crate::paths::{home_dir, tildify};
 
 const CURRENT_SCHEMA: u32 = 1;
@@ -419,6 +423,343 @@ impl UsageStore {
             .optional()?;
         Ok(found.is_some())
     }
+
+    /// Aggregate dashboard metrics for the Statistics page.
+    pub fn query_dashboard(
+        &self,
+        items: &[CapabilityItem],
+        range: UsageDateRange,
+    ) -> Result<UsageDashboard> {
+        let conn = self.connect()?;
+        let terminal_filter = terminal_sql_filter();
+        let range_clause = range_sql_clause(range);
+        let countable: Vec<&CapabilityItem> = items.iter().filter(|item| is_countable(item)).collect();
+        let item_map: HashMap<&str, &CapabilityItem> =
+            countable.iter().map(|item| (item.id.as_str(), *item)).collect();
+
+        let total_events: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) FROM usage_events WHERE 1=1 {range_clause}"),
+            [],
+            |row| row.get(0),
+        )?;
+        let terminal_events: i64 = conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM usage_events WHERE event_type IN ({terminal_filter}) {range_clause}"
+            ),
+            [],
+            |row| row.get(0),
+        )?;
+        let resolved_events: i64 = conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM usage_events WHERE capability_id IS NOT NULL {range_clause}"
+            ),
+            [],
+            |row| row.get(0),
+        )?;
+        let unresolved_events: i64 = conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM usage_events WHERE capability_id IS NULL {range_clause}"
+            ),
+            [],
+            |row| row.get(0),
+        )?;
+
+        let mut by_kind = query_kind_buckets(&conn, &terminal_filter, &range_clause)?;
+        by_kind.retain(|bucket| bucket.kind != "other");
+        let mut by_source_tool =
+            query_source_buckets(&conn, &terminal_filter, &range_clause)?;
+        let mut by_day = query_day_buckets(&conn, &terminal_filter, &range_clause)?;
+        let mut by_workspace =
+            query_workspace_buckets(&conn, &terminal_filter, &range_clause)?;
+
+        let used_ids = query_used_capability_ids(&conn, &terminal_filter, &range_clause)?;
+        let traced_capabilities = used_ids
+            .iter()
+            .filter(|id| item_map.contains_key(id.as_str()))
+            .count() as u32;
+        let unused_countable = countable
+            .iter()
+            .filter(|item| !used_ids.contains(&item.id))
+            .count() as u32;
+
+        let top_capabilities =
+            query_top_capabilities(&conn, &terminal_filter, &range_clause, &item_map)?;
+        let mut unused_capabilities: Vec<UsageUnusedRow> = countable
+            .iter()
+            .filter(|item| !used_ids.contains(&item.id))
+            .map(|item| UsageUnusedRow {
+                capability_id: item.id.clone(),
+                name: item.name.clone(),
+                kind: item.kind,
+                source_label: item.source_label.clone(),
+                relative_path: item.relative_path.to_string_lossy().into_owned(),
+            })
+            .collect();
+        unused_capabilities.sort_by(|a, b| {
+            a.kind
+                .dir_name()
+                .cmp(b.kind.dir_name())
+                .then(a.name.cmp(&b.name))
+        });
+
+        sort_kind_buckets(&mut by_kind);
+        by_source_tool.sort_by_key(|b| std::cmp::Reverse(b.execution_count));
+        by_day.sort_by(|a, b| a.day.cmp(&b.day));
+        by_workspace.sort_by_key(|b| std::cmp::Reverse(b.execution_count));
+
+        Ok(UsageDashboard {
+            overview: UsageDashboardOverview {
+                total_events: total_events as u32,
+                terminal_events: terminal_events as u32,
+                resolved_events: resolved_events as u32,
+                unresolved_events: unresolved_events as u32,
+                traced_capabilities,
+                installed_countable: countable.len() as u32,
+                unused_countable,
+            },
+            by_kind,
+            by_source_tool,
+            by_day,
+            top_capabilities,
+            unused_capabilities,
+            by_workspace,
+        })
+    }
+}
+
+fn is_countable(item: &CapabilityItem) -> bool {
+    matches!(
+        item.kind,
+        CapabilityKind::Skill | CapabilityKind::Command | CapabilityKind::Agent
+    )
+}
+
+fn range_sql_clause(range: UsageDateRange) -> String {
+    match range {
+        UsageDateRange::Last7Days => " AND timestamp >= datetime('now', '-7 days')".to_string(),
+        UsageDateRange::Last30Days => " AND timestamp >= datetime('now', '-30 days')".to_string(),
+        UsageDateRange::Last90Days => " AND timestamp >= datetime('now', '-90 days')".to_string(),
+        UsageDateRange::AllTime => String::new(),
+    }
+}
+
+fn query_kind_buckets(
+    conn: &Connection,
+    terminal_filter: &str,
+    range_clause: &str,
+) -> Result<Vec<UsageKindBucket>> {
+    let sql = format!(
+        r#"
+        SELECT CASE
+                 WHEN capability_id LIKE 'skill:%' THEN 'skill'
+                 WHEN capability_id LIKE 'command:%' THEN 'command'
+                 WHEN capability_id LIKE 'agent:%' THEN 'agent'
+                 ELSE 'other'
+               END AS kind,
+               COUNT(*) AS execution_count
+        FROM usage_events
+        WHERE capability_id IS NOT NULL
+          AND event_type IN ({terminal_filter})
+          {range_clause}
+        GROUP BY kind
+        "#
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| {
+        Ok(UsageKindBucket {
+            kind: row.get(0)?,
+            execution_count: row.get::<_, i64>(1)? as u32,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+fn sort_kind_buckets(buckets: &mut [UsageKindBucket]) {
+    const ORDER: [&str; 3] = ["skill", "command", "agent"];
+    buckets.sort_by(|a, b| {
+        let ai = ORDER.iter().position(|k| *k == a.kind).unwrap_or(99);
+        let bi = ORDER.iter().position(|k| *k == b.kind).unwrap_or(99);
+        ai.cmp(&bi)
+    });
+}
+
+fn query_source_buckets(
+    conn: &Connection,
+    terminal_filter: &str,
+    range_clause: &str,
+) -> Result<Vec<UsageSourceBucket>> {
+    let sql = format!(
+        r#"
+        SELECT source_tool, COUNT(*) AS execution_count
+        FROM usage_events
+        WHERE event_type IN ({terminal_filter})
+          {range_clause}
+        GROUP BY source_tool
+        "#
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| {
+        Ok(UsageSourceBucket {
+            source_tool: row.get(0)?,
+            execution_count: row.get::<_, i64>(1)? as u32,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+fn query_day_buckets(
+    conn: &Connection,
+    terminal_filter: &str,
+    range_clause: &str,
+) -> Result<Vec<UsageDayBucket>> {
+    let sql = format!(
+        r#"
+        SELECT date(timestamp) AS day, COUNT(*) AS execution_count
+        FROM usage_events
+        WHERE event_type IN ({terminal_filter})
+          {range_clause}
+        GROUP BY day
+        "#
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| {
+        Ok(UsageDayBucket {
+            day: row.get(0)?,
+            execution_count: row.get::<_, i64>(1)? as u32,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+fn query_workspace_buckets(
+    conn: &Connection,
+    terminal_filter: &str,
+    range_clause: &str,
+) -> Result<Vec<UsageWorkspaceBucket>> {
+    let sql = format!(
+        r#"
+        SELECT workspace, COUNT(*) AS execution_count
+        FROM usage_events
+        WHERE workspace IS NOT NULL
+          AND trim(workspace) != ''
+          AND event_type IN ({terminal_filter})
+          {range_clause}
+        GROUP BY workspace
+        "#
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| {
+        Ok(UsageWorkspaceBucket {
+            workspace: row.get(0)?,
+            execution_count: row.get::<_, i64>(1)? as u32,
+        })
+    })?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+fn query_used_capability_ids(
+    conn: &Connection,
+    terminal_filter: &str,
+    range_clause: &str,
+) -> Result<HashSet<String>> {
+    let sql = format!(
+        r#"
+        SELECT DISTINCT capability_id
+        FROM usage_events
+        WHERE capability_id IS NOT NULL
+          AND event_type IN ({terminal_filter})
+          {range_clause}
+        "#
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?.into_iter().collect())
+}
+
+fn query_top_capabilities(
+    conn: &Connection,
+    terminal_filter: &str,
+    range_clause: &str,
+    item_map: &HashMap<&str, &CapabilityItem>,
+) -> Result<Vec<UsageTopRow>> {
+    let sql = format!(
+        r#"
+        SELECT capability_id,
+               COUNT(*) AS execution_count,
+               MAX(timestamp) AS last_used_at
+        FROM usage_events
+        WHERE capability_id IS NOT NULL
+          AND event_type IN ({terminal_filter})
+          {range_clause}
+        GROUP BY capability_id
+        ORDER BY execution_count DESC, capability_id ASC
+        LIMIT 15
+        "#
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let summary_rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)? as u32,
+            row.get::<_, Option<String>>(2)?,
+        ))
+    })?;
+
+    let bucket_sql = format!(
+        r#"
+        SELECT capability_id,
+               source_tool,
+               COUNT(*) AS execution_count,
+               SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS success_count,
+               SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failure_count,
+               MAX(timestamp) AS last_used_at
+        FROM usage_events
+        WHERE capability_id IS NOT NULL
+          AND event_type IN ({terminal_filter})
+          {range_clause}
+        GROUP BY capability_id, source_tool
+        "#
+    );
+    let mut bucket_stmt = conn.prepare(&bucket_sql)?;
+    let bucket_rows = bucket_stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            UsageToolBucket {
+                source_tool: row.get(1)?,
+                execution_count: row.get::<_, i64>(2)? as u32,
+                success_count: row.get::<_, i64>(3)? as u32,
+                failure_count: row.get::<_, i64>(4)? as u32,
+                last_used_at: row.get(5)?,
+            },
+        ))
+    })?;
+    let mut buckets: HashMap<String, Vec<UsageToolBucket>> = HashMap::new();
+    for row in bucket_rows {
+        let (capability_id, bucket) = row?;
+        buckets.entry(capability_id).or_default().push(bucket);
+    }
+    for list in buckets.values_mut() {
+        list.sort_by(|a, b| a.source_tool.cmp(&b.source_tool));
+    }
+
+    let mut out = Vec::new();
+    for row in summary_rows {
+        let (capability_id, execution_count, last_used_at) = row?;
+        let Some(item) = item_map.get(capability_id.as_str()) else {
+            continue;
+        };
+        out.push(UsageTopRow {
+            capability_id: capability_id.clone(),
+            name: item.name.clone(),
+            kind: item.kind,
+            source_label: item.source_label.clone(),
+            relative_path: item.relative_path.to_string_lossy().into_owned(),
+            execution_count,
+            last_used_at,
+            tool_buckets: buckets.remove(&capability_id).unwrap_or_default(),
+        });
+    }
+    Ok(out)
 }
 
 fn has_attribution_signal(input: &UsageEventInput) -> bool {
@@ -1048,5 +1389,63 @@ mod tests {
             .unwrap();
 
         assert_eq!(metadata, r#"{"branch":"main"}"#);
+    }
+
+    #[test]
+    fn query_dashboard_aggregates_terminal_usage_and_unused_rows() {
+        let (_dir, store) = store();
+        let items = [
+            skill(
+                "skill:root-cause-investigation",
+                "root-cause-investigation",
+                "root-cause-investigation",
+            ),
+            command("command:git/commit.md", "commit", "git/commit.md"),
+            skill("skill:unused-skill", "unused-skill", "unused-skill"),
+        ];
+        let mut used = event("root-cause-investigation", "dash-a");
+        used.event_type = "PostSkillUse".to_string();
+        used.source_tool = "cursor".to_string();
+        used.workspace = Some("~/Developer/demo".to_string());
+        store.insert_event(&used, &items).unwrap();
+
+        let palette = UsageEventInput {
+            source_tool: "agentic-hub".to_string(),
+            event_type: "CommandPaletteUse".to_string(),
+            capability_id: Some("command:git/commit.md".to_string()),
+            success: Some(true),
+            dedupe_hash: Some("dash-palette".to_string()),
+            timestamp: Some("2026-07-06T11:00:00Z".to_string()),
+            ..UsageEventInput::default()
+        };
+        store.insert_event(&palette, &items).unwrap();
+
+        let mut pre = event("unused-skill", "dash-pre");
+        pre.event_type = "PreToolUse".to_string();
+        store.insert_event(&pre, &items).unwrap();
+
+        let dashboard = store
+            .query_dashboard(&items, UsageDateRange::AllTime)
+            .unwrap();
+
+        assert_eq!(dashboard.overview.terminal_events, 2);
+        assert_eq!(dashboard.overview.traced_capabilities, 2);
+        assert_eq!(dashboard.overview.unused_countable, 1);
+        assert_eq!(dashboard.by_kind.len(), 2);
+        assert_eq!(dashboard.by_source_tool.len(), 2);
+        assert_eq!(dashboard.top_capabilities.len(), 2);
+        assert!(
+            dashboard
+                .top_capabilities
+                .iter()
+                .any(|row| row.capability_id == "skill:root-cause-investigation")
+        );
+        assert_eq!(dashboard.unused_capabilities.len(), 1);
+        assert_eq!(
+            dashboard.unused_capabilities[0].capability_id,
+            "skill:unused-skill"
+        );
+        assert_eq!(dashboard.by_workspace.len(), 1);
+        assert_eq!(dashboard.by_workspace[0].workspace, "~/Developer/demo");
     }
 }

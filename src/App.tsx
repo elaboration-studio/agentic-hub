@@ -24,11 +24,12 @@ import { ApplySuiteConfirmDialog } from "./components/suites/ApplySuiteConfirmDi
 import { ConfigPage } from "./components/config/ConfigPage";
 import { SuitesPage } from "./components/suites/SuitesPage";
 import { ResourcesPage } from "./components/resources/ResourcesPage";
+import { StatisticsPage } from "./components/statistics/StatisticsPage";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 
-const ROUTES: Route[] = ["manager", "suites", "skills", "config"];
+const ROUTES: Route[] = ["manager", "suites", "skills", "statistics", "config"];
 
 function routeFromHash(): Route {
   const hash = window.location.hash.replace(/^#\/?/, "") as Route;
@@ -194,6 +195,7 @@ export function App() {
             </Alert>
           )}
           {data && route === "config" && <ConfigPage />}
+          {data && route === "statistics" && <StatisticsPage />}
           {data && route === "suites" && <SuitesPage />}
           {route === "skills" && <ResourcesPage />}
           {route === "manager" && <ManagerView />}
