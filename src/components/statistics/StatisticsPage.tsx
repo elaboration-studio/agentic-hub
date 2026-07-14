@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { ActivityChart } from "@/components/statistics/charts/ActivityChart";
 import { KindBreakdownChart } from "@/components/statistics/charts/KindBreakdownChart";
@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TOOL_LABELS } from "@/shared";
+import { TOOL_LABELS, KIND_LABEL, KIND_ORDER } from "@/shared";
 import { cn } from "@/lib/utils";
 import { useStatisticsStore } from "@/state/statistics";
 import type { CapabilityKind, ToolId, UsageDateRange, UsageTopRow } from "@/types";
@@ -57,10 +57,15 @@ function formatBuckets(row: UsageTopRow): string {
     .join(" · ");
 }
 
-function StatTile(props: { label: string; value: string | number; hint?: string }) {
+function StatTile(props: {
+  label: string;
+  value: string | number;
+  hint?: ReactNode;
+  labelClassName?: string;
+}) {
   return (
     <div className="rounded-lg border bg-secondary/40 px-4 py-3">
-      <p className={sectionTitle}>{props.label}</p>
+      <p className={cn(sectionTitle, props.labelClassName)}>{props.label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{props.value}</p>
       {props.hint && <p className={cn("mt-1", hint)}>{props.hint}</p>}
     </div>
@@ -68,6 +73,7 @@ function StatTile(props: { label: string; value: string | number; hint?: string 
 }
 
 export function StatisticsPage() {
+  const inventory = useStatisticsStore((s) => s.inventory);
   const dashboard = useStatisticsStore((s) => s.dashboard);
   const range = useStatisticsStore((s) => s.range);
   const tracingStatus = useStatisticsStore((s) => s.tracingStatus);
@@ -92,7 +98,7 @@ export function StatisticsPage() {
               Usage statistics
             </CardTitle>
             <p className={cn("mt-1", hint)}>
-              Local skill, command, and agent usage from your traced events.
+              Resource inventory and local usage from traced events.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -121,6 +127,51 @@ export function StatisticsPage() {
         </div>
       </Card>
 
+      {inventory && (
+        <Card className="p-4">
+          <CardHeader className="p-0 pb-3">
+            <CardTitle className={sectionTitle}>Resource inventory</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 p-0">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatTile label="Total resources" value={inventory.total} />
+              <StatTile
+                label="Configured sources"
+                value={inventory.sourceCount}
+                hint={`${inventory.sourceCount} source${inventory.sourceCount === 1 ? "" : "s"}`}
+              />
+              <StatTile
+                label="Enabled tools"
+                value={inventory.enabledTools}
+                hint={`${inventory.enabledTools} of ${inventory.totalTools}`}
+              />
+              <StatTile
+                label="Starred skills"
+                value={inventory.favoritesCount}
+                hint={
+                  <a
+                    href="#/skills"
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    View in Resources
+                  </a>
+                }
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+              {KIND_ORDER.map((kind) => (
+                <StatTile
+                  key={kind}
+                  label={KIND_LABEL[kind]}
+                  value={inventory.byKind[kind]}
+                  labelClassName={KIND_BADGE_COLOR[kind]}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {!tracingEnabled && (
         <Alert>
           <AlertDescription>
@@ -137,7 +188,7 @@ export function StatisticsPage() {
         <>
           <Card className="p-4">
             <CardHeader className="p-0 pb-3">
-              <CardTitle className={sectionTitle}>Overview</CardTitle>
+              <CardTitle className={sectionTitle}>Usage overview</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
               <StatTile label="Terminal events" value={overview.terminalEvents} />

@@ -60,10 +60,12 @@ command rows show the total attributed execution count. Hovering the number
 shows per-tool counts (or `Palette` for command palette usage) and the last-used
 timestamp. Rule and hook rows show `-` in v1.
 
-The **Statistics** tab (beside Config) shows dashboard cards and recharts charts
-over the same local trace database: daily activity, usage by kind and source
-tool, workspace breakdown, top-used capabilities, and installed-but-unused rows.
-Date range filters default to the last 30 days.
+The **Statistics** tab (beside Config) shows a **resource inventory** section
+(always visible) with total resources, per-kind counts, enabled tools, and
+starred skills. When local usage tracing is enabled, dashboard cards and
+recharts charts over the same local trace database show daily activity, usage by
+kind and source tool, workspace breakdown, top-used capabilities, and
+installed-but-unused rows. Date range filters default to the last 30 days.
 
 ## Acceptance criteria
 
@@ -81,6 +83,7 @@ Date range filters default to the last 30 days.
 - [ ] The Statistics tab shows overview metrics, charts, and tables when tracing is enabled.
 - [ ] Statistics date-range filters reload dashboard aggregates without leaving the page.
 - [ ] Statistics shows an enable-tracing prompt when local tracing is disabled.
+- [ ] Statistics shows resource inventory (total resources, per-kind counts, enabled tools, starred skills) regardless of tracing state.
 
 ## Dependencies
 

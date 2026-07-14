@@ -2,30 +2,127 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/ipc", () => ({
   scan: vi.fn(),
+  loadSettings: vi.fn(),
   usageTracingStatus: vi.fn(),
   queryUsageDashboard: vi.fn(),
+  listSkillFavorites: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
+
+const managerGetState = vi.fn();
+const managerRefresh = vi.fn();
+
 vi.mock("./manager", () => ({
   useManagerStore: {
-    getState: vi.fn(() => ({
-      data: { settings: { sources: [{ id: "default", path: "/tmp", label: "Default" }] } },
-    })),
+    getState: () => managerGetState(),
   },
 }));
 
-import { queryUsageDashboard, scan, usageTracingStatus } from "@/ipc";
+import { listSkillFavorites, loadSettings, queryUsageDashboard, scan, usageTracingStatus } from "@/ipc";
 import { toast } from "sonner";
-import type { UsageDashboard, UsageTracingStatus } from "@/types";
-import { DEFAULT_USAGE_RANGE, useStatisticsStore } from "./statistics";
+import type {
+  CapabilityItem,
+  Settings,
+  SkillFavorite,
+  ToolId,
+  UsageDashboard,
+  UsageTracingStatus,
+} from "@/types";
+import {
+  computeResourceInventory,
+  DEFAULT_USAGE_RANGE,
+  useStatisticsStore,
+} from "./statistics";
 
 const mocked = {
   scan: vi.mocked(scan),
+  loadSettings: vi.mocked(loadSettings),
   usageTracingStatus: vi.mocked(usageTracingStatus),
   queryUsageDashboard: vi.mocked(queryUsageDashboard),
+  listSkillFavorites: vi.mocked(listSkillFavorites),
 };
+
+function toolSettings(enabled = true) {
+  return {
+    enabled,
+    skillsPath: null,
+    agentsPath: null,
+    rulesPath: null,
+    hooksPath: null,
+    commandsPath: null,
+  };
+}
+
+function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Settings {
+  return {
+    sources: [
+      { id: "default", label: "Default", path: "/shared" },
+      { id: "extra", label: "Extra", path: "/extra" },
+    ],
+    sharedRoot: "/shared",
+    suitesPath: null,
+    cliToolsPath: null,
+    watcherEnabled: true,
+    watcherForceMigrated: true,
+    codexAgentsPathMigrated: true,
+    antigravitySkillsPathMigrated: true,
+    kiroRulesAgentsMdMigrated: true,
+    editor: { kind: "default", customApp: null },
+    paletteShortcut: "Cmd+Alt+A",
+    pasteIntoFocused: false,
+    skills: { enabled: false, favoritesPath: null },
+    usageTracing: {
+      enabled: false,
+      captureTools: ["codex", "claude", "cursor"],
+      retentionDays: 90,
+      collectorPort: 17321,
+      collectorToken: "",
+    },
+    telemetry: { enabled: false },
+    mainWindow: null,
+    tools: {
+      codex: toolSettings(overrides.codex ?? true),
+      claude: toolSettings(overrides.claude ?? false),
+      cursor: toolSettings(overrides.cursor ?? true),
+      openclaw: toolSettings(overrides.openclaw ?? false),
+      openstandard: toolSettings(overrides.openstandard ?? false),
+      kiro: toolSettings(overrides.kiro ?? false),
+      copilot: toolSettings(overrides.copilot ?? false),
+      antigravity: toolSettings(overrides.antigravity ?? false),
+    },
+  };
+}
+
+function makeItem(id: string, kind: CapabilityItem["kind"] = "skill"): CapabilityItem {
+  return {
+    id,
+    kind,
+    name: id,
+    sourcePath: `/shared/${kind}s/${id}`,
+    relativePath: id,
+    sourceId: "default",
+    sourceLabel: "Default",
+    source: { relHome: "~/.agentic", folder: ".agentic" },
+    valid: true,
+    validationErrors: [],
+  };
+}
+
+function favorite(id: string): SkillFavorite {
+  return {
+    provider: "skills.sh",
+    id,
+    slug: id,
+    name: id,
+    source: "owner/repo",
+    installRef: "owner/repo",
+    githubUrl: null,
+    pageUrl: null,
+    starredAt: "2026-07-01T00:00:00Z",
+  };
+}
 
 function tracingStatus(enabled: boolean): UsageTracingStatus {
   return {
@@ -60,8 +157,16 @@ function dashboard(): UsageDashboard {
   };
 }
 
+function seedManager(items: CapabilityItem[], settings = makeSettings()) {
+  managerGetState.mockReturnValue({
+    data: { items, settings, scanErrors: [], result: { states: [], adapterStatuses: [] } },
+    refresh: managerRefresh,
+  });
+}
+
 function getInitialState() {
   return {
+    inventory: null,
     dashboard: null,
     range: DEFAULT_USAGE_RANGE,
     tracingStatus: null,
@@ -72,11 +177,49 @@ function getInitialState() {
   };
 }
 
+describe("computeResourceInventory", () => {
+  it("groups all five kinds and enabled tools", () => {
+    const items = [
+      makeItem("skill:a", "skill"),
+      makeItem("skill:b", "skill"),
+      makeItem("agent:a", "agent"),
+      makeItem("rule:a", "rule"),
+      makeItem("hook:a", "hook"),
+      makeItem("command:a", "command"),
+    ];
+    const settings = makeSettings({ codex: true, cursor: true, claude: true });
+
+    const inventory = computeResourceInventory(items, settings, [favorite("one"), favorite("two")]);
+
+    expect(inventory.total).toBe(6);
+    expect(inventory.byKind.skill).toBe(2);
+    expect(inventory.byKind.agent).toBe(1);
+    expect(inventory.byKind.rule).toBe(1);
+    expect(inventory.byKind.hook).toBe(1);
+    expect(inventory.byKind.command).toBe(1);
+    expect(
+      inventory.byKind.skill +
+        inventory.byKind.agent +
+        inventory.byKind.rule +
+        inventory.byKind.hook +
+        inventory.byKind.command,
+    ).toBe(inventory.total);
+    expect(inventory.sourceCount).toBe(2);
+    expect(inventory.enabledTools).toBe(3);
+    expect(inventory.totalTools).toBe(8);
+    expect(inventory.favoritesCount).toBe(2);
+  });
+});
+
 describe("useStatisticsStore", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useStatisticsStore.setState(getInitialState(), true);
+    managerRefresh.mockResolvedValue(undefined);
+    mocked.listSkillFavorites.mockResolvedValue({ favorites: [] });
     mocked.scan.mockResolvedValue({ items: [], errors: [] });
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    seedManager([]);
   });
 
   it("loads dashboard when tracing is enabled", async () => {
@@ -90,13 +233,59 @@ describe("useStatisticsStore", () => {
     expect(useStatisticsStore.getState().tracingStatus?.enabled).toBe(true);
   });
 
-  it("skips dashboard query when tracing is disabled", async () => {
+  it("always sets inventory even when tracing is disabled", async () => {
+    const items = [makeItem("skill:a", "skill"), makeItem("rule:a", "rule")];
+    seedManager(items);
     mocked.usageTracingStatus.mockResolvedValue(tracingStatus(false));
+    mocked.listSkillFavorites.mockResolvedValue({ favorites: [favorite("starred")] });
 
     await useStatisticsStore.getState().reload();
 
     expect(mocked.queryUsageDashboard).not.toHaveBeenCalled();
     expect(useStatisticsStore.getState().dashboard).toBeNull();
+    expect(useStatisticsStore.getState().inventory).toEqual({
+      total: 2,
+      sourceCount: 2,
+      enabledTools: 2,
+      totalTools: 8,
+      favoritesCount: 1,
+      byKind: { skill: 1, agent: 0, rule: 1, hook: 0, command: 0 },
+    });
+  });
+
+  it("uses manager store items without scanning when data is present", async () => {
+    const items = [makeItem("skill:a", "skill")];
+    seedManager(items);
+    mocked.usageTracingStatus.mockResolvedValue(tracingStatus(true));
+    mocked.queryUsageDashboard.mockResolvedValue(dashboard());
+
+    await useStatisticsStore.getState().reload();
+
+    expect(mocked.scan).not.toHaveBeenCalled();
+    expect(mocked.loadSettings).not.toHaveBeenCalled();
+    expect(mocked.queryUsageDashboard).toHaveBeenCalledWith(items, DEFAULT_USAGE_RANGE);
+    expect(useStatisticsStore.getState().inventory?.total).toBe(1);
+  });
+
+  it("refreshes manager when data is missing", async () => {
+    const items = [makeItem("skill:a", "skill")];
+    managerGetState
+      .mockReturnValueOnce({ data: null, refresh: managerRefresh })
+      .mockReturnValueOnce({
+        data: {
+          items,
+          settings: makeSettings(),
+          scanErrors: [],
+          result: { states: [], adapterStatuses: [] },
+        },
+        refresh: managerRefresh,
+      });
+    mocked.usageTracingStatus.mockResolvedValue(tracingStatus(false));
+
+    await useStatisticsStore.getState().reload();
+
+    expect(managerRefresh).toHaveBeenCalled();
+    expect(useStatisticsStore.getState().inventory?.total).toBe(1);
   });
 
   it("setRange reloads with the new window", async () => {
