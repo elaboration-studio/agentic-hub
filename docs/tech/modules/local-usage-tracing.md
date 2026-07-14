@@ -122,6 +122,7 @@ entries are preserved verbatim.
 | `cmd_set_usage_tracing_enabled` | Toggle tracing, persist settings, start/stop collector, and sync managed tracer hooks |
 | `cmd_sync_usage_tracer_hooks` | Reinstall managed tracer hooks and ensure the collector is running without toggling tracing |
 | `cmd_query_usage_stats` | Return per-capability usage totals for the current scan |
+| `cmd_query_usage_dashboard` | Return aggregated dashboard metrics for the Statistics page (`UsageDashboard`, filtered by `UsageDateRange`) |
 | `cmd_record_command_palette_usage` | Record a palette command copy or paste against a command capability id |
 
 ## Failure modes

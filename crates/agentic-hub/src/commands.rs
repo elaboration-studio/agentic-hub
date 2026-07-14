@@ -12,7 +12,7 @@ use agentic_core::managed_copy::now_iso8601;
 use agentic_core::model::{
     ApplyError, ApplyResult, ApplySuiteResult, CapabilityItem, PlannedOperation, ScanResult,
     SuiteBinding, SuiteDefinition, SuiteOwnership, SyncHooksResult, SyncRulesResult, ToolId,
-    UsageStats, WorkspaceTarget, WorkspaceTargetsState,
+    UsageDashboard, UsageDateRange, UsageStats, WorkspaceTarget, WorkspaceTargetsState,
 };
 use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
@@ -530,6 +530,15 @@ pub async fn cmd_sync_usage_tracer_hooks(
 #[tauri::command]
 pub async fn cmd_query_usage_stats(items: Vec<CapabilityItem>) -> IpcResult<Vec<UsageStats>> {
     usage_collector::query_usage_stats(&items).map_err(|e| IpcError::new("usage_query_failed", e))
+}
+
+#[tauri::command]
+pub async fn cmd_query_usage_dashboard(
+    items: Vec<CapabilityItem>,
+    range: UsageDateRange,
+) -> IpcResult<UsageDashboard> {
+    usage_collector::query_usage_dashboard(&items, range)
+        .map_err(|e| IpcError::new("usage_dashboard_failed", e))
 }
 
 #[tauri::command]

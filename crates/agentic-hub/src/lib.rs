@@ -213,6 +213,7 @@ pub fn run() {
             commands::cmd_set_usage_tracing_enabled,
             commands::cmd_sync_usage_tracer_hooks,
             commands::cmd_query_usage_stats,
+            commands::cmd_query_usage_dashboard,
             commands::cmd_record_command_palette_usage,
             commands::cmd_list_suites,
             commands::cmd_get_suite,

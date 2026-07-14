@@ -593,6 +593,14 @@ Queries local usage aggregates for the scanned skill and command rows. Unknown o
 ambiguous events remain stored in the trace database but do not appear in
 capability row counts.
 
+### `cmd_query_usage_dashboard(input: { items: CapabilityItem[], range: UsageDateRange }) -> UsageDashboard`
+
+Returns aggregated local usage metrics for the Statistics page: overview
+counters, daily activity, breakdowns by kind/source tool/workspace, top-used
+capabilities (joined with scan metadata), and installed-but-unused rows.
+Terminal-event filtering matches `cmd_query_usage_stats`. `range` is one of
+`last7Days`, `last30Days`, `last90Days`, or `allTime`.
+
 ### `cmd_record_command_palette_usage(input: { capabilityId: string, pasted: boolean }) -> ()`
 
 Records a `CommandPaletteUse` event when the user copies or pastes a command from

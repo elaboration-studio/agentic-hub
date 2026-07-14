@@ -38,7 +38,6 @@ which capabilities are worth maintaining.
 ### Out of scope
 
 - Remote sync or cloud analytics.
-- A standalone analytics dashboard.
 - Inferring skill usage from free-form prompts, transcripts, or raw source code.
   Cursor and Codex v1 may count an explicit skill reference such as `$root-cause-investigation`
   or a `SKILL.md` link from prompt-submit hook input; Claude slash commands count via
@@ -61,6 +60,13 @@ command rows show the total attributed execution count. Hovering the number
 shows per-tool counts (or `Palette` for command palette usage) and the last-used
 timestamp. Rule and hook rows show `-` in v1.
 
+The **Statistics** tab (beside Config) shows a **resource inventory** section
+(always visible) with total resources, per-kind counts, enabled tools, and
+starred skills. When local usage tracing is enabled, dashboard cards and
+recharts charts over the same local trace database show daily activity, usage by
+kind and source tool, workspace breakdown, top-used capabilities, and
+installed-but-unused rows. Date range filters default to the last 30 days.
+
 ## Acceptance criteria
 
 - [ ] Existing settings files load with tracing disabled by default.
@@ -74,6 +80,10 @@ timestamp. Rule and hook rows show `-` in v1.
 - [ ] Command palette copy/paste increments usage for the matching command row when tracing is enabled.
 - [ ] No raw prompts, source snippets, or tool arguments are persisted.
 - [ ] Config shows stored/resolved/unresolved event diagnostics.
+- [ ] The Statistics tab shows overview metrics, charts, and tables when tracing is enabled.
+- [ ] Statistics date-range filters reload dashboard aggregates without leaving the page.
+- [ ] Statistics shows an enable-tracing prompt when local tracing is disabled.
+- [ ] Statistics shows resource inventory (total resources, per-kind counts, enabled tools, starred skills) regardless of tracing state.
 
 ## Dependencies
 
@@ -87,7 +97,7 @@ timestamp. Rule and hook rows show `-` in v1.
 | Slice | What ships | Why this cut |
 | ----- | ---------- | ------------ |
 | V1 | Local store, collector, config toggle, managed hooks, matrix usage count | Complete useful loop without a new analytics surface |
-| V1.1 | Date filters and detail drilldown | Useful once enough local events accumulate |
+| V1.1 | Statistics page with date filters, charts, and drilldown tables | Shipped: overview, recharts, top-used, unused-installed |
 | V2 | MCP wrapper telemetry and OpenTelemetry export | Broader observability after the local primitive is stable |
 
 ## Risks and edge cases

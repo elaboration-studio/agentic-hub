@@ -9,7 +9,9 @@ use std::sync::{Arc, Mutex};
 use agentic_core::adapter_registry;
 use agentic_core::hook_sync::{self, HookCanonicalEvent};
 use agentic_core::managed_copy::now_iso8601;
-use agentic_core::model::{CapabilityItem, CapabilityKind, ToolId, UsageStats};
+use agentic_core::model::{
+    CapabilityItem, CapabilityKind, ToolId, UsageDashboard, UsageDateRange, UsageStats,
+};
 use agentic_core::settings::Settings;
 use agentic_core::{
     api, usage_tracer_enabled, usage_tracer_hook_dir, usage_tracer_item, usage_tracer_manifest,
@@ -631,6 +633,15 @@ pub fn query_usage_stats(items: &[CapabilityItem]) -> Result<Vec<UsageStats>, St
         .collect();
     UsageStore::new()
         .query_stats(&ids)
+        .map_err(|e| e.to_string())
+}
+
+pub fn query_usage_dashboard(
+    items: &[CapabilityItem],
+    range: UsageDateRange,
+) -> Result<UsageDashboard, String> {
+    UsageStore::new()
+        .query_dashboard(items, range)
         .map_err(|e| e.to_string())
 }
 
