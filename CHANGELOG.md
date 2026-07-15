@@ -8,6 +8,8 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-07-15
+
 ### Added
 
 - **Statistics page.** New top-level tab beside Config with a resource inventory
