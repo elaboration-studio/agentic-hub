@@ -27,6 +27,7 @@ import type {
   Settings,
   SkillFavorite,
   ToolId,
+  ToolSettings,
   UsageDashboard,
   UsageTracingStatus,
 } from "@/types";
@@ -44,14 +45,17 @@ const mocked = {
   listSkillFavorites: vi.mocked(listSkillFavorites),
 };
 
-function toolSettings(enabled = true) {
+function toolSettings(enabled = true): ToolSettings {
   return {
     enabled,
-    skillsPath: null,
-    agentsPath: null,
-    rulesPath: null,
-    hooksPath: null,
-    commandsPath: null,
+    skillsPath: "/skills",
+    agentsPath: "/agents",
+    rulesPath: "/rules",
+    instructionsPath: null,
+    hooksEnabled: false,
+    hooksFile: null,
+    hooksDir: null,
+    commandsPath: enabled ? "/commands" : null,
   };
 }
 

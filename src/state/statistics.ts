@@ -13,7 +13,7 @@ import type {
   UsageDateRange,
   UsageTracingStatus,
 } from "@/types";
-import { ALL_TOOLS, enabledTools, KIND_ORDER, messageOf } from "@/shared";
+import { ALL_TOOLS, enabledTools, messageOf } from "@/shared";
 import { useManagerStore } from "./manager";
 
 export const DEFAULT_USAGE_RANGE: UsageDateRange = "last30Days";
