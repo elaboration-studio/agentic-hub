@@ -11,6 +11,7 @@ import {
   openUrl,
   removeSource,
   rescanResync,
+  restartApp,
   revealPath,
   saveSettings,
   setUsageTracingEnabled,
@@ -35,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AppearancePanel } from "@/components/config/AppearancePanel";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const sectionTitle = "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 const hint = "text-xs text-muted-foreground";
@@ -677,6 +679,16 @@ function UsageTracingPanel({ settings, onChanged }: PanelProps) {
             </button>
           )}
         </div>
+        {settings.usageTracing.enabled && status && !status.collectorRunning && (
+          <Alert variant="destructive">
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+              <span>Local usage tracing is paused. Restart Agentic Hub to resume collection.</span>
+              <Button variant="outline" size="sm" onClick={() => void restartApp()}>
+                Restart app
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="ghost"

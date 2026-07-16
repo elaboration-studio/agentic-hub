@@ -582,14 +582,14 @@ when no sources are set). The empty-state in the manager calls this with
 ### `cmd_usage_tracing_status() -> UsageTracingStatus`
 
 Returns whether local tracing is enabled, whether the loopback collector is
-running, the configured collector port, the local SQLite path
+healthy through an authenticated loopback probe, the configured collector port, the local SQLite path
 (`~/.agentic-hub/usage/trace.db`), and the tools supported by the built-in tracer
 hook.
 
 ### `cmd_set_usage_tracing_enabled(input: { enabled: boolean }) -> UsageTracingStatus`
 
 Persists the opt-in tracing flag. When enabling, generates a local collector
-token if needed, starts the `127.0.0.1` collector, and syncs Agentic Hub-managed
+token if needed, starts and verifies the `127.0.0.1` collector, and syncs Agentic Hub-managed
 tracer hooks for the enabled capture tools. When disabling, stops the collector
 and removes only the built-in tracer hook entries, preserving foreign hooks and
 other Agentic Hub-managed hooks.
@@ -597,11 +597,19 @@ other Agentic Hub-managed hooks.
 ### `cmd_sync_usage_tracer_hooks() -> UsageTracerHooksSyncResult`
 
 Reinstalls Agentic Hub-managed tracer hooks for the enabled capture tools and
-ensures the loopback collector is running when tracing is enabled. Returns the
+recovers then verifies the loopback collector when tracing is enabled. Returns the
 refreshed tracing status plus the tools that received an active tracer hook.
 Use this after updating Agentic Hub or changing capture tools instead of
 toggling tracing off and on. Restart each agentic tool afterward so it reloads
 its hooks file.
+
+### `usage-tracing-health-failed` event
+
+Emitted once after the hourly checker cannot recover an enabled collector in
+three restart-and-probe attempts. The typed payload contains the fixed attempt
+count and a user-safe message. The main window uses it for the native desktop
+notification and a persistent restart prompt; no raw collector error or token is
+included.
 
 ### `cmd_query_usage_stats(input: { items: CapabilityItem[] }) -> UsageStats[]`
 

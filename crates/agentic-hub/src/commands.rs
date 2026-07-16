@@ -507,7 +507,7 @@ pub async fn cmd_usage_tracing_status(
     usage_collector: State<'_, UsageCollectorState>,
 ) -> IpcResult<UsageTracingStatus> {
     let settings = Settings::load()?;
-    Ok(usage_collector.status(&settings))
+    Ok(usage_collector.status(&settings).await)
 }
 
 #[tauri::command]
@@ -525,10 +525,14 @@ pub async fn cmd_set_usage_tracing_enabled(
     usage_collector
         .apply_settings(&settings)
         .map_err(|e| IpcError::new("usage_collector_failed", e))?;
+    usage_collector
+        .ensure_healthy(&settings)
+        .await
+        .map_err(|e| IpcError::new("usage_collector_failed", e))?;
     usage_collector::sync_tracer_hooks(&settings)
         .map_err(|e| IpcError::new("usage_hooks_failed", e))?;
     let _ = app.emit("sources-changed", ());
-    Ok(usage_collector.status(&settings))
+    Ok(usage_collector.status(&settings).await)
 }
 
 #[tauri::command]
@@ -543,10 +547,14 @@ pub async fn cmd_sync_usage_tracer_hooks(
     usage_collector
         .apply_settings(&settings)
         .map_err(|e| IpcError::new("usage_collector_failed", e))?;
+    usage_collector
+        .ensure_healthy(&settings)
+        .await
+        .map_err(|e| IpcError::new("usage_collector_failed", e))?;
     usage_collector::sync_tracer_hooks(&settings)
         .map_err(|e| IpcError::new("usage_hooks_failed", e))?;
     Ok(UsageTracerHooksSyncResult {
-        status: usage_collector.status(&settings),
+        status: usage_collector.status(&settings).await,
         synced_tools: usage_collector::synced_tracer_tools(&settings),
     })
 }

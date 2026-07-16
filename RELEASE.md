@@ -5,15 +5,13 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.13.0] — 2026-07-17
+## [0.13.1] — 2026-07-17
 
 ### Added
 
-- **App-wide color scheme.** Choose Light, Dark, or Follow system in Config.
-  The app updates immediately and keeps its main window, command palette, and
-  install window synchronized. New installations follow the operating system;
-  existing installations retain their current dark appearance until you choose a
-  different option.
+- **Local usage tracing health checker.** The collector now verifies its own
+  loopback health every hour, retries a stopped collector three times, and tells
+  you to restart Agentic Hub only when recovery cannot restore local collection.
 
 ### Known Issues
 

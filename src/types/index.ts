@@ -58,6 +58,7 @@ export type { UsageDayBucket } from "./generated/UsageDayBucket";
 export type { UsageTopRow } from "./generated/UsageTopRow";
 export type { UsageUnusedRow } from "./generated/UsageUnusedRow";
 export type { UsageWorkspaceBucket } from "./generated/UsageWorkspaceBucket";
+export type { UsageTracingHealthFailure } from "./generated/UsageTracingHealthFailure";
 export type { UsageTracingStatus } from "./generated/UsageTracingStatus";
 export type { UsageTracerHooksSyncResult } from "./generated/UsageTracerHooksSyncResult";
 export type { SkillFavorite } from "./generated/SkillFavorite";

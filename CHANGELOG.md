@@ -8,6 +8,15 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-07-17
+
+### Added
+
+- **Local usage tracing health checks.** Collector status now uses an
+  authenticated loopback probe rather than cached process state. The app checks
+  an enabled collector hourly, retries recovery three times without touching
+  tracer hooks, and sends one native/in-app restart prompt per continuous outage.
+
 ## [0.13.0] — 2026-07-17
 
 ### Added
