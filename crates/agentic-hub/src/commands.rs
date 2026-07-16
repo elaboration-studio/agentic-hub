@@ -3,6 +3,7 @@
 //! settings load/save, scan, inspect, and source add/remove.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use agentic_core::adapter_registry::WORKSPACE_TOOL_IDS;
 use agentic_core::api::{self, InspectResult};
@@ -30,6 +31,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use tokio::sync::Mutex;
 
 use crate::appearance;
 use crate::error::IpcError;
@@ -41,6 +43,12 @@ use crate::usage_collector::{
 use crate::watcher::{self, WatcherState};
 
 type IpcResult<T> = Result<T, IpcError>;
+
+static SETTINGS_SAVE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn settings_save_lock() -> &'static Mutex<()> {
+    SETTINGS_SAVE_LOCK.get_or_init(Mutex::default)
+}
 
 /// Suite store bound to the effective suite-file path from settings (custom
 /// override or the canonical `~/.agentic-suites.json`).
@@ -59,6 +67,7 @@ pub async fn cmd_load_settings() -> IpcResult<Settings> {
 /// settings supplied by the untrusted WebView.
 #[tauri::command]
 pub async fn cmd_set_color_scheme(app: AppHandle, color_scheme: ColorScheme) -> IpcResult<()> {
+    let _settings_guard = settings_save_lock().lock().await;
     let mut settings = Settings::load()?;
     settings.color_scheme = color_scheme;
     settings.save()?;
@@ -75,6 +84,7 @@ pub async fn cmd_save_settings(
     usage_collector: State<'_, UsageCollectorState>,
     mut settings: Settings,
 ) -> IpcResult<()> {
+    let _settings_guard = settings_save_lock().lock().await;
     if !agentic_core::settings::is_valid_shortcut(&settings.palette_shortcut) {
         return Err(IpcError::new(
             "invalid_shortcut",
