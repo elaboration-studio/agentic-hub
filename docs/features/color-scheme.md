@@ -45,4 +45,4 @@ to the cross-window Tauri event.
   serialized values.
 - Zustand store tests cover persisted preference, OS changes, cross-window
   synchronization, persistence failures, and settings-load fallback.
-- Build and lint gates verify the typed IPC contract and native shell code.
+- Type-check and build gates verify the typed IPC contract and native shell code.

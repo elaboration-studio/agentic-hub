@@ -6,7 +6,7 @@ A Tauri 2.x desktop app that projects a single shared `~/.agentic/` capability t
 
 ## Status
 
-`v0.1.0` — first build. The Rust core and Tauri UI are implemented; macOS
+`v0.13.0` — current build. The Rust core and Tauri UI are implemented; macOS
 universal `.dmg` releases ship from GitHub Actions on `v*` tags. Migrated from
 the VS Code extension at [`e-studio-copilot`](https://github.com/arno/e-studio-copilot).
 

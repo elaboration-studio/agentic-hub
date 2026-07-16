@@ -230,7 +230,8 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 ### Toaster (`sonner`)
 
 - Apply / suite / workspace result summaries surface as toasts (success / warning
-  / error). Mounted once at the app root, hardcoded `theme="dark"`.
+  / error). Mounted once at the app root and follows the resolved appearance
+  theme.
 
 ### Progress (`progress`)
 
@@ -380,3 +381,4 @@ A desktop window, but it must stay usable when narrow.
 | 2026-06-03 | Global `cursor: pointer` base rule | Tailwind v4 Preflight stopped setting pointer cursor on buttons; one base-layer rule restores it for native buttons + Radix role-based controls instead of per-component classes |
 | 2026-06-03 | `lucide-react` as the icon system + Manager toolbar icon language | Formalize a consistent, scannable icon vocabulary; replace unlabeled text actions (Expand/Collapse all) and unicode carets with tooltip'd lucide icon buttons |
 | 2026-06-03 | Scope switcher = header-left `Select` (not a content sub-bar) | A dedicated toggle row wasted vertical space; a compact dropdown next to the title reclaims it and, by living in the left cluster, keeps the right-side nav stable across routes |
+| 2026-07-17 | App-wide appearance preference | Light, dark, and follow-system choices share one resolved token palette across every WebView and native window; the persisted preference is applied before the main window is shown |
