@@ -11,22 +11,24 @@ consumed by Tailwind v4 (`@theme inline`) and shadcn/ui components in
 
 ## Visual Theme & Atmosphere
 
-A calm, near-black workbench where the data is the hero. Surfaces are layered in
-graphite steps so structure reads through contrast rather than borders or
-shadows. One confident indigo carries every primary action; semantic color is
-rationed and only appears to mean something (on / warning / error / agent).
-Typography is the native system stack — the app should feel like it belongs on
-the OS, not like a website embedded in a window.
+A calm workbench where the data is the hero. Dark surfaces use graphite steps;
+light surfaces use clean neutral layers, so structure reads through contrast
+rather than borders or shadows. One confident indigo carries every primary
+action; semantic color is rationed and only appears to mean something (on /
+warning / error / agent). Typography is the native system stack — the app should
+feel like it belongs on the OS, not like a website embedded in a window.
 
-- **Aesthetic direction:** Industrial / utilitarian, dark-first developer tool
+- **Aesthetic direction:** Industrial / utilitarian developer tool with matched
+  dark and light palettes
 - **Decoration level:** minimal — contrast and spacing do the work, not ornament
 - **Reference points:** Linear, Raycast, native macOS settings panes
 
 ## Color Palette & Roles
 
-Dark is the primary theme (`.dark` on `<html>`). Light tokens are defined for
-completeness but secondary. Values are the canonical hex; Tailwind exposes each
-as a `--color-*` utility.
+The persisted appearance preference applies `.dark` to `<html>` only when the
+resolved scheme is dark. Users choose dark, light, or follow system from Config;
+all windows resolve the same preference. Values are the canonical hex; Tailwind
+exposes each as a `--color-*` utility.
 
 ### Primary
 
@@ -64,8 +66,9 @@ as a `--color-*` utility.
 - **Card shadow:** none by default — elevation is color contrast. Floating
   surfaces (dropdown menu, dialog) use shadcn's `shadow-md` / `shadow-lg`.
 - **Border / Input** (`#272a33` dark / `#e4e6ea` light): hairline structure
-- **Dark mode strategy:** dark is the design; light is a faithful inversion with
-  reduced saturation, not a separate look.
+- **Theme strategy:** light and dark are matched production palettes. Light is a
+  faithful inversion with reduced saturation, not a separate layout or visual
+  language.
 
 ### Semantic (custom tokens beyond the shadcn set)
 

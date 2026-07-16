@@ -14,6 +14,7 @@ import type {
   CapabilityItem,
   CliTool,
   CliToolStatus,
+  ColorScheme,
   InspectResult,
   InstallContext,
   InstalledToolInventory,
@@ -49,6 +50,14 @@ import type {
 export type DesiredMap = Record<string, boolean>;
 
 export const loadSettings = (): Promise<Settings> => invoke("cmd_load_settings");
+
+export const setColorScheme = (colorScheme: ColorScheme): Promise<void> =>
+  invoke("cmd_set_color_scheme", { colorScheme });
+
+export const onColorSchemeChanged = (
+  cb: (colorScheme: ColorScheme) => void,
+): Promise<UnlistenFn> =>
+  listen<ColorScheme>("color-scheme-changed", (event) => cb(event.payload));
 
 export const saveSettings = (settings: Settings): Promise<void> =>
   invoke("cmd_save_settings", { settings });

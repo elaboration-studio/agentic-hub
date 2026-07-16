@@ -4,6 +4,7 @@
 //! pure `agentic-core` engine and maps domain errors into [`error::IpcError`].
 //! Every command registered here must also appear in `capabilities/default.json`.
 
+mod appearance;
 mod commands;
 mod error;
 mod install_window;
@@ -16,7 +17,6 @@ mod usage_collector;
 mod watcher;
 
 use agentic_core::settings::{default_palette_shortcut, Settings};
-use tauri::webview::PageLoadEvent;
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_global_shortcut::ShortcutState;
@@ -82,14 +82,6 @@ pub fn run() {
         .manage(install_window::InstallState::default())
         .menu(menu::build_menu)
         .on_menu_event(menu::handle_menu_event)
-        // The main window starts hidden (tauri.conf.json `visible: false`) to
-        // avoid a white paint flash before the WebView renders. Show it only
-        // once the page has finished loading.
-        .on_page_load(|webview, payload| {
-            if webview.label() == "main" && payload.event() == PageLoadEvent::Finished {
-                let _ = webview.window().show();
-            }
-        })
         .setup(|app| {
             let mut settings = Settings::load().unwrap_or_default();
             // 0.8.1 one-time migration: force the watcher on (flipping configs
@@ -118,6 +110,7 @@ pub fn run() {
                 settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
                 let _ = settings.save();
             }
+            appearance::apply(app.handle(), settings.color_scheme);
             // Start the source watcher on launch when enabled in settings.
             if settings.watcher_enabled {
                 app.state::<WatcherState>().start(app.handle().clone());
@@ -150,6 +143,9 @@ pub fn run() {
         // Cmd+Q goes through the default Quit menu item, which bypasses this
         // handler and terminates the process — the only intended hard exit.
         .on_window_event(|window, event| {
+            if let WindowEvent::ThemeChanged(theme) = event {
+                appearance::sync_window_background(window, *theme);
+            }
             // Alfred-style dismiss: the palette hides as soon as it loses focus.
             if window.label() == palette::PALETTE_LABEL {
                 if let WindowEvent::Focused(false) = event {
@@ -189,6 +185,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::cmd_load_settings,
+            commands::cmd_set_color_scheme,
             commands::cmd_save_settings,
             commands::cmd_set_watcher_enabled,
             commands::cmd_toggle_palette,

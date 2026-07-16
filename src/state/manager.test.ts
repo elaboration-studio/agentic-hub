@@ -88,6 +88,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     antigravitySkillsPathMigrated: true,
     kiroRulesAgentsMdMigrated: true,
     editor: { kind: "default", customApp: null },
+    colorScheme: "system",
     paletteShortcut: "Cmd+Alt+A",
     pasteIntoFocused: false,
     skills: { enabled: false, favoritesPath: null },

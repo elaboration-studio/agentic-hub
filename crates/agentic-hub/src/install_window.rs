@@ -101,7 +101,10 @@ fn build_install_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Some(main) = app.get_webview_window("main") {
         builder = builder.parent(&main)?;
     }
-    builder.build()
+    let window = builder.build()?;
+    let theme = window.theme().unwrap_or(tauri::Theme::Light);
+    crate::appearance::sync_webview_background(&window, theme);
+    Ok(window)
 }
 
 /// Show and focus the install window, centered over the main window when possible.

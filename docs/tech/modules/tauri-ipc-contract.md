@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-06-10
+Last Updated: 2026-07-17
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.permissions.md](../../../ARCHITECTURE.permissions.md)
 Related Docs: [docs/tech/modules/rule-projection-sync.md](./rule-projection-sync.md), [docs/tech/modules/suite-presets.md](./suite-presets.md), [docs/tech/modules/workspace-inventory.md](./workspace-inventory.md)
 
@@ -74,6 +74,17 @@ Reads `~/.agentic-hub/config.json` and returns the parsed settings. If the file 
 
 Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed; `paletteShortcut` passes `is_valid_shortcut` (`invalid_shortcut` otherwise). Re-subscribes the source watcher to the current roots when it is running, then re-registers the global palette accelerator (`shortcut_register_failed` if the OS rejects it).
 
+The untrusted WebView does not own every persisted field. The command preserves
+the on-disk CLI-tools override and color-scheme preference, which have dedicated
+commands, so a stale settings form cannot overwrite either value.
+
+### `cmd_set_color_scheme(colorScheme: ColorScheme) -> ()`
+
+Persists the requested `system`, `light`, or `dark` appearance preference,
+updates native Tauri chrome and opaque WebViews, then emits
+`color-scheme-changed`. Fresh settings follow the operating system; legacy
+settings files missing this field retain the historical dark appearance.
+
 ### `cmd_set_watcher_enabled(input: { enabled: boolean }) -> ()`
 
 Persists `settings.watcherEnabled` and starts or stops the source watcher immediately. See [watcher.md](./watcher.md).
@@ -85,6 +96,8 @@ Show (and focus) or hide the floating command-palette window. Bound to the globa
 ### `cmd_show_main() -> ()`
 
 Show + focus the main window and hide the palette. Used by palette navigation commands that route back into the main window (paired with the `hub-navigate` event).
+The main renderer also calls it after resolving its color scheme, so first
+display never reveals an incorrect theme.
 
 ### `cmd_rescan_resync() -> ()`
 
@@ -97,9 +110,12 @@ type Settings = {
   suitesPath: string | null;      // custom suite-store path, or null for the default
   watcherEnabled: boolean;
   editor: EditorPref;             // preferred editor for "open original"
+  colorScheme: ColorScheme;       // 'system' | 'light' | 'dark'
   paletteShortcut: string;        // global accelerator, e.g. "Cmd+Alt+A"
   tools: ToolsSettings;
 };
+
+type ColorScheme = 'system' | 'light' | 'dark';
 
 type EditorPref = {
   kind: string;                   // 'default' | 'vscode' | 'cursor' | 'custom'
@@ -706,6 +722,16 @@ Emitted globally when `cmd_save_settings` succeeds.
 
 ```typescript
 type SettingsChangedEvent = {};  // empty; receivers re-fetch
+```
+
+### `color-scheme-changed`
+
+Emitted globally when `cmd_set_color_scheme` persists a preference. Every
+window applies the preference locally; windows following the system also react
+to the browser `prefers-color-scheme` media query for live OS changes.
+
+```typescript
+type ColorSchemeChangedEvent = 'system' | 'light' | 'dark';
 ```
 
 ### `workspace-targets-changed`

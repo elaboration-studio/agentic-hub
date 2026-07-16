@@ -40,6 +40,7 @@ User-facing feature designs aligned with each milestone.
 - [copilot-tool-adapter.md](features/copilot-tool-adapter.md) — opt-in GitHub Copilot projection and workspace inventory
 - [antigravity-tool-adapter.md](features/antigravity-tool-adapter.md) — opt-in Google Antigravity projection and workspace inventory
 - [local-skill-usage-tracing.md](features/local-skill-usage-tracing.md) — opt-in local skill usage counts surfaced in the Manager matrix
+- [color-scheme.md](features/color-scheme.md) — app-wide light, dark, and follow-system appearance
 
 ### `tech/modules/` — subsystem deep dives
 

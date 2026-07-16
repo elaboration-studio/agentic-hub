@@ -4,6 +4,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { App } from "./App";
 import { CommandPalette } from "./components/palette/CommandPalette";
 import { InstallWindow } from "./components/install/InstallWindow";
+import { showMain } from "./ipc";
+import { useAppearanceStore } from "./state/appearance";
 import "./index.css";
 
 const rootEl = document.getElementById("root");
@@ -18,8 +20,14 @@ const isPalette = label === "palette";
 const isInstall = label === "install";
 if (isPalette) document.documentElement.classList.add("palette-window");
 
-ReactDOM.createRoot(rootEl).render(
-  <React.StrictMode>
-    {isPalette ? <CommandPalette /> : isInstall ? <InstallWindow /> : <App />}
-  </React.StrictMode>,
-);
+async function bootstrap(root: HTMLElement) {
+  await useAppearanceStore.getState().initialize();
+  ReactDOM.createRoot(root).render(
+    <React.StrictMode>
+      {isPalette ? <CommandPalette /> : isInstall ? <InstallWindow /> : <App />}
+    </React.StrictMode>,
+  );
+  if (!isPalette && !isInstall) await showMain();
+}
+
+void bootstrap(rootEl);

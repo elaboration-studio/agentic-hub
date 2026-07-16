@@ -8,6 +8,7 @@
    the shadcn set for capability state + kind colors. */
 
 :root {
+  color-scheme: light;
   --radius: 0.5rem;
 
   --background: #ffffff;
@@ -41,6 +42,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #0e0f13;
   --foreground: #e6e8ee;
   --card: #16181f;
