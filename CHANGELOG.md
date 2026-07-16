@@ -8,6 +8,15 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-07-17
+
+### Added
+
+- **App-wide color scheme.** Config now offers Light, Dark, and Follow system.
+  The selected appearance applies immediately and stays synchronized across the
+  main app, command palette, and install window. Fresh installs follow the OS;
+  existing settings files keep the previous dark appearance until changed.
+
 ## [0.12.0] — 2026-07-15
 
 ### Added

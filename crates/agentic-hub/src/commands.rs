@@ -3,6 +3,7 @@
 //! settings load/save, scan, inspect, and source add/remove.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use agentic_core::adapter_registry::WORKSPACE_TOOL_IDS;
 use agentic_core::api::{self, InspectResult};
@@ -17,7 +18,7 @@ use agentic_core::model::{
 use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
 use agentic_core::scaffold::{self, ScaffoldMode, ScaffoldResult};
-use agentic_core::settings::{Settings, SourceConfig, ToolsSettings};
+use agentic_core::settings::{ColorScheme, Settings, SourceConfig, ToolsSettings};
 use agentic_core::skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
 use agentic_core::skill_source::{provider_for, SkillCliStatus, SkillSearchHit};
 use agentic_core::suite_binding_store::SuiteBindingStore;
@@ -30,7 +31,9 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use tokio::sync::Mutex;
 
+use crate::appearance;
 use crate::error::IpcError;
 use crate::palette;
 use crate::paste::{self, PasteOutcome};
@@ -40,6 +43,12 @@ use crate::usage_collector::{
 use crate::watcher::{self, WatcherState};
 
 type IpcResult<T> = Result<T, IpcError>;
+
+static SETTINGS_SAVE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn settings_save_lock() -> &'static Mutex<()> {
+    SETTINGS_SAVE_LOCK.get_or_init(Mutex::default)
+}
 
 /// Suite store bound to the effective suite-file path from settings (custom
 /// override or the canonical `~/.agentic-suites.json`).
@@ -54,6 +63,19 @@ pub async fn cmd_load_settings() -> IpcResult<Settings> {
     Ok(Settings::load()?)
 }
 
+/// Persist and apply the app-wide color scheme without rewriting unrelated
+/// settings supplied by the untrusted WebView.
+#[tauri::command]
+pub async fn cmd_set_color_scheme(app: AppHandle, color_scheme: ColorScheme) -> IpcResult<()> {
+    let _settings_guard = settings_save_lock().lock().await;
+    let mut settings = Settings::load()?;
+    settings.color_scheme = color_scheme;
+    settings.save()?;
+    appearance::apply(&app, color_scheme);
+    let _ = app.emit("color-scheme-changed", color_scheme);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn cmd_save_settings(
     app: AppHandle,
@@ -62,17 +84,19 @@ pub async fn cmd_save_settings(
     usage_collector: State<'_, UsageCollectorState>,
     mut settings: Settings,
 ) -> IpcResult<()> {
+    let _settings_guard = settings_save_lock().lock().await;
     if !agentic_core::settings::is_valid_shortcut(&settings.palette_shortcut) {
         return Err(IpcError::new(
             "invalid_shortcut",
             format!("Invalid palette shortcut: {}", settings.palette_shortcut),
         ));
     }
-    // `cli_tools_path` points at a catalog whose entries are executed (see
-    // `cli_tools::check_tool`). The WebView is untrusted, so it must never be
-    // able to set an executable-defining path: preserve whatever is on disk
-    // (hand-edited by the user) and discard any value the renderer sent.
-    settings.cli_tools_path = Settings::load()?.cli_tools_path;
+    // Preserve fields that have dedicated trusted mutation paths. The WebView
+    // must not set an executable-defining catalog path, and a stale full-form
+    // save must not roll back a newer app-wide appearance choice.
+    let persisted = Settings::load()?;
+    settings.cli_tools_path = persisted.cli_tools_path;
+    settings.color_scheme = persisted.color_scheme;
     settings.save()?;
     // Mirror the telemetry consent flag so a mid-session toggle takes effect at
     // once (gates the next tracked event without needing a restart).

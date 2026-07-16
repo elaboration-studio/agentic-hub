@@ -68,7 +68,8 @@ pub use reconcile::{reconcile_all, reconcile_tool, ReconcileToolOutcome};
 pub use scaffold::{scaffold_demo, ScaffoldMode, ScaffoldResult};
 pub use scanner::{scan, scan_all};
 pub use settings::{
-    Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings, UsageTracingConfig,
+    ColorScheme, Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings,
+    UsageTracingConfig,
 };
 pub use skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
 pub use skill_lock::{parse_local_lock, read_local_lock, LocalSkillLock, LockedSkillEntry};

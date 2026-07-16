@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AppearancePanel } from "@/components/config/AppearancePanel";
 
 const sectionTitle = "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 const hint = "text-xs text-muted-foreground";
@@ -55,6 +56,7 @@ export function ConfigPage() {
   const props: PanelProps = { settings, onChanged: () => void refresh() };
   return (
     <div className="flex flex-col gap-[18px]">
+      <AppearancePanel colorScheme={settings.colorScheme} onChanged={props.onChanged} />
       <SourcesPanel {...props} />
       <EditorPanel {...props} />
       <ShortcutPanel {...props} />

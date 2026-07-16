@@ -5,15 +5,15 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.12.0] — 2026-07-15
+## [0.13.0] — 2026-07-17
 
 ### Added
 
-- **Statistics dashboard.** A new top-level tab beside Config shows your full
-  agentic resource inventory — total resources, per-kind counts, enabled tools,
-  and starred skills — alongside local usage charts, workspace breakdowns, a
-  top-used table, and an unused-installed pruning list. Filter by 7d / 30d /
-  90d / all-time; data stays on your Mac in `~/.agentic-hub/usage/trace.db`.
+- **App-wide color scheme.** Choose Light, Dark, or Follow system in Config.
+  The app updates immediately and keeps its main window, command palette, and
+  install window synchronized. New installations follow the operating system;
+  existing installations retain their current dark appearance until you choose a
+  different option.
 
 ### Known Issues
 

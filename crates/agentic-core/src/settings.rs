@@ -79,6 +79,30 @@ impl Default for EditorPref {
     }
 }
 
+/// User preference for the desktop application's color scheme.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColorScheme {
+    /// Follow the operating system appearance and react to live changes.
+    #[default]
+    System,
+    /// Always use the light token palette and native chrome.
+    Light,
+    /// Always use the dark token palette and native chrome.
+    Dark,
+}
+
+/// Configs written before color-scheme support always rendered dark. Keep that
+/// behavior on upgrade while fresh [`Settings`] use [`ColorScheme::System`].
+fn legacy_color_scheme() -> ColorScheme {
+    ColorScheme::Dark
+}
+
 impl EditorPref {
     /// The application name/path to hand to the opener, or `None` for the OS
     /// default app. macOS resolves these names via `open -a <name>`.
@@ -333,6 +357,10 @@ pub struct Settings {
     /// the OS default app.
     #[serde(default)]
     pub editor: EditorPref,
+    /// App-wide appearance preference. Legacy configs stay dark; fresh configs
+    /// follow the operating system.
+    #[serde(default = "legacy_color_scheme")]
+    pub color_scheme: ColorScheme,
     /// Global accelerator that summons the command palette window. Stored as a
     /// human-readable accelerator string (e.g. `"Cmd+Alt+A"`). Defaults to
     /// `Cmd+Alt+A`.
@@ -573,6 +601,7 @@ impl Default for Settings {
             // A fresh config already ships Kiro AGENTS.md steering; skip migration.
             kiro_rules_agents_md_migrated: true,
             editor: EditorPref::default(),
+            color_scheme: ColorScheme::System,
             palette_shortcut: default_palette_shortcut(),
             paste_into_focused: false,
             skills: SkillsConfig::default(),
@@ -846,6 +875,7 @@ impl Settings {
             antigravity_skills_path_migrated: true,
             kiro_rules_agents_md_migrated: true,
             editor: EditorPref::default(),
+            color_scheme: ColorScheme::System,
             palette_shortcut: default_palette_shortcut(),
             paste_into_focused: false,
             skills: SkillsConfig::default(),
@@ -869,6 +899,32 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fresh_settings_follow_the_system_color_scheme() {
+        assert_eq!(Settings::default().color_scheme, ColorScheme::System);
+    }
+
+    #[test]
+    fn legacy_settings_without_color_scheme_remain_dark() {
+        let mut value = serde_json::to_value(Settings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("colorScheme");
+
+        let loaded: Settings = serde_json::from_value(value).unwrap();
+
+        assert_eq!(loaded.color_scheme, ColorScheme::Dark);
+    }
+
+    #[test]
+    fn color_scheme_uses_stable_snake_case_wire_values() {
+        let serialized = [
+            serde_json::to_string(&ColorScheme::System).unwrap(),
+            serde_json::to_string(&ColorScheme::Light).unwrap(),
+            serde_json::to_string(&ColorScheme::Dark).unwrap(),
+        ];
+
+        assert_eq!(serialized, [r#""system""#, r#""light""#, r#""dark""#]);
+    }
 
     #[test]
     fn pre_0_8_1_config_deserializes_unmigrated_and_force_on_flips_it_once() {

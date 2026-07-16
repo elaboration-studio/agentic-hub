@@ -185,9 +185,9 @@ Rejected: SolidJS (smaller bundle but smaller ecosystem), Svelte (good fit but t
 
 ### Tailwind v4 + shadcn/ui for styling
 
-The UI is components-first: shadcn/ui primitives (`src/components/ui/`) composed into feature views, styled with Tailwind v4 utility classes over a CSS-variable token set. No hand-rolled buttons, inputs, modals, or menus. Tailwind v4 uses the `@tailwindcss/vite` plugin and a CSS-first config (a single `@import "tailwindcss";` in `src/index.css`, no `tailwind.config.js`). shadcn components are owned source under `src/components/ui/`, not a runtime dependency — we can edit them freely. Radix primitives (via the unified `radix-ui` package) back the interactive components. Design tokens and component conventions are the source of truth in [DESIGN.md](DESIGN.md); the app is dark-first (`class="dark"` on `<html>`).
+The UI is components-first: shadcn/ui primitives (`src/components/ui/`) composed into feature views, styled with Tailwind v4 utility classes over a CSS-variable token set. No hand-rolled buttons, inputs, modals, or menus. Tailwind v4 uses the `@tailwindcss/vite` plugin and a CSS-first config (a single `@import "tailwindcss";` in `src/index.css`, no `tailwind.config.js`). shadcn components are owned source under `src/components/ui/`, not a runtime dependency — we can edit them freely. Radix primitives (via the unified `radix-ui` package) back the interactive components. Design tokens and component conventions are the source of truth in [DESIGN.md](DESIGN.md); the app supports matched light and dark palettes through a persisted `ColorScheme` preference.
 
-Rejected: a bespoke CSS file (the prior approach — drifted to ~1200 lines with no component contract), CSS-in-JS (runtime cost, no token story), a heavyweight component kit like MUI (opinionated theming fights a custom dark aesthetic, larger bundle).
+Rejected: a bespoke CSS file (the prior approach — drifted to ~1200 lines with no component contract), CSS-in-JS (runtime cost, no token story), a heavyweight component kit like MUI (opinionated theming fights a custom token system, larger bundle).
 
 ### Zustand for state
 

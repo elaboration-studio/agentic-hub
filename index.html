@@ -1,14 +1,24 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Agentic Hub</title>
+    <script>
+      document.documentElement.classList.toggle(
+        "dark",
+        window.matchMedia("(prefers-color-scheme: dark)").matches,
+      );
+    </script>
     <style>
-      /* Paint dark before the bundled CSS loads, so the first frame matches the
-         dark theme instead of flashing white. Mirrors --background (dark). */
+      /* Match the synchronous system preference before the bundled CSS loads.
+         Rust applies an explicit saved preference before opaque windows show. */
       html,
       body {
+        background: #ffffff;
+      }
+      html.dark,
+      html.dark body {
         background: #0e0f13;
       }
     </style>
