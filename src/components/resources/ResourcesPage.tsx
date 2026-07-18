@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useManagerStore } from "@/state/manager";
 import { ResourcesRail, type ResourcePane } from "./ResourcesRail";
 import { ToolsPage } from "./ToolsPage";
+import { SessionsPage } from "./SessionsPage";
 import { SkillsPage } from "@/components/skills/SkillsPage";
 
 export function ResourcesPage() {
@@ -23,7 +24,9 @@ export function ResourcesPage() {
     <div className="flex flex-1 gap-5">
       <ResourcesRail pane={active} onSelect={setPane} skillsEnabled={skillsEnabled} />
       <div className="flex min-w-0 flex-1 flex-col">
-        {active === "tools" ? <ToolsPage /> : <SkillsPage />}
+        {active === "tools" && <ToolsPage />}
+        {active === "skills" && <SkillsPage />}
+        {active === "sessions" && <SessionsPage />}
       </div>
     </div>
   );

@@ -47,6 +47,7 @@ impl From<CoreError> for IpcError {
             CoreError::SkillCliMissing => "skill_cli_missing",
             CoreError::SkillSearch(_) => "skill_search",
             CoreError::UsageStore(_) => "usage_store",
+            CoreError::SessionSourceUnavailable(_) => "session_source_unavailable",
             CoreError::Io(_) | CoreError::Json(_) | CoreError::Sqlite(_) => "internal",
         };
         IpcError::new(code, err.to_string())

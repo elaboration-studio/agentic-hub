@@ -91,7 +91,10 @@ flowchart LR
   `cmd_read_capability_body`, gated by `agentic_core::open_targets::is_openable`
   — the WebView never reads arbitrary files.
 - Clipboard writes use `tauri-plugin-clipboard-manager`
-  (`clipboard-manager:allow-write-text` on the palette window only).
+  (`clipboard-manager:allow-write-text`, granted to the palette window via
+  the `palette` capability; also granted to the main window via the
+  `default` capability for the Sessions pane's Copy as Markdown — see
+  `docs/features/session-explorer.md`).
 - `tauri-plugin-shell` is still never added.
 
 ## Acceptance criteria

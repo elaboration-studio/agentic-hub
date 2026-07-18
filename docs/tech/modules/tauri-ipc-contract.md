@@ -55,6 +55,7 @@ Common error codes:
 | `url_not_openable` | A URL passed to `cmd_open_url` was not an absolute `http`/`https` URL with a host |
 | `open_failed` | The opener plugin could not open the path |
 | `reveal_failed` | The opener plugin could not reveal the path |
+| `session_source_unavailable` | A session's source file was missing or unreadable on a `cmd_get_session` detail read |
 | `invalid_shortcut` | The palette accelerator string in settings is malformed |
 | `shortcut_register_failed` | The global palette shortcut could not be registered with the OS |
 | `invalid_skill_ref` | A skill install reference failed `owner/repo` validation |
@@ -633,6 +634,88 @@ Records a `CommandPaletteUse` event when the user copies or pastes a command fro
 the palette. No-op when local tracing is disabled. `pasted` is `true` when the
 palette also posted the body into the focused app.
 
+## Session Explorer commands
+
+Read-only access to the local session history of Codex, Claude Code, and Cursor.
+A metadata-only SQLite index is the eventual plan (see
+[session-explorer.md](./session-explorer.md)) but is **not built yet** —
+`cmd_list_sessions` currently re-derives this shape live from each tool's
+source on every call. Transcript bodies are always read on demand and never
+persisted, regardless of the index's status.
+
+### `cmd_list_sessions(input: ListSessionsInput) -> SessionSummary[]`
+
+Returns normalized session metadata for the enabled tools, newest activity
+first, filtered by tool, workspace, a title/metadata query, and `range`.
+Sessions belonging to a tool disabled in Settings are excluded. `range` isn't
+just a post-filter: Claude/Codex skip a file's content entirely when its mtime
+falls outside `range` (a cheap stat, not a parse), and Cursor skips a composer
+once its resolved last-activity timestamp falls outside `range` — this is what
+makes the UI's `today` default actually reduce work instead of only
+trimming an already-fully-read list.
+
+```typescript
+type ListSessionsInput = {
+  tools?: ToolId[];        // omitted/undefined = all enabled tools; [] matches none, not "all"
+  workspace?: string;      // tildified path filter, or null
+  query?: string;          // matches title + metadata; under 2 chars = no filter
+  range: UsageDateRange;   // required — no server-side default; UI defaults to 'today'
+};
+
+type SessionSummary = {
+  sessionKey: string;      // "<tool>:<native session id>"
+  tool: ToolId;            // 'codex' | 'claude' | 'cursor'
+  title: string;           // best-available human title (metadata only)
+  workspace: string | null;// tildified cwd/folder, or null (unknown)
+  gitBranch: string | null;
+  model: string | null;
+  startedAt: string | null;// ISO 8601, or null if unresolvable
+  updatedAt: string | null;// ISO 8601, or null if unresolvable
+  messageCount: number;
+  sourcePath: string;      // absolute file path, or a store-specific locator (Cursor's composer id)
+};
+```
+
+### `cmd_get_session(input: { sessionKey: string }) -> SessionMessage[]`
+
+Resolves `sessionKey` against a fresh, unrestricted (`AllTime`) listing —
+independent of whatever `range` the Sessions pane is currently viewing, so a
+session the UI already knows about always resolves — then reads its
+transcript on demand from the source (JSONL lines, or every
+`bubbleId:<composerId>:*` row for Cursor) and returns role-attributed
+messages. Nothing is written back anywhere. Errors: `session_source_unavailable`
+when the session key no longer resolves or the source can't be read.
+
+```typescript
+type SessionMessage = {
+  role: 'user' | 'assistant' | 'tool' | 'system';
+  text: string;
+  toolName: string | null;
+  timestamp: string | null; // ISO 8601 when the source records one
+};
+```
+
+### `cmd_reindex_sessions(input: { tool?: ToolId }) -> SessionsStatus` (planned — not built yet)
+
+Recovery fallback: forces a full re-index, or a single-tool re-index when `tool`
+is set. Upserts changed entries and prunes rows whose source disappeared.
+Returns the refreshed status.
+
+### `cmd_sessions_status() -> SessionsStatus` (planned — not built yet)
+
+Returns the index path, per-tool indexed counts, and the last-index time.
+
+```typescript
+type SessionsStatus = {
+  dbPath: string;
+  indexedByTool: Record<ToolId, number>;
+  lastIndexedAt: string | null; // ISO 8601
+};
+```
+
+The Open and Reveal actions reuse `cmd_open_path` / `cmd_reveal_path` below;
+Session Explorer adds no new open/reveal surface.
+
 ## Open / reveal commands
 
 These let the UI open a capability's original file in the user's preferred
@@ -742,6 +825,18 @@ to the browser `prefers-color-scheme` media query for live OS changes.
 
 ```typescript
 type ColorSchemeChangedEvent = 'system' | 'light' | 'dark';
+```
+
+### `sessions-changed` (planned — not built yet)
+
+Emitted (no payload) after a scoped or full session re-index completes following
+a change under a tool's session store. The Sessions pane listens and refreshes
+its list in place. Depends on the watcher-driven incremental re-index, which
+isn't built yet (see [session-explorer.md](./session-explorer.md)'s delivery
+slices); today the Sessions pane only refreshes via its manual Refresh button.
+
+```typescript
+type SessionsChangedEvent = {};  // empty; receivers re-fetch
 ```
 
 ### `workspace-targets-changed`

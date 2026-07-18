@@ -3,4 +3,4 @@
 /**
  * Date window for usage dashboard queries.
  */
-export type UsageDateRange = "last7Days" | "last30Days" | "last90Days" | "allTime";
+export type UsageDateRange = "today" | "last7Days" | "last30Days" | "last90Days" | "allTime";

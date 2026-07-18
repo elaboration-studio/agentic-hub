@@ -214,6 +214,8 @@ pub fn run() {
             commands::cmd_query_usage_stats,
             commands::cmd_query_usage_dashboard,
             commands::cmd_record_command_palette_usage,
+            commands::cmd_list_sessions,
+            commands::cmd_get_session,
             commands::cmd_list_suites,
             commands::cmd_get_suite,
             commands::cmd_create_suite,
@@ -265,4 +267,36 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod capability_tests {
+    // Regression guard for a real incident: the Sessions pane's Copy as
+    // Markdown button (main window) failed at runtime with "clipboard-manager
+    // write_text not allowed on window main" because `capabilities/palette.json`
+    // granted `clipboard-manager:allow-write-text` only to the palette window.
+    // Tauri validates this JSON at build time but not against actual call
+    // sites, so a config regression here would otherwise only surface as a
+    // runtime ACL denial.
+    #[test]
+    fn main_window_capability_grants_clipboard_write_text() {
+        let raw = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/capabilities/default.json"
+        ))
+        .expect("read capabilities/default.json");
+        let json: serde_json::Value =
+            serde_json::from_str(&raw).expect("parse capabilities/default.json");
+
+        assert_eq!(json["windows"], serde_json::json!(["main"]));
+        let permissions = json["permissions"].as_array().expect("permissions array");
+        assert!(
+            permissions
+                .iter()
+                .any(|p| p == "clipboard-manager:allow-write-text"),
+            "main window capability (capabilities/default.json) must grant \
+             clipboard-manager:allow-write-text, or clipboard writes from the \
+             main window (e.g. Sessions pane's Copy as Markdown) are denied at runtime"
+        );
+    }
 }

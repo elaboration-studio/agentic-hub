@@ -15,6 +15,7 @@ use agentic_core::model::{
     SuiteBinding, SuiteDefinition, SuiteOwnership, SyncHooksResult, SyncRulesResult, ToolId,
     UsageDashboard, UsageDateRange, UsageStats, WorkspaceTarget, WorkspaceTargetsState,
 };
+use agentic_core::sessions::{SessionMessage, SessionSummary};
 use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
 use agentic_core::scaffold::{self, ScaffoldMode, ScaffoldResult};
@@ -586,6 +587,82 @@ pub async fn cmd_record_command_palette_usage(
     usage_collector::record_command_palette_usage(&capability_id, pasted, &scan.items)
         .map_err(|e| IpcError::new("usage_record_failed", e))?;
     Ok(())
+}
+
+// ---- Session Explorer -------------------------------------------------------
+//
+// Read-only browse/search of local Codex + Claude Code session history. See
+// docs/tech/modules/session-explorer.md. V1 has no persisted index yet, so
+// every call re-reads the source trees directly.
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSessionsInput {
+    #[serde(default)]
+    pub tools: Option<Vec<ToolId>>,
+    #[serde(default)]
+    pub workspace: Option<String>,
+    #[serde(default)]
+    pub query: Option<String>,
+    /// How far back to read. Required (no server-side default) so the caller
+    /// always states its own intent; the UI defaults to `today` to avoid
+    /// re-reading full session history on every open.
+    pub range: UsageDateRange,
+}
+
+#[tauri::command]
+pub async fn cmd_list_sessions(input: ListSessionsInput) -> IpcResult<Vec<SessionSummary>> {
+    let settings = Settings::load()?;
+    let enabled_tools: Vec<ToolId> = ToolId::ALL
+        .into_iter()
+        .filter(|tool| settings.tools.for_tool(*tool).enabled)
+        .collect();
+    let requested_tools = match input.tools {
+        Some(tools) => tools
+            .into_iter()
+            .filter(|tool| enabled_tools.contains(tool))
+            .collect(),
+        None => enabled_tools,
+    };
+
+    let sessions = agentic_core::list_all_sessions(input.range)?;
+    let filter = agentic_core::SessionListFilter {
+        tools: Some(requested_tools),
+        workspace: input.workspace,
+        query: input.query,
+    };
+    Ok(agentic_core::filter_sessions(sessions, &filter))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSessionInput {
+    pub session_key: String,
+}
+
+/// Resolves `sessionKey` against a fresh, unrestricted listing (always
+/// `AllTime`, independent of whatever range the Sessions pane is currently
+/// viewing — the pane already knows this session exists, so lookup must not
+/// silently fail just because the UI's range narrowed after the list loaded),
+/// then reads the transcript live from that session's source. A session key
+/// that no longer resolves (source deleted since the last list) reports the
+/// same `session_source_unavailable` error as a missing file.
+#[tauri::command]
+pub async fn cmd_get_session(input: GetSessionInput) -> IpcResult<Vec<SessionMessage>> {
+    let sessions = agentic_core::list_all_sessions(UsageDateRange::AllTime)?;
+    let summary = sessions
+        .into_iter()
+        .find(|s| s.session_key == input.session_key)
+        .ok_or_else(|| {
+            IpcError::new(
+                "session_source_unavailable",
+                "Session no longer available",
+            )
+        })?;
+    Ok(agentic_core::read_session_transcript(
+        summary.tool,
+        &summary.source_path,
+    )?)
 }
 
 // ---- Suites ---------------------------------------------------------------
