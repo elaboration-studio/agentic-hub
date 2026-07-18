@@ -361,10 +361,7 @@ impl UsageStore {
     /// Delete events that never resolved to a skill (`capability_id IS NULL`).
     pub fn purge_unresolved_events(&self) -> Result<u32> {
         let conn = self.connect()?;
-        let removed = conn.execute(
-            "DELETE FROM usage_events WHERE capability_id IS NULL",
-            [],
-        )?;
+        let removed = conn.execute("DELETE FROM usage_events WHERE capability_id IS NULL", [])?;
         Ok(removed as u32)
     }
 
@@ -433,9 +430,12 @@ impl UsageStore {
         let conn = self.connect()?;
         let terminal_filter = terminal_sql_filter();
         let range_clause = range_sql_clause(range);
-        let countable: Vec<&CapabilityItem> = items.iter().filter(|item| is_countable(item)).collect();
-        let item_map: HashMap<&str, &CapabilityItem> =
-            countable.iter().map(|item| (item.id.as_str(), *item)).collect();
+        let countable: Vec<&CapabilityItem> =
+            items.iter().filter(|item| is_countable(item)).collect();
+        let item_map: HashMap<&str, &CapabilityItem> = countable
+            .iter()
+            .map(|item| (item.id.as_str(), *item))
+            .collect();
 
         let total_events: i64 = conn.query_row(
             &format!("SELECT COUNT(*) FROM usage_events WHERE 1=1 {range_clause}"),
@@ -466,11 +466,9 @@ impl UsageStore {
 
         let mut by_kind = query_kind_buckets(&conn, &terminal_filter, &range_clause)?;
         by_kind.retain(|bucket| bucket.kind != "other");
-        let mut by_source_tool =
-            query_source_buckets(&conn, &terminal_filter, &range_clause)?;
+        let mut by_source_tool = query_source_buckets(&conn, &terminal_filter, &range_clause)?;
         let mut by_day = query_day_buckets(&conn, &terminal_filter, &range_clause)?;
-        let mut by_workspace =
-            query_workspace_buckets(&conn, &terminal_filter, &range_clause)?;
+        let mut by_workspace = query_workspace_buckets(&conn, &terminal_filter, &range_clause)?;
 
         let used_ids = query_used_capability_ids(&conn, &terminal_filter, &range_clause)?;
         let traced_capabilities = used_ids
@@ -484,6 +482,8 @@ impl UsageStore {
 
         let top_capabilities =
             query_top_capabilities(&conn, &terminal_filter, &range_clause, &item_map)?;
+        let today_top_capabilities =
+            query_top_capabilities(&conn, &terminal_filter, TODAY_CLAUSE, &item_map)?;
         let mut unused_capabilities: Vec<UsageUnusedRow> = countable
             .iter()
             .filter(|item| !used_ids.contains(&item.id))
@@ -521,11 +521,19 @@ impl UsageStore {
             by_source_tool,
             by_day,
             top_capabilities,
+            today_top_capabilities,
             unused_capabilities,
             by_workspace,
         })
     }
 }
+
+/// SQL clause restricting `usage_events` to today's local calendar date,
+/// independent of the dashboard's selected `UsageDateRange`. Stored timestamps
+/// are UTC, so both sides are converted to the machine's local timezone —
+/// otherwise the "today" boundary would flip at UTC midnight instead of the
+/// user's actual midnight.
+const TODAY_CLAUSE: &str = " AND date(timestamp, 'localtime') = date('now', 'localtime')";
 
 fn is_countable(item: &CapabilityItem) -> bool {
     matches!(
@@ -571,7 +579,8 @@ fn query_kind_buckets(
             execution_count: row.get::<_, i64>(1)? as u32,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 fn sort_kind_buckets(buckets: &mut [UsageKindBucket]) {
@@ -604,7 +613,8 @@ fn query_source_buckets(
             execution_count: row.get::<_, i64>(1)? as u32,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 fn query_day_buckets(
@@ -628,7 +638,8 @@ fn query_day_buckets(
             execution_count: row.get::<_, i64>(1)? as u32,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 fn query_workspace_buckets(
@@ -654,7 +665,8 @@ fn query_workspace_buckets(
             execution_count: row.get::<_, i64>(1)? as u32,
         })
     })?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 fn query_used_capability_ids(
@@ -673,7 +685,10 @@ fn query_used_capability_ids(
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?.into_iter().collect())
+    Ok(rows
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .collect())
 }
 
 fn query_top_capabilities(
@@ -795,15 +810,15 @@ fn resolve_for_kind<'a>(
     name: &str,
     kind: CapabilityKind,
 ) -> Option<&'a CapabilityItem> {
-    let filtered: Vec<&CapabilityItem> = items
-        .iter()
-        .filter(|item| item.kind == kind)
-        .collect();
+    let filtered: Vec<&CapabilityItem> = items.iter().filter(|item| item.kind == kind).collect();
     resolve_unique(filtered.iter().copied().filter(|item| item.name == name))
         .or_else(|| {
-            resolve_unique(filtered.iter().copied().filter(|item| {
-                item.relative_path.to_string_lossy().replace('\\', "/") == name
-            }))
+            resolve_unique(
+                filtered
+                    .iter()
+                    .copied()
+                    .filter(|item| item.relative_path.to_string_lossy().replace('\\', "/") == name),
+            )
         })
         .or_else(|| {
             resolve_unique(filtered.iter().copied().filter(|item| {
@@ -1255,8 +1270,12 @@ mod tests {
     fn purge_unattributed_events_keeps_ambiguous_skill_rows() {
         let (_dir, store) = store();
         let items = [skill("skill:tdd", "tdd", "tdd")];
-        store.insert_event(&event("tdd", "resolved"), &items).unwrap();
-        store.insert_event(&event("missing", "ambiguous"), &items).unwrap();
+        store
+            .insert_event(&event("tdd", "resolved"), &items)
+            .unwrap();
+        store
+            .insert_event(&event("missing", "ambiguous"), &items)
+            .unwrap();
         let noise = UsageEventInput {
             source_tool: "cursor".to_string(),
             event_type: "PostToolUse".to_string(),
@@ -1314,8 +1333,12 @@ mod tests {
     fn purge_unresolved_events_removes_only_unresolved_rows() {
         let (_dir, store) = store();
         let items = [skill("skill:tdd", "tdd", "tdd")];
-        store.insert_event(&event("tdd", "resolved"), &items).unwrap();
-        store.insert_event(&event("missing", "unresolved"), &items).unwrap();
+        store
+            .insert_event(&event("tdd", "resolved"), &items)
+            .unwrap();
+        store
+            .insert_event(&event("missing", "unresolved"), &items)
+            .unwrap();
 
         let removed = store.purge_unresolved_events().unwrap();
 
@@ -1434,12 +1457,10 @@ mod tests {
         assert_eq!(dashboard.by_kind.len(), 2);
         assert_eq!(dashboard.by_source_tool.len(), 2);
         assert_eq!(dashboard.top_capabilities.len(), 2);
-        assert!(
-            dashboard
-                .top_capabilities
-                .iter()
-                .any(|row| row.capability_id == "skill:root-cause-investigation")
-        );
+        assert!(dashboard
+            .top_capabilities
+            .iter()
+            .any(|row| row.capability_id == "skill:root-cause-investigation"));
         assert_eq!(dashboard.unused_capabilities.len(), 1);
         assert_eq!(
             dashboard.unused_capabilities[0].capability_id,
@@ -1447,5 +1468,37 @@ mod tests {
         );
         assert_eq!(dashboard.by_workspace.len(), 1);
         assert_eq!(dashboard.by_workspace[0].workspace, "~/Developer/demo");
+    }
+
+    #[test]
+    fn query_dashboard_today_top_capabilities_excludes_older_events() {
+        let (_dir, store) = store();
+        let items = [
+            skill("skill:root-cause-investigation", "root-cause-investigation", "root-cause-investigation"),
+            skill("skill:tdd", "tdd", "tdd"),
+        ];
+
+        let mut today = event("root-cause-investigation", "today-event");
+        today.timestamp = Some(crate::managed_copy::now_iso8601());
+        store.insert_event(&today, &items).unwrap();
+
+        let mut old = event("tdd", "old-event");
+        old.timestamp = Some("2020-01-01T00:00:00Z".to_string());
+        store.insert_event(&old, &items).unwrap();
+
+        let dashboard = store
+            .query_dashboard(&items, UsageDateRange::AllTime)
+            .unwrap();
+
+        assert_eq!(dashboard.top_capabilities.len(), 2, "both events count toward all-time top usage");
+        assert_eq!(
+            dashboard.today_top_capabilities.len(),
+            1,
+            "only the event timestamped today should appear"
+        );
+        assert_eq!(
+            dashboard.today_top_capabilities[0].capability_id,
+            "skill:root-cause-investigation"
+        );
     }
 }

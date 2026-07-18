@@ -22,7 +22,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TOOL_LABELS, KIND_LABEL, KIND_ORDER } from "@/shared";
+import { formatLocalTimestamp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useStatisticsStore } from "@/state/statistics";
 import type { CapabilityKind, ToolId, UsageDateRange, UsageTopRow } from "@/types";
@@ -55,6 +57,54 @@ function formatBuckets(row: UsageTopRow): string {
   return row.toolBuckets
     .map((bucket) => `${sourceToolLabel(bucket.sourceTool)} ${bucket.executionCount}`)
     .join(" · ");
+}
+
+function UsageCapabilityTable(props: {
+  rows: UsageTopRow[];
+  usesLabel: string;
+  emptyMessage: string;
+}) {
+  if (props.rows.length === 0) {
+    return <p className="text-sm text-muted-foreground">{props.emptyMessage}</p>;
+  }
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Capability</TableHead>
+          <TableHead>Source</TableHead>
+          <TableHead>Path</TableHead>
+          <TableHead className="text-right">{props.usesLabel}</TableHead>
+          <TableHead>Last used</TableHead>
+          <TableHead>By tool</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {props.rows.map((row) => (
+          <TableRow key={row.capabilityId}>
+            <TableCell>
+              <Badge
+                variant="outline"
+                className={cn("mr-2 uppercase", KIND_BADGE_COLOR[row.kind as CapabilityKind])}
+              >
+                {row.kind}
+              </Badge>
+              {row.name}
+            </TableCell>
+            <TableCell className="text-muted-foreground">{row.sourceLabel}</TableCell>
+            <TableCell className="font-mono text-xs text-muted-foreground">
+              {row.relativePath}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">{row.executionCount}</TableCell>
+            <TableCell className="text-xs text-muted-foreground">
+              {row.lastUsedAt ? formatLocalTimestamp(row.lastUsedAt) : "—"}
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground">{formatBuckets(row)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 }
 
 function StatTile(props: {
@@ -185,77 +235,167 @@ export function StatisticsPage() {
       )}
 
       {tracingEnabled && overview && (
-        <>
-          <Card className="p-4">
-            <CardHeader className="p-0 pb-3">
-              <CardTitle className={sectionTitle}>Usage overview</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
-              <StatTile label="Terminal events" value={overview.terminalEvents} />
-              <StatTile
-                label="Used capabilities"
-                value={overview.tracedCapabilities}
-                hint={`${overview.installedCountable} installed`}
-              />
-              <StatTile label="Unused installed" value={overview.unusedCountable} />
-              <StatTile
-                label="Unresolved events"
-                value={overview.unresolvedEvents}
-                hint={
-                  tracingStatus?.collectorRunning
-                    ? "Collector running"
-                    : "Collector stopped"
-                }
-              />
-            </CardContent>
-          </Card>
+        <Tabs defaultValue="overview">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="top-usage">Top usage</TabsTrigger>
+            <TabsTrigger value="unused">Unused</TabsTrigger>
+          </TabsList>
 
-          <div className="grid gap-[18px] lg:grid-cols-2">
+          <TabsContent value="overview" className="flex flex-col gap-[18px]">
             <Card className="p-4">
               <CardHeader className="p-0 pb-3">
-                <CardTitle className={sectionTitle}>Activity over time</CardTitle>
+                <CardTitle className={sectionTitle}>Usage overview</CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <ActivityChart data={dashboard.byDay} />
+              <CardContent className="grid gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
+                <StatTile label="Terminal events" value={overview.terminalEvents} />
+                <StatTile
+                  label="Used capabilities"
+                  value={overview.tracedCapabilities}
+                  hint={`${overview.installedCountable} installed`}
+                />
+                <StatTile label="Unused installed" value={overview.unusedCountable} />
+                <StatTile
+                  label="Unresolved events"
+                  value={overview.unresolvedEvents}
+                  hint={
+                    tracingStatus?.collectorRunning
+                      ? "Collector running"
+                      : "Collector stopped"
+                  }
+                />
               </CardContent>
             </Card>
+
             <Card className="p-4">
               <CardHeader className="p-0 pb-3">
-                <CardTitle className={sectionTitle}>By source tool</CardTitle>
+                <CardTitle className={sectionTitle}>Today's usage</CardTitle>
+                <p className={cn("mt-1", hint)}>
+                  Capabilities used so far today, regardless of the selected date range.
+                </p>
               </CardHeader>
               <CardContent className="p-0">
-                <SourceToolChart data={dashboard.bySourceTool} />
+                <UsageCapabilityTable
+                  rows={dashboard.todayTopCapabilities}
+                  usesLabel="Uses today"
+                  emptyMessage="No usage recorded yet today."
+                />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="activity" className="flex flex-col gap-[18px]">
+            <div className="grid gap-[18px] lg:grid-cols-2">
+              <Card className="p-4">
+                <CardHeader className="p-0 pb-3">
+                  <CardTitle className={sectionTitle}>Activity over time</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ActivityChart data={dashboard.byDay} />
+                </CardContent>
+              </Card>
+              <Card className="p-4">
+                <CardHeader className="p-0 pb-3">
+                  <CardTitle className={sectionTitle}>By source tool</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <SourceToolChart data={dashboard.bySourceTool} />
+                </CardContent>
+              </Card>
+              <Card className="p-4">
+                <CardHeader className="p-0 pb-3">
+                  <CardTitle className={sectionTitle}>By kind</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <KindBreakdownChart data={dashboard.byKind} />
+                </CardContent>
+              </Card>
+              <Card className="p-4">
+                <CardHeader className="p-0 pb-3">
+                  <CardTitle className={sectionTitle}>By workspace</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {dashboard.byWorkspace.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No workspace-tagged events.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Workspace</TableHead>
+                          <TableHead className="text-right">Uses</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {dashboard.byWorkspace.map((row) => (
+                          <TableRow key={row.workspace}>
+                            <TableCell className="font-mono text-xs">{row.workspace}</TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {row.executionCount}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="top-usage" className="flex flex-col gap-[18px]">
             <Card className="p-4">
               <CardHeader className="p-0 pb-3">
-                <CardTitle className={sectionTitle}>By kind</CardTitle>
+                <CardTitle className={sectionTitle}>Most used</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <KindBreakdownChart data={dashboard.byKind} />
+                <UsageCapabilityTable
+                  rows={dashboard.topCapabilities}
+                  usesLabel="Uses"
+                  emptyMessage="No attributed usage yet."
+                />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="unused" className="flex flex-col gap-[18px]">
             <Card className="p-4">
               <CardHeader className="p-0 pb-3">
-                <CardTitle className={sectionTitle}>By workspace</CardTitle>
+                <CardTitle className={sectionTitle}>Installed but unused</CardTitle>
+                <p className={cn("mt-1", hint)}>
+                  Skills, commands, and agents with zero attributed usage in this range.
+                </p>
               </CardHeader>
               <CardContent className="p-0">
-                {dashboard.byWorkspace.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No workspace-tagged events.</p>
+                {dashboard.unusedCapabilities.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Everything countable has been used.</p>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Workspace</TableHead>
-                        <TableHead className="text-right">Uses</TableHead>
+                        <TableHead>Capability</TableHead>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Path</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {dashboard.byWorkspace.map((row) => (
-                        <TableRow key={row.workspace}>
-                          <TableCell className="font-mono text-xs">{row.workspace}</TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {row.executionCount}
+                      {dashboard.unusedCapabilities.map((row) => (
+                        <TableRow key={row.capabilityId}>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "mr-2 uppercase",
+                                KIND_BADGE_COLOR[row.kind as CapabilityKind],
+                              )}
+                            >
+                              {row.kind}
+                            </Badge>
+                            {row.name}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{row.sourceLabel}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {row.relativePath}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -264,109 +404,8 @@ export function StatisticsPage() {
                 )}
               </CardContent>
             </Card>
-          </div>
-
-          <Card className="p-4">
-            <CardHeader className="p-0 pb-3">
-              <CardTitle className={sectionTitle}>Most used</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {dashboard.topCapabilities.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No attributed usage yet.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Capability</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Path</TableHead>
-                      <TableHead className="text-right">Uses</TableHead>
-                      <TableHead>Last used</TableHead>
-                      <TableHead>By tool</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dashboard.topCapabilities.map((row) => (
-                      <TableRow key={row.capabilityId}>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "mr-2 uppercase",
-                              KIND_BADGE_COLOR[row.kind as CapabilityKind],
-                            )}
-                          >
-                            {row.kind}
-                          </Badge>
-                          {row.name}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{row.sourceLabel}</TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {row.relativePath}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {row.executionCount}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {row.lastUsedAt ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {formatBuckets(row)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="p-4">
-            <CardHeader className="p-0 pb-3">
-              <CardTitle className={sectionTitle}>Installed but unused</CardTitle>
-              <p className={cn("mt-1", hint)}>
-                Skills, commands, and agents with zero attributed usage in this range.
-              </p>
-            </CardHeader>
-            <CardContent className="p-0">
-              {dashboard.unusedCapabilities.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Everything countable has been used.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Capability</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Path</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dashboard.unusedCapabilities.map((row) => (
-                      <TableRow key={row.capabilityId}>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "mr-2 uppercase",
-                              KIND_BADGE_COLOR[row.kind as CapabilityKind],
-                            )}
-                          >
-                            {row.kind}
-                          </Badge>
-                          {row.name}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{row.sourceLabel}</TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {row.relativePath}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
