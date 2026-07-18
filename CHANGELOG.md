@@ -8,6 +8,30 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-07-18
+
+### Added
+
+- **Statistics page sub-tabs.** Split the Statistics page into Overview,
+  Activity, Top usage, and Unused tabs so inactive sections unmount instead of
+  always rendering, reducing initial chart/table mount cost.
+- **Today's usage table.** Overview tab shows capabilities used today (local
+  calendar day), independent of the selected date range, backed by a new
+  `todayTopCapabilities` field on `UsageDashboard`.
+
+### Changed
+
+- **`usage_tracing.enabled` now defaults to `true`.** New installs and configs
+  missing the `usage_tracing` block start with local usage tracing on. Existing
+  configs with an explicit `enabled: false` are unaffected.
+- Timestamps in Statistics and the Manager matrix now format in local time via
+  `formatLocalTimestamp` instead of showing raw ISO strings.
+
+### Fixed
+
+- `TODAY_CLAUSE` now compares dates using `'localtime'` instead of UTC, so the
+  "today" boundary matches the machine's actual calendar day.
+
 ## [0.13.1] — 2026-07-17
 
 ### Added
