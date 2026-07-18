@@ -70,6 +70,7 @@ rules, hooks) across tools from one place.
 | Config page (per-tool paths, editor, suite/skills config) | ✅ | `0.1.0` | [PRODUCT.md](../../PRODUCT.md) |
 | App-wide color scheme (light, dark, follow system) | ✅ | `0.13.0` | [color-scheme](../features/color-scheme.md) |
 | Local usage tracing collector health checks and recovery | ✅ | `0.13.1` | [local usage tracing](../features/local-skill-usage-tracing.md) |
+| Statistics sub-tabs, today's-usage table, tracing enabled by default | ✅ | `0.14.0` | [local usage tracing](../features/local-skill-usage-tracing.md) |
 | macOS signed + notarized DMG pipeline | ✅ | `0.1.2` | [DEPLOYMENT.md](../../DEPLOYMENT.md) |
 | Linux `.deb` / `.AppImage` artifacts | 🔭 | M6 | backlog X4 |
 | Auto-update (`tauri-plugin-updater`) | 🔭 | M6 | backlog X5 |

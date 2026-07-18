@@ -12,25 +12,27 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ### Added
 
-- **Statistics page sub-tabs.** Split the Statistics page into Overview,
-  Activity, Top usage, and Unused tabs so inactive sections unmount instead of
-  always rendering, reducing initial chart/table mount cost.
-- **Today's usage table.** Overview tab shows capabilities used today (local
-  calendar day), independent of the selected date range, backed by a new
-  `todayTopCapabilities` field on `UsageDashboard`.
+- **Statistics page sub-tabs.** Usage data is now organized into Overview,
+  Activity, Top usage, and Unused tabs instead of one long scroll — switching
+  tabs is faster since only the tab you're viewing renders its charts/tables.
+- **Today's usage table.** The Overview tab now shows which capabilities
+  you've used today, independent of whatever date range you have selected —
+  handy for a quick end-of-day check without changing the range filter.
 
 ### Changed
 
-- **`usage_tracing.enabled` now defaults to `true`.** New installs and configs
-  missing the `usage_tracing` block start with local usage tracing on. Existing
-  configs with an explicit `enabled: false` are unaffected.
-- Timestamps in Statistics and the Manager matrix now format in local time via
-  `formatLocalTimestamp` instead of showing raw ISO strings.
+- **Local usage tracing is now on by default.** New installs, and any settings
+  file predating this option, start collecting local skill/tool usage
+  automatically. It's local-only (SQLite, never leaves your machine) and can
+  be turned off any time in Config → Local usage tracing. Settings files that
+  already chose "off" explicitly keep that choice.
+- Timestamps in Statistics and the Manager matrix now show in your local time
+  instead of raw UTC.
 
 ### Fixed
 
-- `TODAY_CLAUSE` now compares dates using `'localtime'` instead of UTC, so the
-  "today" boundary matches the machine's actual calendar day.
+- The "Today's usage" table now matches your machine's local calendar day
+  instead of UTC, so it no longer drifts by a day around midnight.
 
 ## [0.13.1] — 2026-07-17
 

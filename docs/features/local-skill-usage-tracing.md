@@ -24,7 +24,7 @@ which capabilities are worth maintaining.
 
 ### In scope
 
-- Opt-in local usage tracing, disabled by default.
+- Local usage tracing, enabled by default (opt-out via Config).
 - Local SQLite persistence under `~/.agentic-hub/usage/trace.db`.
 - Loopback-only event collection from managed tracer hooks.
 - Skill usage counts joined onto existing Manager matrix rows.
@@ -70,14 +70,18 @@ timestamp. Rule and hook rows show `-` in v1.
 
 The **Statistics** tab (beside Config) shows a **resource inventory** section
 (always visible) with total resources, per-kind counts, enabled tools, and
-starred skills. When local usage tracing is enabled, dashboard cards and
-recharts charts over the same local trace database show daily activity, usage by
-kind and source tool, workspace breakdown, top-used capabilities, and
-installed-but-unused rows. Date range filters default to the last 30 days.
+starred skills. When local usage tracing is enabled, the rest of the page is
+split into sub-tabs — **Overview** (usage overview tiles plus a **today's
+usage** table scoped to the local calendar day, independent of the date
+range filter), **Activity** (daily activity, kind/source-tool/workspace
+charts), **Top usage** (most-used capabilities), and **Unused**
+(installed-but-unused rows) — over the same local trace database. Inactive
+sub-tabs don't render, so opening Statistics only mounts the Overview tab's
+charts and tables. Date range filters default to the last 30 days.
 
 ## Acceptance criteria
 
-- [ ] Existing settings files load with tracing disabled by default.
+- [ ] New installs and settings files predating the `usage_tracing` block load with tracing enabled by default; settings files with an explicit `enabled: false` keep that choice.
 - [ ] Enabling tracing starts the local collector and installs managed tracer hooks for supported enabled tools.
 - [ ] Disabling tracing stops the collector and removes managed tracer hooks.
 - [ ] A valid terminal event with a resolvable skill or agent name is stored and increments that row.
@@ -95,6 +99,8 @@ installed-but-unused rows. Date range filters default to the last 30 days.
 - [ ] Statistics date-range filters reload dashboard aggregates without leaving the page.
 - [ ] Statistics shows an enable-tracing prompt when local tracing is disabled.
 - [ ] Statistics shows resource inventory (total resources, per-kind counts, enabled tools, starred skills) regardless of tracing state.
+- [ ] Statistics splits usage content into Overview/Activity/Top usage/Unused sub-tabs; only the active sub-tab's charts and tables render.
+- [ ] Statistics Overview shows a today's-usage table scoped to the local calendar day, independent of the selected date range.
 
 ## Dependencies
 
@@ -110,6 +116,7 @@ installed-but-unused rows. Date range filters default to the last 30 days.
 | V1 | Local store, collector, config toggle, managed hooks, matrix usage count | Complete useful loop without a new analytics surface |
 | V1.1 | Statistics page with date filters, charts, and drilldown tables | Shipped: overview, recharts, top-used, unused-installed |
 | V1.2 | Collector health checks and recovery | Shipped: authenticated probe, hourly recovery, and restart guidance |
+| V1.3 | Statistics sub-tabs, today's-usage table, tracing on by default | Shipped: Overview/Activity/Top usage/Unused tabs, local-day usage table, opt-out default |
 | V2 | MCP wrapper telemetry and OpenTelemetry export | Broader observability after the local primitive is stable |
 
 ## Risks and edge cases
