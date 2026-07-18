@@ -5,30 +5,24 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.14.0] — 2026-07-18
+## [0.15.0] — 2026-07-19
 
 ### Added
 
-- **Statistics page sub-tabs.** Usage data is now split into Overview,
-  Activity, Top usage, and Unused tabs instead of one long scroll — inactive
-  tabs don't render, so charts and tables only mount when you open them.
-- **Today's usage table.** The Overview tab now shows which capabilities were
-  used today (local time), independent of the selected date range.
-
-### Changed
-
-- **Local usage tracing is now on by default.** New installs, and any config
-  file predating this setting, start with local skill/tool usage tracing
-  enabled — this writes managed tracer hooks into your Codex/Claude/Cursor
-  configs and stores events in a local SQLite database. Nothing leaves your
-  machine, and it can be turned off in Config → Local usage tracing.
-- Timestamps across Statistics and the Manager matrix now render in your
-  local time instead of raw UTC.
+- **Session Explorer.** A new Sessions pane in the Resources rail browses
+  your local Codex, Claude Code, and Cursor coding-agent session history —
+  a filterable list plus a read-only, on-demand transcript view. Nothing is
+  uploaded; content is read live from each tool's own files, defaulting to
+  Today (rolling 24 hours) so opening the pane stays fast.
+- **Copy as Markdown.** The Sessions pane's transcript view can copy an
+  entire session (title, metadata, and every message) to the clipboard as
+  one Markdown document, ready to paste elsewhere.
 
 ### Fixed
 
-- The "Today's usage" boundary now uses the machine's local calendar day
-  instead of UTC, matching the locally-formatted timestamps shown next to it.
+- The main window's Tauri capability now grants clipboard write access
+  (previously scoped to the command palette window only), so Copy as
+  Markdown can actually write to the clipboard.
 
 ### Known Issues
 
