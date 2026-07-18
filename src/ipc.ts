@@ -22,6 +22,8 @@ import type {
   ScaffoldMode,
   ScaffoldResult,
   ScanResult,
+  SessionMessage,
+  SessionSummary,
   Settings,
   SkillCliStatus,
   SkillFavorite,
@@ -228,6 +230,21 @@ export const queryUsageDashboard = (
   items: CapabilityItem[],
   range: UsageDateRange,
 ): Promise<UsageDashboard> => invoke("cmd_query_usage_dashboard", { items, range });
+
+// ---- Session Explorer -------------------------------------------------------
+
+export interface ListSessionsInput {
+  tools?: ToolId[];
+  workspace?: string;
+  query?: string;
+  range: UsageDateRange;
+}
+
+export const listSessions = (input: ListSessionsInput): Promise<SessionSummary[]> =>
+  invoke("cmd_list_sessions", { input });
+
+export const getSession = (sessionKey: string): Promise<SessionMessage[]> =>
+  invoke("cmd_get_session", { input: { sessionKey } });
 
 export const recordCommandPaletteUsage = (
   capabilityId: string,

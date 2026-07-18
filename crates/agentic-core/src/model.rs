@@ -647,6 +647,8 @@ pub struct UsageStats {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UsageDateRange {
+    /// Rolling 24 hours (not calendar-day), i.e. `range_days` = 1.
+    Today,
     Last7Days,
     Last30Days,
     Last90Days,

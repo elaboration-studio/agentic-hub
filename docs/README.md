@@ -41,6 +41,7 @@ User-facing feature designs aligned with each milestone.
 - [antigravity-tool-adapter.md](features/antigravity-tool-adapter.md) — opt-in Google Antigravity projection and workspace inventory
 - [local-skill-usage-tracing.md](features/local-skill-usage-tracing.md) — local skill usage counts (enabled by default, opt-out in Config) surfaced in the Manager matrix and Statistics tabs
 - [color-scheme.md](features/color-scheme.md) — app-wide light, dark, and follow-system appearance
+- [session-explorer.md](features/session-explorer.md) — read-only, local browse/search of Codex, Claude Code, and Cursor session history in the Resources panel
 
 ### `tech/modules/` — subsystem deep dives
 
@@ -63,6 +64,7 @@ Detailed technical design for each subsystem of the projection engine and adjace
 - [tauri-ipc-contract.md](tech/modules/tauri-ipc-contract.md) — complete IPC command surface and event schemas
 - [agentic-demo-scaffold.md](tech/modules/agentic-demo-scaffold.md) — bundled tree embedding, scaffold modes, atomic writes
 - [local-usage-tracing.md](tech/modules/local-usage-tracing.md) — local SQLite usage store, loopback collector, and skill-count query contract
+- [session-explorer.md](tech/modules/session-explorer.md) — per-tool session readers, metadata-only SQLite index, and on-demand transcript read contract
 
 ### `tech/reference/` — stable reference
 

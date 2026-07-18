@@ -27,6 +27,7 @@ pub mod reconcile;
 pub mod rule_sync;
 pub mod scaffold;
 pub mod scanner;
+pub mod sessions;
 pub mod settings;
 pub mod shell_env;
 pub mod skill_favorites;
@@ -67,6 +68,10 @@ pub use planner::{build_plan, inspect_tool};
 pub use reconcile::{reconcile_all, reconcile_tool, ReconcileToolOutcome};
 pub use scaffold::{scaffold_demo, ScaffoldMode, ScaffoldResult};
 pub use scanner::{scan, scan_all};
+pub use sessions::{
+    filter_sessions, list_all_sessions, read_session_transcript, SessionListFilter,
+    SessionMessage, SessionRole, SessionSummary,
+};
 pub use settings::{
     ColorScheme, Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings,
     UsageTracingConfig,

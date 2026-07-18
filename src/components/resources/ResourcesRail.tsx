@@ -2,10 +2,10 @@
 // Tools preflight (always available) and the skills.sh browser (only when that
 // source is enabled in Config). Mirrors the Manager's ScopeRail look.
 
-import { Sparkles, Wrench } from "lucide-react";
+import { History, Sparkles, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type ResourcePane = "tools" | "skills";
+export type ResourcePane = "tools" | "skills" | "sessions";
 
 interface ResourcesRailProps {
   pane: ResourcePane;
@@ -36,6 +36,13 @@ export function ResourcesRail(props: ResourcesRailProps) {
             subtitle="skills.sh"
           />
         )}
+        <RailItem
+          active={props.pane === "sessions"}
+          onClick={() => props.onSelect("sessions")}
+          icon={<History className="size-4 shrink-0 text-muted-foreground" />}
+          title="Sessions"
+          subtitle="Codex, Claude, Cursor"
+        />
       </ul>
     </aside>
   );

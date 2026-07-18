@@ -44,6 +44,9 @@ pub enum CoreError {
     #[error("usage store failed: {0}")]
     UsageStore(String),
 
+    #[error("session source unavailable: {0}")]
+    SessionSourceUnavailable(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 

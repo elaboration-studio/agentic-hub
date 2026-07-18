@@ -544,6 +544,7 @@ fn is_countable(item: &CapabilityItem) -> bool {
 
 fn range_sql_clause(range: UsageDateRange) -> String {
     match range {
+        UsageDateRange::Today => " AND timestamp >= datetime('now', '-1 days')".to_string(),
         UsageDateRange::Last7Days => " AND timestamp >= datetime('now', '-7 days')".to_string(),
         UsageDateRange::Last30Days => " AND timestamp >= datetime('now', '-30 days')".to_string(),
         UsageDateRange::Last90Days => " AND timestamp >= datetime('now', '-90 days')".to_string(),
