@@ -595,10 +595,13 @@ mod tests {
     fn scan_uses_resolved_sources() {
         let dir = tempfile::tempdir().unwrap();
         write(&dir.path().join("skills/a/SKILL.md"), "# a");
-        let settings = Settings {
+        let mut settings = Settings {
             shared_root: dir.path().to_path_buf(),
             ..Settings::default()
         };
+        // This test targets source resolution, not usage tracing; disable
+        // tracing so its default-on virtual hook items don't inflate the count.
+        settings.usage_tracing.enabled = false;
         let result = scan(&settings);
         assert_eq!(result.items.len(), 1);
         assert_eq!(result.items[0].id, "skill:a");
