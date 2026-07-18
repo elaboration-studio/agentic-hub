@@ -193,6 +193,7 @@ export function SessionsPage() {
                     <button
                       type="button"
                       onClick={() => void select(session.sessionKey)}
+                      aria-current={session.sessionKey === selectedKey ? "true" : undefined}
                       className={cn(
                         "flex w-full flex-col gap-1 px-3 py-2.5 text-left hover:bg-accent",
                         session.sessionKey === selectedKey && "bg-primary/10",
@@ -234,6 +235,7 @@ export function SessionsPage() {
             </div>
           ) : (
             <SessionDetail
+              key={selected.sessionKey}
               session={selected}
               messages={messages}
               loading={messagesLoading}
@@ -251,6 +253,7 @@ function FilterChip(props: { active: boolean; onClick: () => void; label: string
     <button
       type="button"
       onClick={props.onClick}
+      aria-pressed={props.active}
       className={cn(
         "rounded-full border px-2.5 py-1 text-[11px] font-medium text-muted-foreground",
         props.active && "border-primary bg-primary/10 text-foreground",

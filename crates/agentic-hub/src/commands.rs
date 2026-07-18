@@ -605,7 +605,7 @@ pub struct ListSessionsInput {
     #[serde(default)]
     pub query: Option<String>,
     /// How far back to read. Required (no server-side default) so the caller
-    /// always states its own intent; the UI defaults to `last7Days` to avoid
+    /// always states its own intent; the UI defaults to `today` to avoid
     /// re-reading full session history on every open.
     pub range: UsageDateRange,
 }

@@ -724,14 +724,20 @@ fn cursor_json_column(row: &Row<'_>, idx: usize) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
+/// A `bubbleId:<composerId>:<bubbleId>` key's composer id starts right after
+/// the 9-char `"bubbleId:"` prefix (SQL `substr` is 1-indexed, so position 10)
+/// and is a 36-char UUID. Shared by every query below that groups bubbles by
+/// composer without reading `value`.
+const CURSOR_BUBBLE_COMPOSER_ID_SQL: &str = "substr(key, 10, 36)";
+
 /// Bubble count per composer id. Reads only `key` text (fast: ~0.03s over
 /// 67k rows on a real profile), never `value`, so this stays cheap regardless
 /// of how much transcript content a machine has accumulated.
 fn cursor_bubble_counts(conn: &Connection) -> std::collections::HashMap<String, u32> {
     let mut out = std::collections::HashMap::new();
-    let Ok(mut stmt) = conn.prepare(
-        "SELECT substr(key, 10, 36) AS cid, COUNT(*) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' GROUP BY cid",
-    ) else {
+    let Ok(mut stmt) = conn.prepare(&format!(
+        "SELECT {CURSOR_BUBBLE_COMPOSER_ID_SQL} AS cid, COUNT(*) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' GROUP BY cid",
+    )) else {
         return out;
     };
     let Ok(rows) =
@@ -753,10 +759,10 @@ fn cursor_edge_bubbles(conn: &Connection, earliest: bool) -> std::collections::H
     let agg = if earliest { "MIN" } else { "MAX" };
     let sql = format!(
         r#"
-        SELECT substr(key, 10, 36) AS cid, value
+        SELECT {CURSOR_BUBBLE_COMPOSER_ID_SQL} AS cid, value
         FROM cursorDiskKV
         WHERE rowid IN (
-            SELECT {agg}(rowid) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' GROUP BY substr(key, 10, 36)
+            SELECT {agg}(rowid) FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' GROUP BY {CURSOR_BUBBLE_COMPOSER_ID_SQL}
         )
         "#
     );
@@ -1201,6 +1207,17 @@ mod tests {
         assert_eq!(by_query.len(), 1);
         assert_eq!(by_query[0].session_key, "claude:a");
 
+        // A query under two characters matches everything (mirrors the skills
+        // search convention of not firing on a bare keystroke).
+        let by_short_query = filter_sessions(
+            sessions.clone(),
+            &SessionListFilter {
+                query: Some("d".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(by_short_query.len(), 2);
+
         let by_workspace = filter_sessions(
             sessions,
             &SessionListFilter {
@@ -1215,6 +1232,14 @@ mod tests {
     #[test]
     fn read_session_transcript_reports_missing_source() {
         let err = read_session_transcript(ToolId::Claude, "/no/such/path.jsonl").unwrap_err();
+        assert!(matches!(err, CoreError::SessionSourceUnavailable(_)));
+    }
+
+    #[test]
+    fn read_session_transcript_reports_unsupported_tool() {
+        // No session reader exists for tools other than Claude/Codex/Cursor;
+        // this must report the same typed error, never panic/unreachable.
+        let err = read_session_transcript(ToolId::Kiro, "anything").unwrap_err();
         assert!(matches!(err, CoreError::SessionSourceUnavailable(_)));
     }
 

@@ -1502,4 +1502,31 @@ mod tests {
             "skill:root-cause-investigation"
         );
     }
+
+    #[test]
+    fn query_dashboard_today_range_excludes_events_older_than_24h() {
+        let (_dir, store) = store();
+        let items = [skill(
+            "skill:root-cause-investigation",
+            "root-cause-investigation",
+            "root-cause-investigation",
+        )];
+
+        let mut recent = event("root-cause-investigation", "recent-event");
+        recent.timestamp = Some(crate::managed_copy::now_iso8601());
+        store.insert_event(&recent, &items).unwrap();
+
+        let mut old = event("root-cause-investigation", "old-event");
+        old.timestamp = Some("2020-01-01T00:00:00Z".to_string());
+        store.insert_event(&old, &items).unwrap();
+
+        let dashboard = store
+            .query_dashboard(&items, UsageDateRange::Today)
+            .unwrap();
+
+        assert_eq!(
+            dashboard.overview.terminal_events, 1,
+            "UsageDateRange::Today's `-1 days` cutoff must exclude the 2020 event"
+        );
+    }
 }

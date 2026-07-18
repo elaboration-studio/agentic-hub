@@ -651,15 +651,15 @@ Sessions belonging to a tool disabled in Settings are excluded. `range` isn't
 just a post-filter: Claude/Codex skip a file's content entirely when its mtime
 falls outside `range` (a cheap stat, not a parse), and Cursor skips a composer
 once its resolved last-activity timestamp falls outside `range` — this is what
-makes the UI's `last7Days` default actually reduce work instead of only
+makes the UI's `today` default actually reduce work instead of only
 trimming an already-fully-read list.
 
 ```typescript
 type ListSessionsInput = {
-  tools?: ToolId[];        // null/empty = all enabled tools
+  tools?: ToolId[];        // omitted/undefined = all enabled tools; [] matches none, not "all"
   workspace?: string;      // tildified path filter, or null
   query?: string;          // matches title + metadata; under 2 chars = no filter
-  range: UsageDateRange;   // required — no server-side default; UI defaults to 'last7Days'
+  range: UsageDateRange;   // required — no server-side default; UI defaults to 'today'
 };
 
 type SessionSummary = {
@@ -827,11 +827,13 @@ to the browser `prefers-color-scheme` media query for live OS changes.
 type ColorSchemeChangedEvent = 'system' | 'light' | 'dark';
 ```
 
-### `sessions-changed`
+### `sessions-changed` (planned — not built yet)
 
 Emitted (no payload) after a scoped or full session re-index completes following
 a change under a tool's session store. The Sessions pane listens and refreshes
-its list in place. See [session-explorer.md](./session-explorer.md).
+its list in place. Depends on the watcher-driven incremental re-index, which
+isn't built yet (see [session-explorer.md](./session-explorer.md)'s delivery
+slices); today the Sessions pane only refreshes via its manual Refresh button.
 
 ```typescript
 type SessionsChangedEvent = {};  // empty; receivers re-fetch
