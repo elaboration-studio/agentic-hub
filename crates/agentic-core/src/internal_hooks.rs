@@ -31,10 +31,7 @@ pub fn items(settings: &Settings) -> Vec<CapabilityItem> {
 
 pub fn append_items(existing_items: &mut Vec<CapabilityItem>, settings: &Settings) {
     for item in items(settings) {
-        if !existing_items
-            .iter()
-            .any(|existing| existing.id == item.id)
-        {
+        if !existing_items.iter().any(|existing| existing.id == item.id) {
             existing_items.push(item);
         }
     }

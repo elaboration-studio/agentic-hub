@@ -56,8 +56,9 @@ impl ClientTelemetryStore {
 
     pub fn read(&self) -> Result<ClientTelemetryState> {
         match fs::read_to_string(&self.path) {
-            Ok(contents) => serde_json::from_str(&contents)
-                .map_err(|e| CoreError::StateParse(e.to_string())),
+            Ok(contents) => {
+                serde_json::from_str(&contents).map_err(|e| CoreError::StateParse(e.to_string()))
+            }
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(ClientTelemetryState::default()),
             Err(e) => Err(CoreError::Io(e)),
         }
@@ -110,10 +111,7 @@ mod tests {
             Some("2026-07-07"),
             "2026-07-07"
         ));
-        assert!(should_record_daily_active(
-            Some("2026-07-06"),
-            "2026-07-07"
-        ));
+        assert!(should_record_daily_active(Some("2026-07-06"), "2026-07-07"));
     }
 
     #[test]

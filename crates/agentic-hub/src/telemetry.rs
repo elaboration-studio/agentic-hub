@@ -9,9 +9,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use agentic_core::{
-    should_record_daily_active, utc_date_yyyy_mm_dd, ClientTelemetryStore,
-};
+use agentic_core::{should_record_daily_active, utc_date_yyyy_mm_dd, ClientTelemetryStore};
 use serde_json::json;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_aptabase::EventTracker;
