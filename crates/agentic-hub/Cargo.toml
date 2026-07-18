@@ -1,6 +1,6 @@
 [package]
 name = "agentic-hub"
-version = "0.13.0"
+version = "0.14.0"
 description = "Tauri 2.x desktop shell for Agentic Hub. Thin #[tauri::command] wrappers over agentic-core."
 edition.workspace = true
 license.workspace = true
@@ -43,6 +43,7 @@ tauri-plugin-updater = "2"
 # `run()`.
 tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
 uuid = { version = "1", features = ["v4"] }
+tauri-plugin-notification = "2"
 # macOS-only: subclass the palette window to a non-activating NSPanel so it can
 # float over other apps' full-screen Spaces (standard NSWindow cannot — see
 # tauri#11488). Encapsulates the objc FFI, keeping this crate `unsafe`-free.

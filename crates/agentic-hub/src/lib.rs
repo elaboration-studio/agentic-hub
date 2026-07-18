@@ -54,6 +54,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_notification::init())
         // Self-update: the updater checks the R2 feed and swaps the bundle; the
         // process plugin relaunches into the new version once installed. The
         // check is driven from the frontend (launch / reopen / weekly).
@@ -119,6 +120,7 @@ pub fn run() {
                 let _ = app.state::<UsageCollectorState>().apply_settings(&settings);
                 let _ = usage_collector::sync_tracer_hooks(&settings);
             }
+            usage_collector::start_health_checker(app.handle().clone());
             // Seed the live telemetry consent flag, then record app start if the
             // user has opted in. No-op (and no network) when disabled.
             let telemetry_on = settings.telemetry.enabled;

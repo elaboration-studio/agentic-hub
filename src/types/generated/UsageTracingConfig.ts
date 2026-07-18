@@ -3,6 +3,6 @@ import type { ToolId } from "./ToolId";
 
 /**
  * Local-only skill/tool usage tracing. Separate from anonymous Aptabase
- * telemetry: this never leaves the machine and is disabled by default.
+ * telemetry: this never leaves the machine and is enabled by default.
  */
 export type UsageTracingConfig = { enabled: boolean, captureTools: Array<ToolId>, retentionDays: number, collectorPort: number, collectorToken: string, };

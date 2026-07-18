@@ -161,7 +161,7 @@ impl Default for TelemetryConfig {
 }
 
 /// Local-only skill/tool usage tracing. Separate from anonymous Aptabase
-/// telemetry: this never leaves the machine and is disabled by default.
+/// telemetry: this never leaves the machine and is enabled by default.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
@@ -170,7 +170,7 @@ impl Default for TelemetryConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageTracingConfig {
-    #[serde(default)]
+    #[serde(default = "default_usage_tracing_enabled")]
     pub enabled: bool,
     #[serde(default = "default_usage_capture_tools")]
     pub capture_tools: Vec<ToolId>,
@@ -185,13 +185,17 @@ pub struct UsageTracingConfig {
 impl Default for UsageTracingConfig {
     fn default() -> Self {
         UsageTracingConfig {
-            enabled: false,
+            enabled: default_usage_tracing_enabled(),
             capture_tools: default_usage_capture_tools(),
             retention_days: default_usage_retention_days(),
             collector_port: default_usage_collector_port(),
             collector_token: String::new(),
         }
     }
+}
+
+fn default_usage_tracing_enabled() -> bool {
+    true
 }
 
 fn default_usage_capture_tools() -> Vec<ToolId> {
@@ -880,7 +884,13 @@ impl Settings {
             paste_into_focused: false,
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
-            usage_tracing: UsageTracingConfig::default(),
+            // Sandboxed settings are used across many unrelated reconciliation
+            // tests; keep tracing off here so its managed hook doesn't leak
+            // into their expectations. Tests exercising tracing opt in explicitly.
+            usage_tracing: UsageTracingConfig {
+                enabled: false,
+                ..UsageTracingConfig::default()
+            },
             main_window: None,
             tools: ToolsSettings {
                 codex: tool("codex"),
@@ -1308,6 +1318,45 @@ mod tests {
         .unwrap();
         let loaded = Settings::load_from(&path).unwrap();
         assert!(loaded.telemetry.enabled, "absent block defaults to on");
+    }
+
+    #[test]
+    fn usage_tracing_defaults_on_and_roundtrips() {
+        let s = Settings::default();
+        assert!(s.usage_tracing.enabled, "usage tracing is on by default");
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let configured = Settings {
+            usage_tracing: UsageTracingConfig {
+                enabled: false,
+                ..UsageTracingConfig::default()
+            },
+            ..Settings::default()
+        };
+        configured.save_to(&path).unwrap();
+        let reloaded = Settings::load_from(&path).unwrap();
+        assert_eq!(reloaded.usage_tracing, configured.usage_tracing);
+        assert!(!reloaded.usage_tracing.enabled);
+    }
+
+    #[test]
+    fn legacy_config_without_usage_tracing_block_defaults_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        // A config written before the usage_tracing block existed (no key).
+        fs::write(
+            &path,
+            r#"{ "sharedRoot": "/tmp/agentic", "tools": {
+                "codex": {"enabled": true, "skillsPath": "/c/skills", "agentsPath": "/c/agents", "rulesPath": "/c/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "claude": {"enabled": true, "skillsPath": "/cl/skills", "agentsPath": "/cl/agents", "rulesPath": "/cl/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "cursor": {"enabled": true, "skillsPath": "/cu/skills", "agentsPath": "/cu/agents", "rulesPath": "/cu/rules", "instructionsPath": null, "hooksEnabled": true, "hooksFile": null},
+                "openclaw": {"enabled": false, "skillsPath": "/o/skills", "agentsPath": "/o/agents", "rulesPath": "/o/rules", "instructionsPath": null, "hooksEnabled": false, "hooksFile": null}
+            } }"#,
+        )
+        .unwrap();
+        let loaded = Settings::load_from(&path).unwrap();
+        assert!(loaded.usage_tracing.enabled, "absent block defaults to on");
     }
 
     #[test]

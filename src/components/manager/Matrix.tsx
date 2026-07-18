@@ -76,6 +76,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatLocalTimestamp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ToolCells } from "./ToolCells";
 
@@ -650,7 +651,7 @@ function UsageCell({ item, stats }: { item: CapabilityItem; stats?: UsageStats }
             ))}
             {stats.lastUsedAt && (
               <div className="border-t pt-1 text-[11px] text-muted-foreground">
-                Last used {stats.lastUsedAt}
+                Last used {formatLocalTimestamp(stats.lastUsedAt)}
               </div>
             )}
           </div>

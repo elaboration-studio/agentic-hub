@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-07-06
+Last Updated: 2026-07-17
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [docs/features/local-skill-usage-tracing.md](../../features/local-skill-usage-tracing.md)
 Related Docs: [docs/tech/modules/hook-projection-sync.md](./hook-projection-sync.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
@@ -99,6 +99,22 @@ The collector binds only to `127.0.0.1`. Requests without the configured token
 return `401`. Malformed JSON returns `400`. Storage failures return `202` after
 logging because hook failures must not block the agentic tool.
 
+## Health and recovery
+
+`GET /health` is a loopback-only, token-authenticated endpoint that returns
+`204 No Content` and never writes an event. `collectorRunning` means this probe
+succeeds within its short timeout; it does not mean merely that the app still
+holds a shutdown sender.
+
+The app owns one hourly health task for its lifetime. It skips disabled tracing.
+For an unhealthy enabled collector, it reloads settings before each of three
+restart-and-probe attempts, waiting five seconds between attempts. Recovery only
+restarts the collector; it never rewrites managed tracer hooks. A successful
+probe clears the current outage. Three failed attempts emit one
+`usage-tracing-health-failed` event for that outage, which the main window turns
+into a native desktop notification and persistent restart prompt. Disabling
+tracing clears the outage state. A fully quit app cannot run this task.
+
 ## Managed tracer hooks
 
 When tracing is enabled, Agentic Hub projects a built-in tracer hook into
@@ -118,9 +134,9 @@ entries are preserved verbatim.
 
 | Command | Purpose |
 | --- | --- |
-| `cmd_usage_tracing_status` | Return whether tracing is enabled, whether the collector is running, DB path, port, and supported tools |
-| `cmd_set_usage_tracing_enabled` | Toggle tracing, persist settings, start/stop collector, and sync managed tracer hooks |
-| `cmd_sync_usage_tracer_hooks` | Reinstall managed tracer hooks and ensure the collector is running without toggling tracing |
+| `cmd_usage_tracing_status` | Return whether tracing is enabled, whether an authenticated collector health probe succeeds, DB path, port, and supported tools |
+| `cmd_set_usage_tracing_enabled` | Toggle tracing, persist settings, verify collector health, and sync managed tracer hooks |
+| `cmd_sync_usage_tracer_hooks` | Reinstall managed tracer hooks and recover an unhealthy collector without toggling tracing |
 | `cmd_query_usage_stats` | Return per-capability usage totals for the current scan |
 | `cmd_query_usage_dashboard` | Return aggregated dashboard metrics for the Statistics page (`UsageDashboard`, filtered by `UsageDateRange`) |
 | `cmd_record_command_palette_usage` | Record a palette command copy or paste against a command capability id |
@@ -130,6 +146,7 @@ entries are preserved verbatim.
 | Failure | Impact | Recovery |
 | --- | --- | --- |
 | Collector port unavailable | Tracing status shows stopped; hooks degrade | Change port or restart app |
+| Collector health probe fails | Hourly recovery restarts it three times without hooks sync | Restart Agentic Hub after the single outage notification |
 | Invalid token | Event rejected | Reinstall managed tracer hooks |
 | Malformed payload | Event ignored | Fix integration payload |
 | Ambiguous skill name | Event stored, visible count unchanged | Rename or disambiguate skill |
@@ -149,6 +166,10 @@ capability. Generic tool calls without a skill signal are no longer stored.
 - Redaction drops prompt/source/argument fields before persistence.
 - Collector accepts valid tokens, rejects invalid tokens, survives malformed JSON,
   and does not block when storage fails.
+- Health accepts only the configured token, records no event, and makes status
+  report stopped when the listener is unreachable.
+- Recovery retries a stopped collector three times, clears the outage after a
+  successful probe, and emits only one failure event per continuous outage.
 - Cursor lower-camel hook event names are canonicalized before storage.
 - Cursor, Codex, and Claude prompt-submit events count only single explicit skill
   references and do not persist raw prompt text.

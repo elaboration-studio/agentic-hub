@@ -157,6 +157,7 @@ function dashboard(): UsageDashboard {
     bySourceTool: [{ sourceTool: "cursor", executionCount: 6 }],
     byDay: [{ day: "2026-07-07", executionCount: 6 }],
     topCapabilities: [],
+    todayTopCapabilities: [],
     unusedCapabilities: [],
     byWorkspace: [],
   };

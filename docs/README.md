@@ -39,7 +39,7 @@ User-facing feature designs aligned with each milestone.
 - [kiro-tool-adapter.md](features/kiro-tool-adapter.md) — opt-in Kiro projection and workspace inventory
 - [copilot-tool-adapter.md](features/copilot-tool-adapter.md) — opt-in GitHub Copilot projection and workspace inventory
 - [antigravity-tool-adapter.md](features/antigravity-tool-adapter.md) — opt-in Google Antigravity projection and workspace inventory
-- [local-skill-usage-tracing.md](features/local-skill-usage-tracing.md) — opt-in local skill usage counts surfaced in the Manager matrix
+- [local-skill-usage-tracing.md](features/local-skill-usage-tracing.md) — local skill usage counts (enabled by default, opt-out in Config) surfaced in the Manager matrix and Statistics tabs
 - [color-scheme.md](features/color-scheme.md) — app-wide light, dark, and follow-system appearance
 
 ### `tech/modules/` — subsystem deep dives

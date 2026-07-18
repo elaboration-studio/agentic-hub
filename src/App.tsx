@@ -1,4 +1,9 @@
 import { useEffect, useState } from "react";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import { toast } from "sonner";
 import {
   onAppReopened,
@@ -9,8 +14,11 @@ import {
   onMenuCheckUpdates,
   onMenuOpenConfig,
   onSourcesChanged,
+  onUsageTracingHealthFailed,
   onWorkspaceChanged,
+  restartApp,
 } from "./ipc";
+import type { UsageTracingHealthFailure } from "./types";
 import { useManagerStore } from "./state/manager";
 import { UPDATE_CHECK_INTERVAL_MS, useUpdateStore } from "./state/update";
 import { useManagerFiltersStore } from "./state/managerFilters";
@@ -38,6 +46,18 @@ function routeFromHash(): Route {
 
 function navigate(route: Route) {
   window.location.hash = route === "manager" ? "" : `#/${route}`;
+}
+
+async function notifyUsageTracingFailure(failure: UsageTracingHealthFailure): Promise<void> {
+  try {
+    const granted =
+      (await isPermissionGranted()) || (await requestPermission()) === "granted";
+    if (granted) {
+      sendNotification({ title: "Local usage tracing is paused", body: failure.message });
+    }
+  } catch {
+    // The in-app prompt remains available if the OS or its notification permission fails.
+  }
 }
 
 export function App() {
@@ -87,6 +107,19 @@ export function App() {
       onDismiss: () => useUpdateStore.getState().dismiss(),
     });
   }, [updatePhase, availableUpdate]);
+
+  useEffect(() => {
+    const unlisten = onUsageTracingHealthFailed((failure) => {
+      void notifyUsageTracingFailure(failure);
+      toast.error("Local usage tracing is paused", {
+        id: "usage-tracing-health",
+        description: failure.message,
+        duration: Infinity,
+        action: { label: "Restart app", onClick: () => void restartApp() },
+      });
+    });
+    return () => void unlisten.then((fn) => fn());
+  }, []);
 
   // Global scope owns the manager refresh (scan → inspect). Runs on mount and
   // whenever the user returns to global scope, restoring the editable matrix.

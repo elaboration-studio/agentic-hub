@@ -5,6 +5,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use agentic_core::adapter_registry;
 use agentic_core::hook_sync::{self, HookCanonicalEvent};
@@ -20,16 +21,22 @@ use agentic_core::{
 };
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::async_runtime;
+use tauri::{async_runtime, AppHandle, Emitter, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
 const HEADER_END: &[u8] = b"\r\n\r\n";
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 256 * 1024;
 const TOKEN_HEADER: &str = "x-agentic-hub-token";
 const SOURCE_TOOL_HEADER: &str = "x-agentic-hub-source-tool";
+const HEALTH_PATH: &str = "/health";
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(1);
+const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
+const HEALTH_RECOVERY_ATTEMPTS: u8 = 3;
+const HEALTH_RECOVERY_DELAY: Duration = Duration::from_secs(5);
+const COLLECTOR_STOP_DELAY: Duration = Duration::from_millis(100);
 
 #[cfg_attr(
     feature = "ts-export",
@@ -61,9 +68,23 @@ pub struct UsageTracerHooksSyncResult {
     pub synced_tools: Vec<ToolId>,
 }
 
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTracingHealthFailure {
+    pub attempts: u8,
+    pub message: String,
+}
+
 #[derive(Default)]
 pub struct UsageCollectorState {
     inner: Mutex<CollectorInner>,
+    recovery: AsyncMutex<()>,
+    health: Mutex<CollectorHealth>,
 }
 
 #[derive(Default)]
@@ -72,13 +93,17 @@ struct CollectorInner {
     shutdown: Option<oneshot::Sender<()>>,
 }
 
+#[derive(Default)]
+struct CollectorHealth {
+    failure_notified: bool,
+}
+
 impl UsageCollectorState {
-    pub fn status(&self, settings: &Settings) -> UsageTracingStatus {
-        let running = self
-            .inner
-            .lock()
-            .map(|inner| inner.shutdown.is_some())
-            .unwrap_or(false);
+    pub async fn status(&self, settings: &Settings) -> UsageTracingStatus {
+        let running = settings.usage_tracing.enabled && probe_collector(settings).await;
+        if running {
+            self.clear_health_failure();
+        }
         let store = UsageStore::new();
         UsageTracingStatus {
             enabled: settings.usage_tracing.enabled,
@@ -97,8 +122,86 @@ impl UsageCollectorState {
             self.start(settings)
         } else {
             self.stop();
+            self.clear_health_failure();
             Ok(())
         }
+    }
+
+    pub async fn ensure_healthy(&self, settings: &Settings) -> Result<(), String> {
+        if !settings.usage_tracing.enabled {
+            self.clear_health_failure();
+            return Ok(());
+        }
+
+        let _guard = self.recovery.lock().await;
+        if probe_collector(settings).await {
+            self.clear_health_failure();
+            return Ok(());
+        }
+
+        self.restart(settings).await;
+        if probe_collector(settings).await {
+            self.clear_health_failure();
+            return Ok(());
+        }
+
+        Err("usage collector health check failed".to_string())
+    }
+
+    pub async fn check_health(&self) -> Result<Option<UsageTracingHealthFailure>, String> {
+        let _guard = self.recovery.lock().await;
+        let settings = Settings::load().map_err(|error| error.to_string())?;
+        self.check_health_with(
+            settings,
+            || Settings::load().map_err(|error| error.to_string()),
+            HEALTH_RECOVERY_ATTEMPTS,
+            HEALTH_RECOVERY_DELAY,
+        )
+        .await
+    }
+
+    async fn check_health_with<F>(
+        &self,
+        settings: Settings,
+        load_settings: F,
+        attempts: u8,
+        retry_delay: Duration,
+    ) -> Result<Option<UsageTracingHealthFailure>, String>
+    where
+        F: Fn() -> Result<Settings, String>,
+    {
+        if !settings.usage_tracing.enabled {
+            self.clear_health_failure();
+            return Ok(None);
+        }
+        if probe_collector(&settings).await {
+            self.clear_health_failure();
+            return Ok(None);
+        }
+
+        for attempt in 0..attempts {
+            if attempt > 0 {
+                tokio::time::sleep(retry_delay).await;
+            }
+            let settings = load_settings()?;
+            if !settings.usage_tracing.enabled {
+                self.clear_health_failure();
+                return Ok(None);
+            }
+            self.restart(&settings).await;
+            if probe_collector(&settings).await {
+                self.clear_health_failure();
+                return Ok(None);
+            }
+        }
+
+        Ok(self
+            .mark_health_failure()
+            .then(|| UsageTracingHealthFailure {
+                attempts,
+                message: "Local usage tracing is paused. Restart Agentic Hub to resume collection."
+                    .to_string(),
+            }))
     }
 
     pub fn stop(&self) {
@@ -148,6 +251,46 @@ impl UsageCollectorState {
         inner.port = Some(port);
         Ok(())
     }
+
+    async fn restart(&self, settings: &Settings) {
+        self.stop();
+        tokio::time::sleep(COLLECTOR_STOP_DELAY).await;
+        let _ = self.start(settings);
+    }
+
+    fn clear_health_failure(&self) {
+        if let Ok(mut health) = self.health.lock() {
+            health.failure_notified = false;
+        }
+    }
+
+    fn mark_health_failure(&self) -> bool {
+        let Ok(mut health) = self.health.lock() else {
+            return false;
+        };
+        if health.failure_notified {
+            false
+        } else {
+            health.failure_notified = true;
+            true
+        }
+    }
+}
+
+pub fn start_health_checker(app: AppHandle) {
+    async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval_at(
+            tokio::time::Instant::now() + HEALTH_CHECK_INTERVAL,
+            HEALTH_CHECK_INTERVAL,
+        );
+        loop {
+            interval.tick().await;
+            let collector = app.state::<UsageCollectorState>();
+            if let Ok(Some(failure)) = collector.check_health().await {
+                let _ = app.emit("usage-tracing-health-failed", failure);
+            }
+        }
+    });
 }
 
 async fn run_server(
@@ -179,12 +322,54 @@ async fn handle_stream(mut stream: TcpStream, token: Arc<String>) -> io::Result<
             return Ok(());
         }
     };
+    if request.method == "GET" && request.path == HEALTH_PATH {
+        let (status, body) = handle_health_request(&request, token.as_str());
+        return write_response(&mut stream, status, body).await;
+    }
     if request.method != "POST" || request.path != "/events" {
         write_response(&mut stream, 404, "not found").await?;
         return Ok(());
     }
     let (status, body) = handle_request_with_persist(request, token.as_str(), persist_event);
     write_response(&mut stream, status, body).await
+}
+
+fn handle_health_request(request: &HttpRequest, token: &str) -> (u16, &'static str) {
+    if request.headers.get(TOKEN_HEADER).map(String::as_str) != Some(token) {
+        return (401, "unauthorized");
+    }
+    (204, "")
+}
+
+async fn probe_collector(settings: &Settings) -> bool {
+    let token = settings.usage_tracing.collector_token.trim();
+    if token.is_empty() {
+        return false;
+    }
+    let stream = match tokio::time::timeout(
+        HEALTH_TIMEOUT,
+        TcpStream::connect(("127.0.0.1", settings.usage_tracing.collector_port)),
+    )
+    .await
+    {
+        Ok(Ok(stream)) => stream,
+        _ => return false,
+    };
+    let mut stream = stream;
+    let request = format!(
+        "GET {HEALTH_PATH} HTTP/1.1\r\nHost: 127.0.0.1\r\n{TOKEN_HEADER}: {token}\r\nConnection: close\r\n\r\n"
+    );
+    if tokio::time::timeout(HEALTH_TIMEOUT, stream.write_all(request.as_bytes()))
+        .await
+        .is_err()
+    {
+        return false;
+    }
+    let mut response = [0_u8; 64];
+    match tokio::time::timeout(HEALTH_TIMEOUT, stream.read(&mut response)).await {
+        Ok(Ok(read)) => response[..read].starts_with(b"HTTP/1.1 204"),
+        _ => false,
+    }
 }
 
 fn handle_request_with_persist(
@@ -293,6 +478,7 @@ fn find_header_end(buf: &[u8]) -> Option<usize> {
 
 async fn write_response(stream: &mut TcpStream, status: u16, body: &str) -> io::Result<()> {
     let reason = match status {
+        204 => "No Content",
         202 => "Accepted",
         400 => "Bad Request",
         401 => "Unauthorized",
@@ -1294,6 +1480,147 @@ mod tests {
     }
 
     #[test]
+    fn health_endpoint_requires_the_collector_token() {
+        let request = HttpRequest {
+            method: "GET".to_string(),
+            path: "/health".to_string(),
+            headers: HashMap::from([(TOKEN_HEADER.to_string(), "secret".to_string())]),
+            body: Vec::new(),
+        };
+
+        assert_eq!(handle_health_request(&request, "secret"), (204, ""));
+        assert_eq!(
+            handle_health_request(&request, "wrong"),
+            (401, "unauthorized")
+        );
+    }
+
+    #[test]
+    fn collector_status_requires_a_successful_health_probe() {
+        let mut settings = Settings::default();
+        settings.usage_tracing.enabled = true;
+        settings.usage_tracing.collector_token = "secret".to_string();
+        settings.usage_tracing.collector_port = unused_loopback_port();
+        let collector = UsageCollectorState::default();
+
+        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+        runtime.block_on(async {
+            let stopped = collector.status(&settings).await;
+            assert!(!stopped.collector_running);
+
+            collector.start(&settings).expect("collector starts");
+            let running = collector.status(&settings).await;
+            assert!(running.collector_running);
+            collector.stop();
+        });
+    }
+
+    #[test]
+    fn ensure_healthy_restarts_a_stopped_collector() {
+        let mut settings = Settings::default();
+        settings.usage_tracing.enabled = true;
+        settings.usage_tracing.collector_token = "secret".to_string();
+        settings.usage_tracing.collector_port = unused_loopback_port();
+        let collector = UsageCollectorState::default();
+        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+
+        runtime.block_on(async {
+            collector.start(&settings).expect("collector starts");
+            collector.stop();
+
+            collector
+                .ensure_healthy(&settings)
+                .await
+                .expect("collector recovers");
+            assert!(collector.status(&settings).await.collector_running);
+            collector.stop();
+        });
+    }
+
+    #[test]
+    fn health_check_retries_three_times_and_notifies_once_per_outage() {
+        let collector = UsageCollectorState::default();
+        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+
+        runtime.block_on(async {
+            let listener = TcpListener::bind(("127.0.0.1", 0))
+                .await
+                .expect("foreign listener binds");
+            let port = listener.local_addr().expect("foreign listener address").port();
+            let responder = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    let mut request = [0_u8; 512];
+                    let _ = stream.read(&mut request).await;
+                    let _ = stream
+                        .write_all(
+                            b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                        )
+                        .await;
+                }
+            });
+            let mut settings = Settings::default();
+            settings.usage_tracing.enabled = true;
+            settings.usage_tracing.collector_token = "secret".to_string();
+            settings.usage_tracing.collector_port = port;
+
+            let retry_settings = settings.clone();
+            let first_retry_settings = retry_settings.clone();
+            let failure = collector
+                .check_health_with(
+                    settings,
+                    move || Ok(first_retry_settings.clone()),
+                    HEALTH_RECOVERY_ATTEMPTS,
+                    Duration::ZERO,
+                )
+                .await
+                .expect("health check completes")
+                .expect("first outage notifies");
+            assert_eq!(failure.attempts, HEALTH_RECOVERY_ATTEMPTS);
+
+            let repeated = collector
+                .check_health_with(
+                    retry_settings.clone(),
+                    move || Ok(retry_settings.clone()),
+                    HEALTH_RECOVERY_ATTEMPTS,
+                    Duration::ZERO,
+                )
+                .await
+                .expect("repeated health check completes");
+            assert!(repeated.is_none());
+            responder.abort();
+        });
+    }
+
+    #[test]
+    fn health_check_stays_silent_when_tracing_is_disabled_before_recovery() {
+        let collector = UsageCollectorState::default();
+        let mut enabled = Settings::default();
+        enabled.usage_tracing.enabled = true;
+        enabled.usage_tracing.collector_token = "secret".to_string();
+        enabled.usage_tracing.collector_port = unused_loopback_port();
+        let mut disabled = enabled.clone();
+        disabled.usage_tracing.enabled = false;
+
+        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+        runtime.block_on(async {
+            let failure = collector
+                .check_health_with(
+                    enabled,
+                    move || Ok(disabled.clone()),
+                    HEALTH_RECOVERY_ATTEMPTS,
+                    Duration::ZERO,
+                )
+                .await
+                .expect("health check completes");
+
+            assert!(failure.is_none());
+        });
+    }
+
+    #[test]
     fn collector_handles_malformed_json_without_persisting() {
         let request = HttpRequest {
             method: "POST".to_string(),
@@ -1400,5 +1727,13 @@ mod tests {
             ]),
             body: serde_json::to_vec(&body).expect("test json serializes"),
         }
+    }
+
+    fn unused_loopback_port() -> u16 {
+        std::net::TcpListener::bind(("127.0.0.1", 0))
+            .expect("bind ephemeral port")
+            .local_addr()
+            .expect("read ephemeral port")
+            .port()
     }
 }

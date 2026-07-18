@@ -39,6 +39,7 @@ import type {
   ToolsSettings,
   UsageStats,
   UsageTracerHooksSyncResult,
+  UsageTracingHealthFailure,
   UsageTracingStatus,
   UsageDashboard,
   UsageDateRange,
@@ -214,6 +215,11 @@ export const setUsageTracingEnabled = (enabled: boolean): Promise<UsageTracingSt
 
 export const syncUsageTracerHooks = (): Promise<UsageTracerHooksSyncResult> =>
   invoke("cmd_sync_usage_tracer_hooks");
+
+export const onUsageTracingHealthFailed = (
+  cb: (failure: UsageTracingHealthFailure) => void,
+): Promise<UnlistenFn> =>
+  listen<UsageTracingHealthFailure>("usage-tracing-health-failed", (event) => cb(event.payload));
 
 export const queryUsageStats = (items: CapabilityItem[]): Promise<UsageStats[]> =>
   invoke("cmd_query_usage_stats", { items });
@@ -441,6 +447,9 @@ export const installUpdate = async (update: AvailableUpdate): Promise<void> => {
   await update.handle.downloadAndInstall();
   await relaunch();
 };
+
+/// Restart the current app after an explicit user action.
+export const restartApp = async (): Promise<void> => relaunch();
 
 /// Fired by Rust when the app is re-opened (Dock click) so the frontend can run
 /// a throttled background update check.

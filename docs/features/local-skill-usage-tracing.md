@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-07-06
+Last Updated: 2026-07-17
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [DESIGN.md](../../DESIGN.md)
 Related Docs: [docs/tech/modules/local-usage-tracing.md](../tech/modules/local-usage-tracing.md), [docs/features/hooks-projection.md](./hooks-projection.md)
 
@@ -24,7 +24,7 @@ which capabilities are worth maintaining.
 
 ### In scope
 
-- Opt-in local usage tracing, disabled by default.
+- Local usage tracing, enabled by default (opt-out via Config).
 - Local SQLite persistence under `~/.agentic-hub/usage/trace.db`.
 - Loopback-only event collection from managed tracer hooks.
 - Skill usage counts joined onto existing Manager matrix rows.
@@ -55,6 +55,14 @@ with a short timeout; hook failures never block the calling agentic tool.
 Config also shows stored, resolved, and unresolved local event counts so users
 can distinguish collection failures from attribution gaps.
 
+The collector status is an authenticated loopback health probe, not a cached
+process flag. While tracing is enabled, Agentic Hub checks it hourly. A failed
+check restarts the collector and probes it again up to three times, with a
+five-second gap between attempts. If every attempt fails, the app sends one
+desktop notification and a persistent in-app warning for that outage; both tell
+the user that restarting Agentic Hub is the next step. The Config page also
+shows an inline warning whenever an active status check finds tracing paused.
+
 The Manager matrix adds a `Usage` column after `Source`. Skill, agent, and
 command rows show the total attributed execution count. Hovering the number
 shows per-tool counts (or `Palette` for command palette usage) and the last-used
@@ -62,14 +70,18 @@ timestamp. Rule and hook rows show `-` in v1.
 
 The **Statistics** tab (beside Config) shows a **resource inventory** section
 (always visible) with total resources, per-kind counts, enabled tools, and
-starred skills. When local usage tracing is enabled, dashboard cards and
-recharts charts over the same local trace database show daily activity, usage by
-kind and source tool, workspace breakdown, top-used capabilities, and
-installed-but-unused rows. Date range filters default to the last 30 days.
+starred skills. When local usage tracing is enabled, the rest of the page is
+split into sub-tabs — **Overview** (usage overview tiles plus a **today's
+usage** table scoped to the local calendar day, independent of the date
+range filter), **Activity** (daily activity, kind/source-tool/workspace
+charts), **Top usage** (most-used capabilities), and **Unused**
+(installed-but-unused rows) — over the same local trace database. Inactive
+sub-tabs don't render, so opening Statistics only mounts the Overview tab's
+charts and tables. Date range filters default to the last 30 days.
 
 ## Acceptance criteria
 
-- [ ] Existing settings files load with tracing disabled by default.
+- [ ] New installs and settings files predating the `usage_tracing` block load with tracing enabled by default; settings files with an explicit `enabled: false` keep that choice.
 - [ ] Enabling tracing starts the local collector and installs managed tracer hooks for supported enabled tools.
 - [ ] Disabling tracing stops the collector and removes managed tracer hooks.
 - [ ] A valid terminal event with a resolvable skill or agent name is stored and increments that row.
@@ -80,10 +92,15 @@ installed-but-unused rows. Date range filters default to the last 30 days.
 - [ ] Command palette copy/paste increments usage for the matching command row when tracing is enabled.
 - [ ] No raw prompts, source snippets, or tool arguments are persisted.
 - [ ] Config shows stored/resolved/unresolved event diagnostics.
+- [ ] Config reports the collector as running only after an authenticated health probe succeeds.
+- [ ] With tracing enabled, an hourly failed probe restarts the collector up to three times without reinstalling hooks.
+- [ ] After three failed restarts, the user receives one desktop notification and one persistent in-app restart prompt for the outage.
 - [ ] The Statistics tab shows overview metrics, charts, and tables when tracing is enabled.
 - [ ] Statistics date-range filters reload dashboard aggregates without leaving the page.
 - [ ] Statistics shows an enable-tracing prompt when local tracing is disabled.
 - [ ] Statistics shows resource inventory (total resources, per-kind counts, enabled tools, starred skills) regardless of tracing state.
+- [ ] Statistics splits usage content into Overview/Activity/Top usage/Unused sub-tabs; only the active sub-tab's charts and tables render.
+- [ ] Statistics Overview shows a today's-usage table scoped to the local calendar day, independent of the selected date range.
 
 ## Dependencies
 
@@ -98,6 +115,8 @@ installed-but-unused rows. Date range filters default to the last 30 days.
 | ----- | ---------- | ------------ |
 | V1 | Local store, collector, config toggle, managed hooks, matrix usage count | Complete useful loop without a new analytics surface |
 | V1.1 | Statistics page with date filters, charts, and drilldown tables | Shipped: overview, recharts, top-used, unused-installed |
+| V1.2 | Collector health checks and recovery | Shipped: authenticated probe, hourly recovery, and restart guidance |
+| V1.3 | Statistics sub-tabs, today's-usage table, tracing on by default | Shipped: Overview/Activity/Top usage/Unused tabs, local-day usage table, opt-out default |
 | V2 | MCP wrapper telemetry and OpenTelemetry export | Broader observability after the local primitive is stable |
 
 ## Risks and edge cases
@@ -105,6 +124,8 @@ installed-but-unused rows. Date range filters default to the last 30 days.
 - Tool hook payloads differ, so attribution must be conservative.
 - Multiple tools can use the same skill name; ambiguous matches must not inflate counts.
 - The app may be closed while hooks run; hooks must degrade without failing the agentic workflow.
+- The checker runs only while the Agentic Hub process is alive; a fully quit app cannot monitor its collector.
+- A healthy listener does not prove that a later SQLite write or skill attribution succeeds; those remain separate diagnostics.
 - Local event payloads may include sensitive fields; the collector stores only allowlisted normalized fields.
 
 ## Metrics or signals

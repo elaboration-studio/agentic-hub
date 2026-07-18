@@ -8,6 +8,41 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-07-18
+
+### Added
+
+- **Statistics page sub-tabs.** Usage data is now organized into Overview,
+  Activity, Top usage, and Unused tabs instead of one long scroll — switching
+  tabs is faster since only the tab you're viewing renders its charts/tables.
+- **Today's usage table.** The Overview tab now shows which capabilities
+  you've used today, independent of whatever date range you have selected —
+  handy for a quick end-of-day check without changing the range filter.
+
+### Changed
+
+- **Local usage tracing is now on by default.** New installs, and any settings
+  file predating this option, start collecting local skill/tool usage
+  automatically. It's local-only (SQLite, never leaves your machine) and can
+  be turned off any time in Config → Local usage tracing. Settings files that
+  already chose "off" explicitly keep that choice.
+- Timestamps in Statistics and the Manager matrix now show in your local time
+  instead of raw UTC.
+
+### Fixed
+
+- The "Today's usage" table now matches your machine's local calendar day
+  instead of UTC, so it no longer drifts by a day around midnight.
+
+## [0.13.1] — 2026-07-17
+
+### Added
+
+- **Local usage tracing health checks.** Collector status now uses an
+  authenticated loopback probe rather than cached process state. The app checks
+  an enabled collector hourly, retries recovery three times without touching
+  tracer hooks, and sends one native/in-app restart prompt per continuous outage.
+
 ## [0.13.0] — 2026-07-17
 
 ### Added

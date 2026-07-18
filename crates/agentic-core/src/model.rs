@@ -779,6 +779,8 @@ pub struct UsageDashboard {
     #[serde(default)]
     pub top_capabilities: Vec<UsageTopRow>,
     #[serde(default)]
+    pub today_top_capabilities: Vec<UsageTopRow>,
+    #[serde(default)]
     pub unused_capabilities: Vec<UsageUnusedRow>,
     #[serde(default)]
     pub by_workspace: Vec<UsageWorkspaceBucket>,

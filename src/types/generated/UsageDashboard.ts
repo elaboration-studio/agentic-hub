@@ -10,4 +10,4 @@ import type { UsageWorkspaceBucket } from "./UsageWorkspaceBucket";
 /**
  * Aggregated local usage dashboard payload for the Statistics page.
  */
-export type UsageDashboard = { overview: UsageDashboardOverview, byKind: Array<UsageKindBucket>, bySourceTool: Array<UsageSourceBucket>, byDay: Array<UsageDayBucket>, topCapabilities: Array<UsageTopRow>, unusedCapabilities: Array<UsageUnusedRow>, byWorkspace: Array<UsageWorkspaceBucket>, };
+export type UsageDashboard = { overview: UsageDashboardOverview, byKind: Array<UsageKindBucket>, bySourceTool: Array<UsageSourceBucket>, byDay: Array<UsageDayBucket>, topCapabilities: Array<UsageTopRow>, todayTopCapabilities: Array<UsageTopRow>, unusedCapabilities: Array<UsageUnusedRow>, byWorkspace: Array<UsageWorkspaceBucket>, };
