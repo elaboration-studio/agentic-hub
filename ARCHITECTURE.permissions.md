@@ -85,6 +85,7 @@ Permitted:
 - `core:window:default` — basic window controls (close, minimize, drag)
 - `dialog:default`, `dialog:allow-open` — folder picker
 - `store:default` — KV store access for `state.json`
+- `clipboard-manager:allow-write-text` — Copy as Markdown in the Sessions pane (see [docs/features/session-explorer.md](docs/features/session-explorer.md)); write-only, no `clipboard-manager:allow-read-text`
 
 Denied / not granted:
 
