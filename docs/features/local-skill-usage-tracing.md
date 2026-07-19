@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-07-17
+Last Updated: 2026-07-19
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [DESIGN.md](../../DESIGN.md)
 Related Docs: [docs/tech/modules/local-usage-tracing.md](../tech/modules/local-usage-tracing.md), [docs/features/hooks-projection.md](./hooks-projection.md)
 
@@ -27,22 +27,27 @@ which capabilities are worth maintaining.
 - Local usage tracing, enabled by default (opt-out via Config).
 - Local SQLite persistence under `~/.agentic-hub/usage/trace.db`.
 - Loopback-only event collection from managed tracer hooks.
-- Skill usage counts joined onto existing Manager matrix rows.
+- Skill usage counts joined onto global and repository-local Manager rows.
+- Repository skill discovery for active Cursor, Claude Code, and Codex
+  workspaces, including repositories that are not saved in Agentic Hub.
+- Multi-skill attribution: every distinct skill explicitly invoked in one user
+  turn is counted once.
 - Agent spec usage counts joined onto existing Manager matrix rows when invoked
   via explicit slash (`/cto`), Claude `@agent-*` mention, or a single Read of an
   agent markdown file under an `/agents/` path.
 - A `Usage` table column with hover details by source tool.
-- Accurate-only skill attribution: unresolved or ambiguous events are stored but
-  do not increment a visible skill count.
+- Accurate-only skill attribution: exact canonical paths win, then documented
+  tool scope and precedence, then unique names. Ambiguous references stay
+  unresolved and do not increment a visible skill count.
 
 ### Out of scope
 
 - Remote sync or cloud analytics.
 - Inferring skill usage from free-form prompts, transcripts, or raw source code.
-  Cursor and Codex v1 may count an explicit skill reference such as `$root-cause-investigation`
-  or a `SKILL.md` link from prompt-submit hook input; Claude slash commands count via
-  `UserPromptExpansion.command_name`; the raw prompt is never
-  persisted.
+  Cursor and Codex may count explicit `$skill`, validated slash-skill, and
+  `SKILL.md` references from prompt-submit hook input; Claude slash commands
+  count via `UserPromptExpansion.command_name`. Raw prompts and tool inputs are
+  consumed in memory and never persisted or logged.
 - Editing or deleting usage events from the UI.
 - Non-skill capability analytics beyond storing raw terminal events.
 
@@ -52,8 +57,9 @@ The Config page exposes a local usage tracing toggle. When enabled, Agentic Hub
 starts a loopback collector and projects a managed tracer hook into supported,
 enabled tools. Hooks forward terminal execution events to the local collector
 with a short timeout; hook failures never block the calling agentic tool.
-Config also shows stored, resolved, and unresolved local event counts so users
-can distinguish collection failures from attribution gaps.
+Config also shows per-tool hook installation, last-captured time, and
+resolved/unresolved counts so users can distinguish collection failures from
+attribution gaps.
 
 The collector status is an authenticated loopback health probe, not a cached
 process flag. While tracing is enabled, Agentic Hub checks it hourly. A failed
@@ -67,6 +73,11 @@ The Manager matrix adds a `Usage` column after `Source`. Skill, agent, and
 command rows show the total attributed execution count. Hovering the number
 shows per-tool counts (or `Palette` for command palette usage) and the last-used
 timestamp. Rule and hook rows show `-` in v1.
+
+Repository-local rows retain their repository identity. A global skill and a
+repository skill with the same name have separate counts. Statistics retains
+the workspace label and root for historical rows even when that repository is
+not currently selected in Manager.
 
 The **Statistics** tab (beside Config) shows a **resource inventory** section
 (always visible) with total resources, per-kind counts, enabled tools, and
@@ -84,14 +95,18 @@ charts and tables. Date range filters default to the last 30 days.
 - [ ] New installs and settings files predating the `usage_tracing` block load with tracing enabled by default; settings files with an explicit `enabled: false` keep that choice.
 - [ ] Enabling tracing starts the local collector and installs managed tracer hooks for supported enabled tools.
 - [ ] Disabling tracing stops the collector and removes managed tracer hooks.
-- [ ] A valid terminal event with a resolvable skill or agent name is stored and increments that row.
-- [ ] Duplicate events with the same dedupe hash are ignored.
+- [ ] A valid event containing multiple explicit skills stores one occurrence for each distinct skill.
+- [ ] Repeated references to the same skill within one turn increment it once.
+- [ ] Repository-local skills resolve for active Cursor, Claude Code, and Codex repositories without requiring a saved workspace.
+- [ ] Same-named global and repository-local skills retain separate identities and counts.
+- [ ] Overlapping prompt and terminal hook signals upgrade one occurrence instead of double-counting it.
+- [ ] Legacy duplicate events with the same dedupe hash remain ignored.
 - [ ] Events with missing or ambiguous skill names are stored without incrementing any skill row.
 - [ ] The Manager matrix shows a `Usage` column after `Source`.
 - [ ] Hovering a skill's usage count shows per-tool counts.
 - [ ] Command palette copy/paste increments usage for the matching command row when tracing is enabled.
 - [ ] No raw prompts, source snippets, or tool arguments are persisted.
-- [ ] Config shows stored/resolved/unresolved event diagnostics.
+- [ ] Config shows hook-installed state, last captured event, and resolved/unresolved diagnostics per tool.
 - [ ] Config reports the collector as running only after an authenticated health probe succeeds.
 - [ ] With tracing enabled, an hourly failed probe restarts the collector up to three times without reinstalling hooks.
 - [ ] After three failed restarts, the user receives one desktop notification and one persistent in-app restart prompt for the outage.
@@ -101,6 +116,7 @@ charts and tables. Date range filters default to the last 30 days.
 - [ ] Statistics shows resource inventory (total resources, per-kind counts, enabled tools, starred skills) regardless of tracing state.
 - [ ] Statistics splits usage content into Overview/Activity/Top usage/Unused sub-tabs; only the active sub-tab's charts and tables render.
 - [ ] Statistics Overview shows a today's-usage table scoped to the local calendar day, independent of the selected date range.
+- [ ] Statistics top and today rows show workspace context even if the workspace is not selected.
 
 ## Dependencies
 
@@ -117,12 +133,16 @@ charts and tables. Date range filters default to the last 30 days.
 | V1.1 | Statistics page with date filters, charts, and drilldown tables | Shipped: overview, recharts, top-used, unused-installed |
 | V1.2 | Collector health checks and recovery | Shipped: authenticated probe, hourly recovery, and restart guidance |
 | V1.3 | Statistics sub-tabs, today's-usage table, tracing on by default | Shipped: Overview/Activity/Top usage/Unused tabs, local-day usage table, opt-out default |
+| V1.4 | Repository-local and multi-skill attribution | Scoped identity, tool-aware catalogs, once-per-skill-per-turn dedupe, diagnostics, and historical workspace context |
 | V2 | MCP wrapper telemetry and OpenTelemetry export | Broader observability after the local primitive is stable |
 
 ## Risks and edge cases
 
 - Tool hook payloads differ, so attribution must be conservative.
-- Multiple tools can use the same skill name; ambiguous matches must not inflate counts.
+- Global and repository scopes can use the same skill name; path and tool
+  precedence must disambiguate without contaminating either count.
+- Hook payload paths are untrusted; canonicalization, root bounds, and symlink
+  checks must complete before any repository file is read.
 - The app may be closed while hooks run; hooks must degrade without failing the agentic workflow.
 - The checker runs only while the Agentic Hub process is alive; a fully quit app cannot monitor its collector.
 - A healthy listener does not prove that a later SQLite write or skill attribution succeeds; those remain separate diagnostics.
@@ -133,9 +153,10 @@ charts and tables. Date range filters default to the last 30 days.
 - Count of traced skill invocations per skill.
 - Source-tool distribution per skill.
 - Last-used timestamp per skill.
-- Number of unresolved events, surfaced in Config as a quality signal for later
-  integration work.
+- Resolved and unresolved event counts per tool, surfaced in Config as an
+  attribution quality signal.
 
 ## Open questions
 
-- Should future filters default to all time or the last 30 days?
+- Cloud-agent telemetry remains intentionally out of scope because cloud agents
+  cannot reach the loopback collector.

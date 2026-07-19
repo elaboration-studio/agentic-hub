@@ -13,6 +13,8 @@ mod menu;
 mod palette;
 mod paste;
 mod telemetry;
+mod usage_attribution;
+mod usage_catalog;
 mod usage_collector;
 mod watcher;
 

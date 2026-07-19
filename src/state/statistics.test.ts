@@ -139,6 +139,15 @@ function tracingStatus(enabled: boolean): UsageTracingStatus {
     storedEventCount: 10,
     resolvedEventCount: 8,
     unresolvedEventCount: 2,
+    toolDiagnostics: [
+      {
+        tool: "cursor",
+        hookInstalled: enabled,
+        lastCapturedAt: "2026-07-07T12:00:00Z",
+        resolvedEventCount: 8,
+        unresolvedEventCount: 2,
+      },
+    ],
   };
 }
 
@@ -237,6 +246,46 @@ describe("useStatisticsStore", () => {
     expect(mocked.queryUsageDashboard).toHaveBeenCalledWith([], DEFAULT_USAGE_RANGE);
     expect(useStatisticsStore.getState().dashboard?.overview.tracedCapabilities).toBe(3);
     expect(useStatisticsStore.getState().tracingStatus?.enabled).toBe(true);
+  });
+
+  it("retains repository context for same-named local capabilities", async () => {
+    const scopedDashboard = dashboard();
+    scopedDashboard.topCapabilities = [
+      {
+        capabilityId: "skill:review",
+        name: "review",
+        kind: "skill",
+        sourceLabel: "Workspace",
+        relativePath: "review",
+        capabilityScope: "workspace",
+        workspaceRoot: "~/projects/one",
+        executionCount: 3,
+        lastUsedAt: "2026-07-19T08:00:00Z",
+        toolBuckets: [],
+      },
+      {
+        capabilityId: "skill:review",
+        name: "review",
+        kind: "skill",
+        sourceLabel: "Workspace",
+        relativePath: "review",
+        capabilityScope: "workspace",
+        workspaceRoot: "~/projects/two",
+        executionCount: 2,
+        lastUsedAt: "2026-07-19T09:00:00Z",
+        toolBuckets: [],
+      },
+    ];
+    mocked.usageTracingStatus.mockResolvedValue(tracingStatus(true));
+    mocked.queryUsageDashboard.mockResolvedValue(scopedDashboard);
+
+    await useStatisticsStore.getState().reload();
+
+    expect(
+      useStatisticsStore
+        .getState()
+        .dashboard?.topCapabilities.map((row) => row.workspaceRoot),
+    ).toEqual(["~/projects/one", "~/projects/two"]);
   });
 
   it("always sets inventory even when tracing is disabled", async () => {

@@ -3,23 +3,25 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-07-17
+Last Updated: 2026-07-19
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [docs/features/local-skill-usage-tracing.md](../../features/local-skill-usage-tracing.md)
 Related Docs: [docs/tech/modules/hook-projection-sync.md](./hook-projection-sync.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
 ## Purpose
 
-Local usage tracing records terminal skill/tool execution events from enabled
-agentic tools into an app-owned SQLite database and exposes aggregated skill
-counts to the Manager matrix. It is local-only and separate from remote
-Aptabase telemetry.
+Local usage tracing attributes explicit skill invocations from enabled local
+agentic tools into an app-owned SQLite database and exposes scoped aggregates
+to Manager and Statistics. It supports global and repository-local skills,
+multiple skills in one turn, and remains separate from remote Aptabase
+telemetry.
 
 ## Boundaries
 
-- `agentic-core::usage_store` owns schema, migrations, redaction, resolution,
-  insert, retention cleanup, and stats queries.
-- `agentic-hub::usage_collector` owns the loopback HTTP collector lifecycle and
-  maps HTTP payloads into core events.
+- `agentic-core::usage_store` owns schema, migrations, transactional batch
+  insertion, reconciliation, retention cleanup, and scope-aware queries.
+- `agentic-hub::usage_collector` owns HTTP and health lifecycle; focused sibling
+  modules own extraction, normalization, catalog discovery, attribution, and
+  in-memory turn correlation.
 - React reads aggregated stats over IPC. It never opens the DB directly.
 - Hook scripts are lightweight emitters. They do not connect to the database,
   perform analytics, or block the agentic tool when collection fails.
@@ -39,7 +41,7 @@ Tables:
 | `schema_migrations` | Applied schema versions |
 | `usage_events` | Normalized event records |
 
-`usage_events` fields:
+Schema v2 keeps all v1 fields and adds:
 
 | Field | Notes |
 | --- | --- |
@@ -56,31 +58,59 @@ Tables:
 | `duration_ms` | Optional duration |
 | `dedupe_hash` | Unique key used to ignore duplicate lifecycle emissions |
 | `metadata_json` | Small allowlisted metadata only |
+| `capability_scope` | `global` or `workspace` |
+| `workspace_root` | Canonical, tildified repository root for workspace events |
+| `capability_relative_path` | Stable path from the capability scope root |
+| `invocation_key` | Privacy-safe once-per-capability-per-turn key |
+| `attribution_source` | High-confidence signal class, never raw payload data |
+| `attribution_rank` | Signal confidence used to upgrade fallback rows |
 
-## Resolution rules
+`invocation_key` has a unique partial index when non-null. The legacy
+`dedupe_hash` uniqueness rule remains for v1 compatibility. Raw prompts, tool
+arguments, session ids, turn ids, and skill contents are never stored.
 
-The core resolves a reference name against the currently scanned local skills
-and agents:
+## Attribution contract
 
-1. Exact `capability_id` if it starts with `skill:`, `command:`, or `agent:` and
-   exists in the scan.
-2. Exact name match against `CapabilityItem.name` for one kind only.
-3. Exact name match against a capability's source-relative path or file stem.
-4. Normalized slug match against `CapabilityItem.name`.
+Normalization emits a typed batch of explicit references. Each reference keeps
+the normalized skill name and, when supplied, an exact `SKILL.md` path. Accepted
+signals are Skill tool calls, Claude `UserPromptExpansion`, `$skill`, validated
+skill links or attachments, validated slash-skill names, and reads of validated
+`SKILL.md` paths. Generic slash commands, ordinary files, images, arbitrary
+paths, and free-form semantic inference are ignored.
 
-If no match exists, or if both a skill and an agent match the same name, the
-event is stored with `capability_id = null` and excluded from visible counts.
-Resolved agent prompt events are stored as `PostAgentUse`; skills stay
-`PostSkillUse`.
+The capability catalog combines:
 
-Cursor- and Codex-specific prompt-submit events may produce `PostSkillUse` only
-when the payload contains a single explicit reference such as `/cto`,
-`$root-cause-investigation`, or a `.../SKILL.md` link. Claude slash-command
-invocations produce `PostSkillUse` from `UserPromptExpansion` when
-`expansion_type` is `slash_command` and `command_name` resolves to one local
-skill or agent. Claude `@agent-*` mentions and single Read calls under an
-`/agents/` path are counted the same way. The collector extracts only the slug
-and discards the raw prompt text. Ambiguous prompt references stay unresolved.
+1. managed global source scans;
+2. tool-global installed skills;
+3. skills discovered under the active repository roots.
+
+Resolution compares canonical exact paths first, documented tool scope and
+precedence second, and unique names last. Codex discovers ancestor
+`.agents/skills` roots from `cwd` to repository root. Claude discovers ancestor
+and nested `.claude/skills` roots and applies its scope precedence. Cursor uses
+all `workspace_roots` and discovers `.agents/skills`, `.cursor/skills`, and its
+documented compatible nested roots. Repository roots come from the hook payload,
+not Agentic Hub's saved-workspace list.
+
+One request fans out to one occurrence per distinct resolved skill. Unresolved
+high-confidence references may be retained for diagnostics, but unvalidated
+slash/path candidates are dropped. Existing unresolved rows are reconciled only
+when their recorded workspace still exists and exactly one catalog candidate
+matches; uncertain history is preserved unchanged.
+
+## Turn identity and deduplication
+
+- Cursor correlation uses `generation_id`.
+- Codex correlation uses `turn_id`.
+- Claude uses `prompt_id` when present. For installed versions without it, an
+  in-memory per-session tracker advances on prompt submission and associates
+  expansion/tool signals with that turn.
+
+The collector hashes correlation material in memory and combines it with tool,
+workspace scope, and capability identity to create `invocation_key`. A skill is
+therefore counted once per turn while different skills in the same turn keep
+independent rows. A higher-rank terminal signal updates an existing lower-rank
+prompt fallback rather than inserting another count.
 
 ## Collector flow
 
@@ -89,9 +119,10 @@ Agentic tool hook
   -> POST http://127.0.0.1:<collectorPort>/events
   -> token check
   -> payload parse
-  -> normalize + redact
-  -> resolve local skill id
-  -> insert into SQLite
+  -> extract high-confidence references in memory
+  -> discover tool-aware global + repository catalog
+  -> resolve and build per-skill invocation keys
+  -> transactionally upsert the occurrence batch
   -> 202 Accepted
 ```
 
@@ -134,11 +165,11 @@ entries are preserved verbatim.
 
 | Command | Purpose |
 | --- | --- |
-| `cmd_usage_tracing_status` | Return whether tracing is enabled, whether an authenticated collector health probe succeeds, DB path, port, and supported tools |
+| `cmd_usage_tracing_status` | Return tracing and authenticated collector health plus per-tool hook-installed, last-event, resolved, and unresolved diagnostics |
 | `cmd_set_usage_tracing_enabled` | Toggle tracing, persist settings, verify collector health, and sync managed tracer hooks |
 | `cmd_sync_usage_tracer_hooks` | Reinstall managed tracer hooks and recover an unhealthy collector without toggling tracing |
-| `cmd_query_usage_stats` | Return per-capability usage totals for the current scan |
-| `cmd_query_usage_dashboard` | Return aggregated dashboard metrics for the Statistics page (`UsageDashboard`, filtered by `UsageDateRange`) |
+| `cmd_query_usage_stats` | Return scoped per-capability totals mapped to global ids or transient `ws::` Manager ids |
+| `cmd_query_usage_dashboard` | Return workspace-aware dashboard metrics for Statistics (`UsageDashboard`, filtered by `UsageDateRange`) |
 | `cmd_record_command_palette_usage` | Record a palette command copy or paste against a command capability id |
 
 ## Failure modes
@@ -149,7 +180,7 @@ entries are preserved verbatim.
 | Collector health probe fails | Hourly recovery restarts it three times without hooks sync | Restart Agentic Hub after the single outage notification |
 | Invalid token | Event rejected | Reinstall managed tracer hooks |
 | Malformed payload | Event ignored | Fix integration payload |
-| Ambiguous skill name | Event stored, visible count unchanged | Rename or disambiguate skill |
+| Ambiguous skill name | High-confidence event stored, visible count unchanged | Invoke through an exact skill path or rename it |
 | SQLite write error | Hook still continues | Surface status error in Config |
 
 A high unresolved count with a running collector usually means hooks are
@@ -158,8 +189,9 @@ capability. Generic tool calls without a skill signal are no longer stored.
 
 ## Tests
 
-- Migration creates required tables and indexes.
-- Duplicate dedupe hashes are ignored.
+- v1-to-v2 migration preserves history and creates scoped fields and indexes.
+- Batch insertion is transactional; duplicate invocation keys upgrade only when attribution rank increases.
+- Legacy duplicate dedupe hashes remain ignored.
 - Terminal events increment stats; non-terminal events are stored but excluded.
 - Skill resolution covers exact id, exact name, relative path, normalized slug,
   missing, and ambiguous cases.
@@ -171,9 +203,15 @@ capability. Generic tool calls without a skill signal are no longer stored.
 - Recovery retries a stopped collector three times, clears the outage after a
   successful probe, and emits only one failure event per continuous outage.
 - Cursor lower-camel hook event names are canonicalized before storage.
-- Cursor, Codex, and Claude prompt-submit events count only single explicit skill
-  references and do not persist raw prompt text.
-- Claude `UserPromptExpansion` slash-command events count when `command_name`
-  resolves to exactly one local skill.
+- Cursor, Codex, and Claude fixtures extract every distinct explicit skill in a
+  turn and never persist raw prompt or tool input.
+- `/health`, images, pasted files, arbitrary paths, traversal, missing paths,
+  and out-of-root paths produce no occurrence.
+- Attribution covers repository-only, nested, symlinked, global-only,
+  same-name global/local, Cursor multi-root, and exact-path cases.
+- Claude `UserPromptExpansion` and older-version session tracking deduplicate
+  prompt and terminal signals.
+- Statistics and Manager query mapping keep same-named global/workspace skills
+  separate and preserve historical workspace context.
 - Command palette copy/paste records `CommandPaletteUse` for resolved command
   rows when local tracing is enabled.

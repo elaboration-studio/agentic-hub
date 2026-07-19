@@ -438,6 +438,39 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
     expect(locked.has(`${WS}skill:hand`)).toBe(false);
   });
 
+  it("maps repository-local usage to the namespaced workspace row", async () => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    noGlobal();
+    mocked.scanWorkspace.mockResolvedValue({
+      items: [makeItem("skill:local")],
+      states: [makeState("cursor", "skill:local", "enabled")],
+      errors: [],
+      lockedSkills: [],
+    });
+    mocked.queryUsageStats.mockResolvedValue([
+      {
+        capabilityId: `${WS}skill:local`,
+        executionCount: 3,
+        successCount: 3,
+        failureCount: 0,
+        lastUsedAt: "2026-07-19T08:00:00Z",
+        toolBuckets: [
+          {
+            sourceTool: "cursor",
+            executionCount: 3,
+            successCount: 3,
+            failureCount: 0,
+            lastUsedAt: "2026-07-19T08:00:00Z",
+          },
+        ],
+      },
+    ]);
+
+    await useManagerStore.getState().loadWorkspace("ws-1");
+
+    expect(useManagerStore.getState().usageStats.get(`${WS}skill:local`)?.executionCount).toBe(3);
+  });
+
   it("refresh clears lockedSkills set by loadWorkspace", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
     noGlobal();
