@@ -8,6 +8,8 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.15.1] — 2026-07-20
+
 ### Added
 
 - **Complete repository-local skill usage tracing.** Cursor, Claude Code, and

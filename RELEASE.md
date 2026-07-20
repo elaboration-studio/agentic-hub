@@ -5,7 +5,7 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.16.0] — 2026-07-19
+## [0.15.1] — 2026-07-20
 
 ### Added
 
