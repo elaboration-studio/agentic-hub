@@ -22,6 +22,7 @@ import {
 import type { Settings, SkillCliStatus, ToolId, UsageTracingStatus } from "@/types";
 import { ALL_TOOLS, messageOf, resolveSourceIds, TOOL_LABELS } from "@/shared";
 import { getToolProjectionTargets } from "@/lib/toolTargets";
+import { formatLocalTimestamp } from "@/lib/format";
 import { useManagerStore } from "@/state/manager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -651,9 +652,9 @@ function UsageTracingPanel({ settings, onChanged }: PanelProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-2 p-0">
         <p className={hint}>
-          Off by default. When enabled, Agentic Hub installs managed tracer hooks
-          for supported enabled tools and stores normalized skill usage events in
-          a local SQLite database. Nothing is synced remotely.
+          Enabled by default. Agentic Hub installs managed tracer hooks for
+          supported enabled tools and stores normalized skill usage events in a
+          local SQLite database. Nothing is synced remotely.
         </p>
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span>
@@ -679,6 +680,32 @@ function UsageTracingPanel({ settings, onChanged }: PanelProps) {
             </button>
           )}
         </div>
+        {status && (
+          <div className="grid gap-2 sm:grid-cols-3">
+            {status.toolDiagnostics.map((diagnostic) => (
+              <div
+                key={diagnostic.tool}
+                className="rounded-md border bg-secondary/30 px-3 py-2 text-xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{TOOL_LABELS[diagnostic.tool]}</span>
+                  <span className={diagnostic.hookInstalled ? "text-success" : "text-warning"}>
+                    {diagnostic.hookInstalled ? "hook installed" : "hook missing"}
+                  </span>
+                </div>
+                <p className="mt-1 text-muted-foreground">
+                  {diagnostic.resolvedEventCount} resolved · {diagnostic.unresolvedEventCount}{" "}
+                  unresolved
+                </p>
+                <p className="truncate text-muted-foreground">
+                  Last captured: {diagnostic.lastCapturedAt
+                    ? formatLocalTimestamp(diagnostic.lastCapturedAt)
+                    : "never"}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
         {settings.usageTracing.enabled && status && !status.collectorRunning && (
           <Alert variant="destructive">
             <AlertDescription className="flex flex-wrap items-center justify-between gap-3">

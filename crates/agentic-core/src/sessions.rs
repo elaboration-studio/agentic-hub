@@ -1104,7 +1104,7 @@ mod tests {
             .join("sessions/2026/07/01")
             .join(format!("rollout-{id}.jsonl"));
         let cwd = home_dir().join("demo").to_string_lossy().into_owned();
-        let lines = vec![
+        let lines = [
             format!(
                 r#"{{"type":"session_meta","timestamp":"2026-07-01T09:00:00Z","payload":{{"id":"{id}","timestamp":"2026-07-01T09:00:00Z","cwd":"{cwd}","model_provider":"openai","git":{{"branch":"main"}}}}}}"#
             ),

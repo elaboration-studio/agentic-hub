@@ -712,6 +712,29 @@ pub struct UsageDayBucket {
     pub execution_count: u32,
 }
 
+/// Persistence scope for a traced capability identity.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CapabilityScope {
+    #[default]
+    Global,
+    Workspace,
+}
+
+impl CapabilityScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::Workspace => "workspace",
+        }
+    }
+}
+
 /// One heavily used capability joined with scan metadata.
 #[cfg_attr(
     feature = "ts-export",
@@ -726,6 +749,9 @@ pub struct UsageTopRow {
     pub kind: CapabilityKind,
     pub source_label: String,
     pub relative_path: String,
+    pub capability_scope: CapabilityScope,
+    #[serde(default)]
+    pub workspace_root: Option<String>,
     pub execution_count: u32,
     #[serde(default)]
     pub last_used_at: Option<String>,

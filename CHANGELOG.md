@@ -8,6 +8,35 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.15.1] — 2026-07-20
+
+### Added
+
+- **Complete repository-local skill usage tracing.** Cursor, Claude Code, and
+  Codex skill runs now resolve against each active repository as well as managed
+  and tool-global skills, while retaining the repository identity in Manager
+  counts and Statistics history.
+- **Per-tool tracing diagnostics.** Config now reports whether each supported
+  tool's hook is installed, its latest captured event, and resolved/unresolved
+  event counts.
+
+### Changed
+
+- One user turn can now record every distinct referenced skill exactly once.
+  Higher-confidence completion hooks upgrade prompt fallbacks instead of
+  double-counting the same invocation.
+- Usage storage schema v2 records global/workspace scope, canonical tildified
+  workspace roots, capability-relative paths, privacy-safe invocation keys,
+  and attribution confidence without storing prompts or tool arguments.
+
+### Fixed
+
+- Repository-local skills no longer remain unresolved merely because they are
+  absent from Agentic Hub's saved global sources.
+- Multi-skill prompts no longer discard all references, overlapping Claude hook
+  signals no longer create duplicate counts, and generic slash commands or
+  ordinary file attachments are no longer treated as skills.
+
 ## [0.15.0] — 2026-07-19
 
 ### Added

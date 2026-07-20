@@ -73,6 +73,7 @@ function UsageCapabilityTable(props: {
         <TableRow>
           <TableHead>Capability</TableHead>
           <TableHead>Source</TableHead>
+          <TableHead>Workspace</TableHead>
           <TableHead>Path</TableHead>
           <TableHead className="text-right">{props.usesLabel}</TableHead>
           <TableHead>Last used</TableHead>
@@ -81,7 +82,9 @@ function UsageCapabilityTable(props: {
       </TableHeader>
       <TableBody>
         {props.rows.map((row) => (
-          <TableRow key={row.capabilityId}>
+          <TableRow
+            key={`${row.capabilityScope}:${row.workspaceRoot ?? "global"}:${row.capabilityId}`}
+          >
             <TableCell>
               <Badge
                 variant="outline"
@@ -92,6 +95,9 @@ function UsageCapabilityTable(props: {
               {row.name}
             </TableCell>
             <TableCell className="text-muted-foreground">{row.sourceLabel}</TableCell>
+            <TableCell className="max-w-52 truncate font-mono text-xs text-muted-foreground">
+              {row.workspaceRoot ?? "Global"}
+            </TableCell>
             <TableCell className="font-mono text-xs text-muted-foreground">
               {row.relativePath}
             </TableCell>

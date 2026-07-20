@@ -69,8 +69,8 @@ pub use reconcile::{reconcile_all, reconcile_tool, ReconcileToolOutcome};
 pub use scaffold::{scaffold_demo, ScaffoldMode, ScaffoldResult};
 pub use scanner::{scan, scan_all};
 pub use sessions::{
-    filter_sessions, list_all_sessions, read_session_transcript, SessionListFilter,
-    SessionMessage, SessionRole, SessionSummary,
+    filter_sessions, list_all_sessions, read_session_transcript, SessionListFilter, SessionMessage,
+    SessionRole, SessionSummary,
 };
 pub use settings::{
     ColorScheme, Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings,
@@ -84,7 +84,10 @@ pub use skill_source::{
 };
 pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
-pub use usage_store::{default_path as usage_store_path, UsageEventInput, UsageStore};
+pub use usage_store::{
+    default_path as usage_store_path, hash_usage_correlation, UnresolvedUsageReference,
+    UsageCapabilityQuery, UsageEventInput, UsageStore, UsageToolDiagnosticSummary,
+};
 pub use workspace_inventory::{
     scan_installed_tools, scan_workspace, InstalledToolInventory, LockedSkill, WorkspaceInventory,
 };
