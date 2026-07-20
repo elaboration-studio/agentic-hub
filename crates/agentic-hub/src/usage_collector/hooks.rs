@@ -74,17 +74,29 @@ fn ensure_tracer_script(_settings: &Settings) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    // Buffer stdin, POST to the collector, and on failure spool for later drain.
+    // Always exit 0 so agentic tools are never blocked by tracing.
+    // Spool layout MUST match `spool.rs`: `{id}.meta` = `token\nsource_tool\n`,
+    // `{id}.body` = raw JSON payload bytes under `~/.agentic-hub/usage/spool/`.
     fs::write(
         &path,
         r#"#!/bin/sh
 url="$1"
 token="$2"
 source_tool="$3"
-/usr/bin/curl -fsS --max-time 0.5 \
+payload=$(cat)
+if printf '%s' "$payload" | /usr/bin/curl -fsS --max-time 1.0 \
   -H "content-type: application/json" \
   -H "x-agentic-hub-token: ${token}" \
   -H "x-agentic-hub-source-tool: ${source_tool}" \
-  --data-binary @- "${url}" >/dev/null 2>&1 || true
+  --data-binary @- "${url}" >/dev/null 2>&1; then
+  exit 0
+fi
+spool_dir="${HOME}/.agentic-hub/usage/spool"
+mkdir -p "${spool_dir}" 2>/dev/null || exit 0
+id="${source_tool}-$(date +%s)-$$"
+printf '%s\n%s\n' "$token" "$source_tool" > "${spool_dir}/${id}.meta" 2>/dev/null || exit 0
+printf '%s' "$payload" > "${spool_dir}/${id}.body" 2>/dev/null || rm -f "${spool_dir}/${id}.meta"
 exit 0
 "#,
     )

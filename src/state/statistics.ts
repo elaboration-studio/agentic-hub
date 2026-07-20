@@ -13,10 +13,11 @@ import type {
   UsageDateRange,
   UsageTracingStatus,
 } from "@/types";
-import { ALL_TOOLS, enabledTools, messageOf } from "@/shared";
+import { ALL_TOOLS, enabledTools, messageOf, type UsageSort } from "@/shared";
 import { useManagerStore } from "./manager";
 
 export const DEFAULT_USAGE_RANGE: UsageDateRange = "last30Days";
+export const DEFAULT_USAGE_TABLE_SORT: UsageSort = "lastUsed";
 
 export interface ResourceInventory {
   total: number;
@@ -54,11 +55,13 @@ interface StatisticsState {
   inventory: ResourceInventory | null;
   dashboard: UsageDashboard | null;
   range: UsageDateRange;
+  tableSort: UsageSort;
   tracingStatus: UsageTracingStatus | null;
   loading: boolean;
   error: string | null;
 
   setRange: (range: UsageDateRange) => void;
+  setTableSort: (sort: UsageSort) => void;
   reload: () => Promise<void>;
 }
 
@@ -85,6 +88,7 @@ export const useStatisticsStore = create<StatisticsState>((set, get) => ({
   inventory: null,
   dashboard: null,
   range: DEFAULT_USAGE_RANGE,
+  tableSort: DEFAULT_USAGE_TABLE_SORT,
   tracingStatus: null,
   loading: false,
   error: null,
@@ -93,6 +97,8 @@ export const useStatisticsStore = create<StatisticsState>((set, get) => ({
     set({ range });
     void get().reload();
   },
+
+  setTableSort: (tableSort) => set({ tableSort }),
 
   reload: async () => {
     set({ loading: true, error: null });

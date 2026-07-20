@@ -1,7 +1,5 @@
 //! Local loopback collector for opt-in usage tracing.
 
-#[cfg(test)]
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -11,14 +9,10 @@ use std::time::Duration;
 
 use agentic_core::adapter_registry;
 use agentic_core::hook_sync::{self, HookCanonicalEvent};
-#[cfg(test)]
-use agentic_core::managed_copy::now_iso8601;
 use agentic_core::model::{
     CapabilityItem, CapabilityKind, ToolId, UsageDashboard, UsageDateRange, UsageStats,
 };
 use agentic_core::settings::Settings;
-#[cfg(test)]
-use agentic_core::UsageEventInput;
 use agentic_core::{
     usage_tracer_enabled, usage_tracer_hook_dir, usage_tracer_hook_id, usage_tracer_item,
     usage_tracer_manifest, usage_tracer_root, HookManifest, UsageStore, USAGE_TRACER_SCRIPT,
@@ -45,6 +39,7 @@ const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const HEALTH_RECOVERY_ATTEMPTS: u8 = 3;
 const HEALTH_RECOVERY_DELAY: Duration = Duration::from_secs(5);
 const COLLECTOR_STOP_DELAY: Duration = Duration::from_millis(100);
+const SPOOL_DRAIN_INTERVAL: Duration = Duration::from_secs(30);
 
 #[cfg_attr(
     feature = "ts-export",
@@ -270,6 +265,7 @@ impl UsageCollectorState {
             .map_err(|e| e.to_string())?;
         let _ = reconcile_existing_usage(&UsageStore::new(), settings);
         let _ = UsageStore::new().purge_unattributed_events();
+        let _ = spool::drain_spool(settings, &self.attribution);
 
         let mut inner = self
             .inner
@@ -339,6 +335,23 @@ pub fn start_health_checker(app: AppHandle) {
             if let Ok(Some(failure)) = collector.check_health().await {
                 let _ = app.emit("usage-tracing-health-failed", failure);
             }
+        }
+    });
+}
+
+pub fn start_spool_drainer(app: AppHandle) {
+    async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(SPOOL_DRAIN_INTERVAL);
+        loop {
+            interval.tick().await;
+            let Ok(settings) = Settings::load() else {
+                continue;
+            };
+            if !settings.usage_tracing.enabled {
+                continue;
+            }
+            let collector = app.state::<UsageCollectorState>();
+            let _ = spool::drain_spool(&settings, &collector.attribution);
         }
     });
 }
@@ -589,6 +602,7 @@ pub fn record_command_palette_usage(
 }
 
 mod hooks;
+mod spool;
 #[cfg(test)]
 use hooks::write_tracer_manifest;
 pub use hooks::{sync_tracer_hooks, synced_tracer_tools};

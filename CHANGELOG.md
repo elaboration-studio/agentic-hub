@@ -8,6 +8,21 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cursor `/skill` usage tracing.** Prompt-submit hooks now extract
+  catalog-validated slash skills (`/name`), agent mentions (`@agent-*` /
+  `/agent`), and agent markdown reads under `/agents/`, so Cursor no longer
+  depends on a secondary Skill tool or `SKILL.md` attachment to count usage.
+- **Delivery resilience.** Failed tracer curls spool under
+  `~/.agentic-hub/usage/spool/` and drain on collector start and every 30s,
+  instead of silently dropping events when the hub is briefly down.
+- **Codex name precedence.** Same-named global and repository skills resolve
+  workspace-first (aligned with Cursor), instead of staying unresolved when
+  both scopes are present.
+- Repository-local agents under documented tool agent dirs are included in the
+  usage catalog so `/agent` and agent `Read` paths can resolve in-repo.
+
 ## [0.15.1] — 2026-07-20
 
 ### Added

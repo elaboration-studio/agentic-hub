@@ -1,4 +1,19 @@
 use super::*;
+use crate::usage_attribution::AttributionState;
+
+fn first_event(raw: Value, source_tool: &str) -> agentic_core::UsageEventInput {
+    let batch = AttributionState::default().normalize(&raw, source_tool);
+    batch
+        .occurrences
+        .into_iter()
+        .next()
+        .map(|occurrence| occurrence.event)
+        .unwrap_or_else(|| agentic_core::UsageEventInput {
+            source_tool: source_tool.to_string(),
+            event_type: "UserPromptSubmit".to_string(),
+            ..agentic_core::UsageEventInput::default()
+        })
+}
 
 #[test]
 fn normalize_event_reads_explicit_skill_name_without_arguments() {
@@ -12,7 +27,7 @@ fn normalize_event_reads_explicit_skill_name_without_arguments() {
         "model": "test-model"
     });
 
-    let input = normalize_event(raw, "claude");
+    let input = first_event(raw, "claude");
 
     assert_eq!(
         input.skill_name.as_deref(),
@@ -27,14 +42,18 @@ fn normalize_event_reads_explicit_skill_name_without_arguments() {
 fn normalize_event_canonicalizes_cursor_post_tool_use() {
     let raw = json!({
         "event_type": "postToolUse",
-        "tool_name": "Read"
+        "tool_name": "Read",
+        "tool_input": {
+            "path": "/Users/ArnoYe/.agents/skills/feature-dev/SKILL.md"
+        }
     });
 
-    let input = normalize_event(raw, "cursor");
+    let input = first_event(raw, "cursor");
 
     assert_eq!(input.event_type, "PostToolUse");
     assert_eq!(input.source_tool, "cursor");
     assert_eq!(input.tool_name.as_deref(), Some("Read"));
+    assert_eq!(input.skill_name.as_deref(), Some("feature-dev"));
 }
 
 #[test]
@@ -45,7 +64,7 @@ fn normalize_event_extracts_explicit_prompt_skill_ref_without_storing_prompt() {
         "model": "cursor-test"
     });
 
-    let input = normalize_event(raw, "cursor");
+    let input = first_event(raw, "cursor");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(
@@ -64,13 +83,14 @@ fn normalize_event_extracts_slash_skill_from_claude_prompt_submit() {
         "model": "claude-sonnet-5"
     });
 
-    let input = normalize_event(raw, "claude");
+    let input = first_event(raw, "claude");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(
         input.skill_name.as_deref(),
         Some("root-cause-investigation")
     );
+    assert_eq!(input.attribution_source.as_deref(), Some("slash_reference"));
 }
 
 #[test]
@@ -84,7 +104,7 @@ fn normalize_event_extracts_skill_from_claude_prompt_expansion() {
         "model": "claude-sonnet-5"
     });
 
-    let input = normalize_event(raw, "claude");
+    let input = first_event(raw, "claude");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(
@@ -104,10 +124,9 @@ fn normalize_event_ignores_non_skill_claude_prompt_expansion() {
         "prompt": "/some-mcp-prompt"
     });
 
-    let input = normalize_event(raw, "claude");
+    let batch = AttributionState::default().normalize(&raw, "claude");
 
-    assert_eq!(input.event_type, "UserPromptExpansion");
-    assert_eq!(input.skill_name, None);
+    assert!(batch.occurrences.is_empty());
 }
 
 #[test]
@@ -118,7 +137,7 @@ fn normalize_event_extracts_dollar_skill_from_codex_prompt_submit() {
         "model": "gpt-5.3-codex"
     });
 
-    let input = normalize_event(raw, "codex");
+    let input = first_event(raw, "codex");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(
@@ -137,10 +156,11 @@ fn normalize_event_extracts_slash_agent_from_cursor_prompt_submit() {
         "model": "claude-sonnet"
     });
 
-    let input = normalize_event(raw, "cursor");
+    let input = first_event(raw, "cursor");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(input.skill_name.as_deref(), Some("cto"));
+    assert_eq!(input.attribution_source.as_deref(), Some("slash_reference"));
 }
 
 #[test]
@@ -151,10 +171,11 @@ fn normalize_event_extracts_at_agent_from_claude_prompt_submit() {
         "model": "claude-sonnet-5"
     });
 
-    let input = normalize_event(raw, "claude");
+    let input = first_event(raw, "claude");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(input.skill_name.as_deref(), Some("cto"));
+    assert_eq!(input.attribution_source.as_deref(), Some("agent_mention"));
 }
 
 #[test]
@@ -167,24 +188,35 @@ fn normalize_event_extracts_agent_from_read_tool() {
         }
     });
 
-    let input = normalize_event(raw, "cursor");
+    let input = first_event(raw, "cursor");
 
     assert_eq!(input.event_type, "PostToolUse");
     assert_eq!(input.skill_name.as_deref(), Some("cto"));
+    assert_eq!(input.attribution_source.as_deref(), Some("agent_read"));
 }
 
 #[test]
-fn normalize_event_keeps_ambiguous_slash_prompt_refs_unresolved() {
+fn normalize_event_extracts_multiple_slash_refs() {
     let raw = json!({
         "event_type": "beforeSubmitPrompt",
         "prompt": "/cto and /ceo review this"
     });
 
-    let input = normalize_event(raw, "cursor");
+    let batch = AttributionState::default().normalize(&raw, "cursor");
+    let mut names: Vec<_> = batch
+        .occurrences
+        .iter()
+        .filter_map(|item| item.event.skill_name.clone())
+        .collect();
+    names.sort();
 
-    assert_eq!(input.event_type, "UserPromptSubmit");
-    assert_eq!(input.skill_name, None);
+    assert_eq!(names, vec!["ceo", "cto"]);
+    assert!(batch
+        .occurrences
+        .iter()
+        .all(|item| item.requires_catalog_match));
 }
+
 #[test]
 fn normalize_event_extracts_slash_skill_from_codex_prompt_submit() {
     let raw = json!({
@@ -193,7 +225,7 @@ fn normalize_event_extracts_slash_skill_from_codex_prompt_submit() {
         "model": "gpt-5.5"
     });
 
-    let input = normalize_event(raw, "codex");
+    let input = first_event(raw, "codex");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(
@@ -210,7 +242,7 @@ fn normalize_event_extracts_markdown_skill_from_codex_prompt_submit() {
         "model": "gpt-5.5"
     });
 
-    let input = normalize_event(raw, "codex");
+    let input = first_event(raw, "codex");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(
@@ -220,16 +252,21 @@ fn normalize_event_extracts_markdown_skill_from_codex_prompt_submit() {
 }
 
 #[test]
-fn normalize_event_keeps_ambiguous_codex_prompt_refs_unresolved() {
+fn normalize_event_extracts_multiple_dollar_refs() {
     let raw = json!({
         "hook_event_name": "UserPromptSubmit",
         "prompt": "$root-cause-investigation and $security-review"
     });
 
-    let input = normalize_event(raw, "codex");
+    let batch = AttributionState::default().normalize(&raw, "codex");
+    let mut names: Vec<_> = batch
+        .occurrences
+        .iter()
+        .filter_map(|item| item.event.skill_name.clone())
+        .collect();
+    names.sort();
 
-    assert_eq!(input.event_type, "UserPromptSubmit");
-    assert_eq!(input.skill_name, None);
+    assert_eq!(names, vec!["root-cause-investigation", "security-review"]);
 }
 
 #[test]
@@ -241,7 +278,7 @@ fn normalize_event_extracts_skill_from_claude_skill_tool_input() {
         "model": "haiku"
     });
 
-    let input = normalize_event(raw, "claude");
+    let input = first_event(raw, "claude");
 
     assert_eq!(input.event_type, "PostToolUse");
     assert_eq!(input.skill_name.as_deref(), Some("helper-gitlab"));
@@ -257,7 +294,7 @@ fn normalize_event_extracts_skill_from_codex_skill_tool_input() {
         "model": "gpt-5.3-codex"
     });
 
-    let input = normalize_event(raw, "codex");
+    let input = first_event(raw, "codex");
 
     assert_eq!(input.event_type, "PostToolUse");
     assert_eq!(input.skill_name.as_deref(), Some("helper-gitlab"));
@@ -265,16 +302,14 @@ fn normalize_event_extracts_skill_from_codex_skill_tool_input() {
 }
 
 #[test]
-fn normalize_event_keeps_ambiguous_prompt_refs_unresolved() {
+fn normalize_event_extracts_multiple_dollar_prompt_refs() {
     let raw = json!({
         "event_type": "beforeSubmitPrompt",
         "prompt": "$root-cause-investigation and $security-review"
     });
 
-    let input = normalize_event(raw, "cursor");
-
-    assert_eq!(input.event_type, "UserPromptSubmit");
-    assert_eq!(input.skill_name, None);
+    let batch = AttributionState::default().normalize(&raw, "cursor");
+    assert_eq!(batch.occurrences.len(), 2);
 }
 
 #[test]
@@ -286,7 +321,7 @@ fn normalize_event_extracts_skill_from_cursor_skill_tool_input() {
         "model": "composer-2.5"
     });
 
-    let input = normalize_event(raw, "cursor");
+    let input = first_event(raw, "cursor");
 
     assert_eq!(input.event_type, "PostToolUse");
     assert_eq!(input.skill_name.as_deref(), Some("helper-gitlab"));
@@ -306,7 +341,7 @@ fn normalize_event_extracts_single_attached_skill_from_before_submit_prompt() {
         "model": "composer-2.5"
     });
 
-    let input = normalize_event(raw, "cursor");
+    let input = first_event(raw, "cursor");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(input.skill_name.as_deref(), Some("helper-gitlab"));
@@ -320,13 +355,14 @@ fn normalize_event_extracts_slash_skill_from_cursor_prompt_submit() {
         "model": "composer-2.5"
     });
 
-    let input = normalize_event(raw, "cursor");
+    let input = first_event(raw, "cursor");
 
     assert_eq!(input.event_type, "PostSkillUse");
     assert_eq!(
         input.skill_name.as_deref(),
         Some("root-cause-investigation")
     );
+    assert_eq!(input.attribution_source.as_deref(), Some("slash_reference"));
 }
 
 #[test]
@@ -340,7 +376,7 @@ fn normalize_event_extracts_skill_from_read_tool_path() {
         "model": "composer-2.5"
     });
 
-    let input = normalize_event(raw, "cursor");
+    let input = first_event(raw, "cursor");
 
     assert_eq!(input.event_type, "PostToolUse");
     assert_eq!(
@@ -350,28 +386,7 @@ fn normalize_event_extracts_skill_from_read_tool_path() {
 }
 
 #[test]
-fn sync_tracer_hooks_writes_cursor_hooks_file() {
-    let settings = Settings::load().expect("settings");
-    assert!(
-        settings.usage_tracing.enabled,
-        "usage tracing must be enabled in ~/.agentic-hub/config.json"
-    );
-    sync_tracer_hooks(&settings).expect("sync tracer hooks");
-    let path = settings
-        .tools
-        .cursor
-        .hooks_file
-        .as_ref()
-        .expect("cursor hooks path");
-    assert!(
-        path.exists(),
-        "cursor hooks file should exist at {}",
-        path.display()
-    );
-}
-
-#[test]
-fn normalize_event_keeps_ambiguous_attached_skills_unresolved() {
+fn normalize_event_extracts_multiple_attached_skills() {
     let raw = json!({
         "event_type": "beforeSubmitPrompt",
         "prompt": "diagnose this",
@@ -387,8 +402,16 @@ fn normalize_event_keeps_ambiguous_attached_skills_unresolved() {
         ]
     });
 
-    let input = normalize_event(raw, "cursor");
+    let batch = AttributionState::default().normalize(&raw, "cursor");
+    let mut names: Vec<_> = batch
+        .occurrences
+        .iter()
+        .filter_map(|item| item.event.skill_name.clone())
+        .collect();
+    names.sort();
 
-    assert_eq!(input.event_type, "UserPromptSubmit");
-    assert_eq!(input.skill_name, None);
+    assert_eq!(
+        names,
+        vec!["helper-gitlab", "root-cause-investigation"]
+    );
 }

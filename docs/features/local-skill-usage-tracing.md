@@ -44,10 +44,13 @@ which capabilities are worth maintaining.
 
 - Remote sync or cloud analytics.
 - Inferring skill usage from free-form prompts, transcripts, or raw source code.
-  Cursor and Codex may count explicit `$skill`, validated slash-skill, and
-  `SKILL.md` references from prompt-submit hook input; Claude slash commands
-  count via `UserPromptExpansion.command_name`. Raw prompts and tool inputs are
-  consumed in memory and never persisted or logged.
+  Cursor, Claude, and Codex count explicit `$skill`, catalog-validated `/skill`
+  (and `/agent` / `@agent-*`), Skill tool calls, `SKILL.md` links/attachments/reads,
+  and agent markdown reads under an `/agents/` path from hook input. Claude slash
+  commands also count via `UserPromptExpansion.command_name`. Unknown slash tokens
+  that do not resolve in the local catalog are dropped (not stored as unresolved
+  noise). Raw prompts and tool inputs are consumed in memory and never persisted
+  or logged.
 - Editing or deleting usage events from the UI.
 - Non-skill capability analytics beyond storing raw terminal events.
 
@@ -56,10 +59,12 @@ which capabilities are worth maintaining.
 The Config page exposes a local usage tracing toggle. When enabled, Agentic Hub
 starts a loopback collector and projects a managed tracer hook into supported,
 enabled tools. Hooks forward terminal execution events to the local collector
-with a short timeout; hook failures never block the calling agentic tool.
-Config also shows per-tool hook installation, last-captured time, and
-resolved/unresolved counts so users can distinguish collection failures from
-attribution gaps.
+with a short timeout (1s); on delivery failure the hook spools the payload under
+`~/.agentic-hub/usage/spool/` for later drain and always exits 0 so tracing never
+blocks the calling agentic tool. The collector drains the spool on startup and
+every 30 seconds while tracing is enabled. Config also shows per-tool hook
+installation, last-captured time, and resolved/unresolved counts so users can
+distinguish collection failures from attribution gaps.
 
 The collector status is an authenticated loopback health probe, not a cached
 process flag. While tracing is enabled, Agentic Hub checks it hourly. A failed
@@ -73,6 +78,16 @@ The Manager matrix adds a `Usage` column after `Source`. Skill, agent, and
 command rows show the total attributed execution count. Hovering the number
 shows per-tool counts (or `Palette` for command palette usage) and the last-used
 timestamp. Rule and hook rows show `-` in v1.
+
+A **Sort by usage** control in the Manager toolbar defaults to **Latest use**
+(newest first). Users can switch to **Usage count** (highest first). Rows
+without usage data sort last; ties break alphabetically by name. Sorting applies
+within flat kind groups and among sibling leaves in tree view; folder rows stay
+grouped above leaves and remain alphabetically ordered.
+
+On Statistics, the **Today's usage** and **Top usage** tables expose the same
+two sort modes via clickable **Uses** / **Last used** column headers. **Last
+used** is active by default and shows a downward arrow on the active column.
 
 Repository-local rows retain their repository identity. A global skill and a
 repository skill with the same name have separate counts. Statistics retains

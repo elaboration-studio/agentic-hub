@@ -72,31 +72,38 @@ arguments, session ids, turn ids, and skill contents are never stored.
 ## Attribution contract
 
 Normalization emits a typed batch of explicit references. Each reference keeps
-the normalized skill name and, when supplied, an exact `SKILL.md` path. Accepted
-signals are Skill tool calls, Claude `UserPromptExpansion`, `$skill`, validated
-skill links or attachments, validated slash-skill names, and reads of validated
-`SKILL.md` paths. Generic slash commands, ordinary files, images, arbitrary
-paths, and free-form semantic inference are ignored.
+the normalized skill or agent name and, when supplied, an exact capability path.
+Accepted signals are Skill tool calls, Claude `UserPromptExpansion`, `$skill`,
+catalog-validated `/skill` or `/agent` tokens, `@agent-*` mentions, validated
+skill links or attachments, reads of validated `SKILL.md` paths, and reads of
+agent markdown files under an `/agents/` path. Generic slash commands that do
+not resolve in the catalog, ordinary files, images, arbitrary paths, and
+free-form semantic inference are ignored.
 
 The capability catalog combines:
 
 1. managed global source scans;
-2. tool-global installed skills;
-3. skills discovered under the active repository roots.
+2. tool-global installed skills and agents;
+3. skills and agents discovered under the active repository roots.
 
 Resolution compares canonical exact paths first, documented tool scope and
-precedence second, and unique names last. Codex discovers ancestor
-`.agents/skills` roots from `cwd` to repository root. Claude discovers ancestor
-and nested `.claude/skills` roots and applies its scope precedence. Cursor uses
-all `workspace_roots` and discovers `.agents/skills`, `.cursor/skills`, and its
-documented compatible nested roots. Repository roots come from the hook payload,
-not Agentic Hub's saved-workspace list.
+precedence second, and unique names last. Codex and Cursor prefer a unique
+workspace match, then a unique global match. Claude prefers unique global, then
+unique workspace. Codex discovers ancestor `.agents/skills` roots from `cwd` to
+repository root. Claude discovers ancestor and nested `.claude/skills` roots.
+Cursor uses all `workspace_roots` and discovers `.agents/skills`,
+`.cursor/skills`, `.claude/skills`, and `.codex/skills`. Repository agents are
+discovered under `.cursor/agents` / `.agents/agents` (Cursor), ancestor
+`.claude/agents` (Claude), and ancestor `.codex/agents` / `.agents/agents`
+(Codex). Repository roots come from the hook payload, not Agentic Hub's
+saved-workspace list.
 
 One request fans out to one occurrence per distinct resolved skill. Unresolved
-high-confidence references may be retained for diagnostics, but unvalidated
-slash/path candidates are dropped. Existing unresolved rows are reconciled only
-when their recorded workspace still exists and exactly one catalog candidate
-matches; uncertain history is preserved unchanged.
+high-confidence dollar references may be retained for diagnostics, but
+catalog-required slash/path candidates that do not resolve are dropped.
+Existing unresolved rows are reconciled only when their recorded workspace
+still exists and exactly one catalog candidate matches; uncertain history is
+preserved unchanged.
 
 ## Turn identity and deduplication
 
@@ -117,6 +124,7 @@ prompt fallback rather than inserting another count.
 ```text
 Agentic tool hook
   -> POST http://127.0.0.1:<collectorPort>/events
+  -> on curl failure: spool ~/.agentic-hub/usage/spool/{id}.{meta,body}
   -> token check
   -> payload parse
   -> extract high-confidence references in memory
@@ -124,11 +132,15 @@ Agentic tool hook
   -> resolve and build per-skill invocation keys
   -> transactionally upsert the occurrence batch
   -> 202 Accepted
+
+Collector startup + 30s timer
+  -> drain spool (drop stale tokens; persist matching entries)
 ```
 
 The collector binds only to `127.0.0.1`. Requests without the configured token
 return `401`. Malformed JSON returns `400`. Storage failures return `202` after
-logging because hook failures must not block the agentic tool.
+logging because hook failures must not block the agentic tool. The managed
+tracer script buffers stdin, uses a 1s curl timeout, and always exits `0`.
 
 ## Health and recovery
 
@@ -176,12 +188,12 @@ entries are preserved verbatim.
 
 | Failure | Impact | Recovery |
 | --- | --- | --- |
-| Collector port unavailable | Tracing status shows stopped; hooks degrade | Change port or restart app |
+| Collector port unavailable | Tracing status shows stopped; hooks spool payloads | Change port or restart app; spool drains on recovery |
 | Collector health probe fails | Hourly recovery restarts it three times without hooks sync | Restart Agentic Hub after the single outage notification |
-| Invalid token | Event rejected | Reinstall managed tracer hooks |
+| Invalid token | Event rejected; spool lines with stale tokens discarded | Reinstall managed tracer hooks |
 | Malformed payload | Event ignored | Fix integration payload |
-| Ambiguous skill name | High-confidence event stored, visible count unchanged | Invoke through an exact skill path or rename it |
-| SQLite write error | Hook still continues | Surface status error in Config |
+| Ambiguous skill name | High-confidence dollar event stored, visible count unchanged; catalog-required slash/path dropped | Invoke through an exact skill path or rename it |
+| SQLite write error | Hook still continues; spool entry retained for retry | Surface status error in Config |
 
 A high unresolved count with a running collector usually means hooks are
 arriving with a skill reference that could not be matched to one local

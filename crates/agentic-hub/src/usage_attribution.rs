@@ -160,10 +160,10 @@ fn extract_references(raw: &Value, source_tool: &str, event_type: &str) -> Vec<S
             &["tool_input", "toolInput", "input"],
             &["path", "file_path", "filePath", "target_file", "targetFile"],
         ) {
-            push_path_ref(&mut refs, &path, "skill_read", 100);
+            push_path_ref(&mut refs, &path, "skill_read", "agent_read", 100);
         }
     }
-    if supports_prompt_attribution(source_tool) && prompt_event(event_type) {
+    if supports_prompt_attribution(source_tool) && event_type == "UserPromptSubmit" {
         for key in ["prompt", "user_prompt", "userPrompt", "message"] {
             if let Some(text) = raw.get(key).and_then(Value::as_str) {
                 collect_prompt_refs(text, &mut refs);
@@ -185,12 +185,21 @@ fn collect_prompt_refs(text: &str, refs: &mut Vec<SkillReference>) {
         let Some(path_end) = after_link.find(')') else {
             break;
         };
-        push_path_ref(refs, &after_link[..path_end], "skill_link", 70);
+        push_path_ref(refs, &after_link[..path_end], "skill_link", "agent_link", 70);
         rest = &after_link[path_end + 1..];
     }
     for token in text.split_whitespace() {
         if let Some(name) = clean_token(token.strip_prefix('$')) {
             push_name_ref(refs, name, "dollar_reference", 50, false);
+        }
+        if let Some(name) = clean_token(token.strip_prefix('/')) {
+            push_name_ref(refs, name, "slash_reference", 60, true);
+        }
+        if let Some(rest) = token.strip_prefix('@') {
+            let name = rest.strip_prefix("agent-").unwrap_or(rest);
+            if let Some(name) = clean_token(Some(name)) {
+                push_name_ref(refs, name, "agent_mention", 60, true);
+            }
         }
     }
 }
@@ -201,28 +210,43 @@ fn collect_attachment_refs(raw: &Value, refs: &mut Vec<SkillReference>) {
     };
     for attachment in attachments {
         if let Some(path) = string_at(attachment, &["file_path", "filePath", "path"]) {
-            push_path_ref(refs, &path, "skill_attachment", 70);
+            push_path_ref(refs, &path, "skill_attachment", "agent_attachment", 70);
         }
     }
 }
 
-fn push_path_ref(refs: &mut Vec<SkillReference>, raw_path: &str, source: &'static str, rank: u8) {
+fn push_path_ref(
+    refs: &mut Vec<SkillReference>,
+    raw_path: &str,
+    skill_source: &'static str,
+    agent_source: &'static str,
+    rank: u8,
+) {
     let path = PathBuf::from(raw_path);
-    if path.file_name().and_then(|name| name.to_str()) != Some("SKILL.md") {
+    if path_is_skill_file(&path) {
+        let Some(name) = path
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+        else {
+            return;
+        };
+        if valid_skill_name(name) {
+            refs.push(SkillReference {
+                name: name.to_string(),
+                exact_path: Some(path),
+                source: skill_source,
+                rank,
+                requires_catalog_match: true,
+            });
+        }
         return;
     }
-    let Some(name) = path
-        .parent()
-        .and_then(Path::file_name)
-        .and_then(|name| name.to_str())
-    else {
-        return;
-    };
-    if valid_skill_name(name) {
+    if let Some(name) = agent_name_from_path(&path) {
         refs.push(SkillReference {
-            name: name.to_string(),
+            name,
             exact_path: Some(path),
-            source,
+            source: agent_source,
             rank,
             requires_catalog_match: true,
         });
@@ -354,6 +378,25 @@ pub fn path_is_skill_file(path: &Path) -> bool {
     path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md")
 }
 
+pub fn path_is_capability_file(path: &Path) -> bool {
+    path_is_skill_file(path) || agent_name_from_path(path).is_some()
+}
+
+fn agent_name_from_path(path: &Path) -> Option<String> {
+    let file_name = path.file_name()?.to_str()?;
+    if !file_name.ends_with(".md") || file_name == "SKILL.md" {
+        return None;
+    }
+    let has_agents = path
+        .components()
+        .any(|component| component.as_os_str() == "agents");
+    if !has_agents {
+        return None;
+    }
+    let stem = file_name.trim_end_matches(".md");
+    valid_skill_name(stem).then(|| stem.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,11 +423,151 @@ mod tests {
     }
 
     #[test]
-    fn normalize_ignores_health_images_and_pasted_files() {
+    fn normalize_extracts_slash_skill_from_cursor_prompt_submit() {
+        let state = AttributionState::default();
+        let raw = json!({
+            "event_type": "beforeSubmitPrompt",
+            "generation_id": "generation-1",
+            "prompt": "/root-cause-investigation why is usage not tracked?"
+        });
+
+        let batch = state.normalize(&raw, "cursor");
+
+        assert_eq!(batch.occurrences.len(), 1);
+        assert_eq!(
+            batch.occurrences[0].event.skill_name.as_deref(),
+            Some("root-cause-investigation")
+        );
+        assert_eq!(
+            batch.occurrences[0].event.attribution_source.as_deref(),
+            Some("slash_reference")
+        );
+        assert!(batch.occurrences[0].requires_catalog_match);
+        assert_eq!(batch.occurrences[0].event.attribution_rank, 60);
+    }
+
+    #[test]
+    fn normalize_extracts_slash_skill_from_codex_and_claude_prompt_submit() {
+        let state = AttributionState::default();
+        let prompt = "/root-cause-investigation why is usage not tracked?";
+        for tool in ["codex", "claude"] {
+            let raw = json!({
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": prompt
+            });
+            let batch = state.normalize(&raw, tool);
+            assert_eq!(
+                batch.occurrences[0].event.skill_name.as_deref(),
+                Some("root-cause-investigation"),
+                "tool={tool}"
+            );
+            assert!(batch.occurrences[0].requires_catalog_match);
+        }
+    }
+
+    #[test]
+    fn normalize_extracts_slash_agent_and_at_mention() {
+        let state = AttributionState::default();
+        let slash = state.normalize(
+            &json!({
+                "event_type": "beforeSubmitPrompt",
+                "prompt": "/cto investigate this bug"
+            }),
+            "cursor",
+        );
+        assert_eq!(slash.occurrences[0].event.skill_name.as_deref(), Some("cto"));
+        assert_eq!(
+            slash.occurrences[0].event.attribution_source.as_deref(),
+            Some("slash_reference")
+        );
+
+        let mention = state.normalize(
+            &json!({
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": "@agent-cto investigate this bug"
+            }),
+            "claude",
+        );
+        assert_eq!(
+            mention.occurrences[0].event.skill_name.as_deref(),
+            Some("cto")
+        );
+        assert_eq!(
+            mention.occurrences[0].event.attribution_source.as_deref(),
+            Some("agent_mention")
+        );
+    }
+
+    #[test]
+    fn normalize_extracts_agent_from_read_tool_path() {
+        let state = AttributionState::default();
+        let raw = json!({
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Read",
+            "tool_input": {
+                "file_path": "/Users/me/.cursor/agents/cto.md"
+            }
+        });
+
+        let batch = state.normalize(&raw, "cursor");
+
+        assert_eq!(batch.occurrences[0].event.skill_name.as_deref(), Some("cto"));
+        assert_eq!(
+            batch.occurrences[0].event.attribution_source.as_deref(),
+            Some("agent_read")
+        );
+        assert!(batch.occurrences[0].requires_catalog_match);
+    }
+
+    #[test]
+    fn normalize_keeps_slash_health_as_catalog_required_candidate() {
         let state = AttributionState::default();
         let raw = json!({
             "event_type": "beforeSubmitPrompt",
             "prompt": "/health /tmp/pasted-text.txt /tmp/clipboard-image.png"
+        });
+
+        let batch = state.normalize(&raw, "cursor");
+
+        assert_eq!(batch.occurrences.len(), 1);
+        assert_eq!(batch.occurrences[0].event.skill_name.as_deref(), Some("health"));
+        assert!(batch.occurrences[0].requires_catalog_match);
+    }
+
+    #[test]
+    fn normalize_returns_distinct_slash_dollar_and_tool_skills() {
+        let state = AttributionState::default();
+        let raw = json!({
+            "event_type": "beforeSubmitPrompt",
+            "generation_id": "generation-1",
+            "prompt": "/alpha-skill and $beta-skill"
+        });
+        let tool = json!({
+            "event_type": "postToolUse",
+            "generation_id": "generation-1",
+            "tool_name": "Skill",
+            "tool_input": { "skill": "gamma-skill" }
+        });
+
+        let prompt_batch = state.normalize(&raw, "cursor");
+        let tool_batch = state.normalize(&tool, "cursor");
+
+        let mut names: Vec<_> = prompt_batch
+            .occurrences
+            .iter()
+            .chain(tool_batch.occurrences.iter())
+            .filter_map(|item| item.event.skill_name.clone())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["alpha-skill", "beta-skill", "gamma-skill"]);
+    }
+
+    #[test]
+    fn normalize_ignores_health_images_and_pasted_files() {
+        let state = AttributionState::default();
+        let raw = json!({
+            "event_type": "beforeSubmitPrompt",
+            "prompt": "/tmp/pasted-text.txt /tmp/clipboard-image.png"
         });
 
         let batch = state.normalize(&raw, "cursor");

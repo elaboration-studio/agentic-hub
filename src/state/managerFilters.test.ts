@@ -27,13 +27,14 @@ describe("managerFilters store", () => {
   });
 
   it("setters update each filter field", () => {
-    const { setView, setQuery, setSource, setKind, setEnabledOnly } =
+    const { setView, setQuery, setSource, setKind, setEnabledOnly, setUsageSort } =
       useManagerFiltersStore.getState();
     setView("flat");
     setQuery("auth");
     setSource("shared");
     setKind("skill");
     setEnabledOnly(true);
+    setUsageSort("usageCount");
 
     const s = useManagerFiltersStore.getState();
     expect(s.view).toBe("flat");
@@ -41,6 +42,7 @@ describe("managerFilters store", () => {
     expect(s.source).toBe("shared");
     expect(s.kind).toBe("skill");
     expect(s.enabledOnly).toBe(true);
+    expect(s.usageSort).toBe("usageCount");
   });
 
   it("setCollapsed replaces the collapsed set", () => {
@@ -89,5 +91,6 @@ describe("managerFilters store", () => {
     expect(s.view).toBe("flat");
     expect(s.query).toBe("auth");
     expect(s.kind).toBe("skill");
+    expect(s.usageSort).toBe("lastUsed");
   });
 });

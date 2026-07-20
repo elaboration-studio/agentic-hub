@@ -14,6 +14,12 @@ export type Scope = "global" | "workspace";
 export type Route = "manager" | "suites" | "skills" | "statistics" | "config";
 export type View = "flat" | "tree";
 export type KindFilter = "all" | CapabilityKind;
+export type UsageSort = "lastUsed" | "usageCount";
+
+export const USAGE_SORT_LABEL: Record<UsageSort, string> = {
+  lastUsed: "Latest use",
+  usageCount: "Usage count",
+};
 
 export interface ToolDef {
   id: ToolId;

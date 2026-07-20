@@ -5,7 +5,7 @@
 // filters reset on app restart by design.
 
 import { create } from "zustand";
-import type { KindFilter, View } from "../shared";
+import type { KindFilter, UsageSort, View } from "../shared";
 
 interface ManagerFiltersState {
   view: View;
@@ -13,6 +13,7 @@ interface ManagerFiltersState {
   source: string;
   kind: KindFilter;
   enabledOnly: boolean;
+  usageSort: UsageSort;
   collapsed: Set<string>;
   // The matrix row to surface (namespaced item id), set by a palette locate.
   // Empty when nothing is being located. The Matrix clears it after scrolling.
@@ -23,6 +24,7 @@ interface ManagerFiltersState {
   setSource: (source: string) => void;
   setKind: (kind: KindFilter) => void;
   setEnabledOnly: (enabledOnly: boolean) => void;
+  setUsageSort: (usageSort: UsageSort) => void;
   setCollapsed: (collapsed: Set<string>) => void;
   toggleCollapsed: (path: string) => void;
   setLocate: (id: string) => void;
@@ -39,6 +41,7 @@ export const useManagerFiltersStore = create<ManagerFiltersState>((set) => ({
   source: "",
   kind: "all",
   enabledOnly: false,
+  usageSort: "lastUsed",
   collapsed: new Set<string>(),
   locateId: "",
 
@@ -47,6 +50,7 @@ export const useManagerFiltersStore = create<ManagerFiltersState>((set) => ({
   setSource: (source) => set({ source }),
   setKind: (kind) => set({ kind }),
   setEnabledOnly: (enabledOnly) => set({ enabledOnly }),
+  setUsageSort: (usageSort) => set({ usageSort }),
   setCollapsed: (collapsed) => set({ collapsed }),
   toggleCollapsed: (path) =>
     set((s) => {

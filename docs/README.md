@@ -42,6 +42,7 @@ User-facing feature designs aligned with each milestone.
 - [local-skill-usage-tracing.md](features/local-skill-usage-tracing.md) — local skill usage counts (enabled by default, opt-out in Config) surfaced in the Manager matrix and Statistics tabs
 - [color-scheme.md](features/color-scheme.md) — app-wide light, dark, and follow-system appearance
 - [session-explorer.md](features/session-explorer.md) — read-only, local browse/search of Codex, Claude Code, and Cursor session history in the Resources panel
+- [config-tools-accordion.md](features/config-tools-accordion.md) — Config → Tools classic accordion so projection paths stay folded by default
 
 ### `tech/modules/` — subsystem deep dives
 

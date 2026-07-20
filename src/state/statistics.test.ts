@@ -34,6 +34,7 @@ import type {
 import {
   computeResourceInventory,
   DEFAULT_USAGE_RANGE,
+  DEFAULT_USAGE_TABLE_SORT,
   useStatisticsStore,
 } from "./statistics";
 
@@ -184,10 +185,12 @@ function getInitialState() {
     inventory: null,
     dashboard: null,
     range: DEFAULT_USAGE_RANGE,
+    tableSort: DEFAULT_USAGE_TABLE_SORT,
     tracingStatus: null,
     loading: false,
     error: null,
     setRange: useStatisticsStore.getState().setRange,
+    setTableSort: useStatisticsStore.getState().setTableSort,
     reload: useStatisticsStore.getState().reload,
   };
 }
@@ -352,6 +355,12 @@ describe("useStatisticsStore", () => {
 
     expect(mocked.queryUsageDashboard).toHaveBeenLastCalledWith([], "last7Days");
     expect(useStatisticsStore.getState().range).toBe("last7Days");
+  });
+
+  it("defaults usage tables to latest-use sort and updates on demand", () => {
+    expect(useStatisticsStore.getState().tableSort).toBe("lastUsed");
+    useStatisticsStore.getState().setTableSort("usageCount");
+    expect(useStatisticsStore.getState().tableSort).toBe("usageCount");
   });
 
   it("surfaces IPC failures as toast errors", async () => {

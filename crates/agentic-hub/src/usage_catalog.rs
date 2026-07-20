@@ -12,7 +12,7 @@ use agentic_core::{
     api, hash_usage_correlation, scan_installed_tools, UsageEventInput, UsageStore,
 };
 
-use crate::usage_attribution::{path_is_skill_file, NormalizedBatch, NormalizedOccurrence};
+use crate::usage_attribution::{path_is_capability_file, NormalizedBatch, NormalizedOccurrence};
 
 const MAX_SKILL_DEPTH: usize = 16;
 
@@ -197,6 +197,9 @@ fn collect_repository_entries(
     for skill_root in documented_skill_roots(tool, repository_root, active_root) {
         collect_skill_root(repository_root, &skill_root, &skill_root, 0, out);
     }
+    for agent_root in documented_agent_roots(tool, repository_root, active_root) {
+        collect_agent_root(repository_root, &agent_root, &agent_root, 0, out);
+    }
 }
 
 fn documented_skill_roots(
@@ -225,6 +228,37 @@ fn documented_skill_roots(
         ToolId::Codex => ancestors
             .into_iter()
             .map(|ancestor| ancestor.join(".agents/skills"))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn documented_agent_roots(
+    tool: ToolId,
+    repository_root: &Path,
+    active_root: &Path,
+) -> Vec<PathBuf> {
+    let ancestors: Vec<&Path> = active_root
+        .ancestors()
+        .take_while(|ancestor| ancestor.starts_with(repository_root))
+        .collect();
+    match tool {
+        ToolId::Cursor => [".cursor/agents", ".agents/agents"]
+            .into_iter()
+            .map(|relative| repository_root.join(relative))
+            .collect(),
+        ToolId::Claude => ancestors
+            .into_iter()
+            .map(|ancestor| ancestor.join(".claude/agents"))
+            .collect(),
+        ToolId::Codex => ancestors
+            .into_iter()
+            .flat_map(|ancestor| {
+                [
+                    ancestor.join(".codex/agents"),
+                    ancestor.join(".agents/agents"),
+                ]
+            })
             .collect(),
         _ => Vec::new(),
     }
@@ -268,6 +302,57 @@ fn collect_skill_root(
     }
 }
 
+fn collect_agent_root(
+    repository_root: &Path,
+    agent_root: &Path,
+    dir: &Path,
+    depth: usize,
+    out: &mut Vec<CatalogEntry>,
+) {
+    if depth > MAX_SKILL_DEPTH || !dir.is_dir() {
+        return;
+    }
+    let Ok(canonical_root) = agent_root.canonicalize() else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if entry.file_name() != "__archived__" {
+                collect_agent_root(repository_root, agent_root, &path, depth + 1, out);
+            }
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        // Cursor/Claude agents are markdown; Codex subagents are TOML.
+        if !matches!(ext, "md" | "toml") {
+            continue;
+        }
+        let Ok(canonical_agent_file) = path.canonicalize() else {
+            continue;
+        };
+        if !canonical_agent_file.starts_with(&canonical_root) {
+            continue;
+        }
+        if let Some(item) = repository_agent_item(repository_root, agent_root, &path) {
+            out.push(CatalogEntry {
+                item,
+                scope: CapabilityScope::Workspace,
+                workspace_root: Some(tildify(repository_root)),
+                canonical_skill_file: canonical_agent_file,
+            });
+        }
+    }
+}
+
 fn repository_item(
     repository_root: &Path,
     skill_root: &Path,
@@ -298,13 +383,46 @@ fn repository_item(
     })
 }
 
+fn repository_agent_item(
+    repository_root: &Path,
+    agent_root: &Path,
+    agent_file: &Path,
+) -> Option<CapabilityItem> {
+    let relative_path = agent_file.strip_prefix(agent_root).ok()?.to_path_buf();
+    let name = agent_file.file_stem()?.to_string_lossy().into_owned();
+    if name.is_empty() {
+        return None;
+    }
+    Some(CapabilityItem {
+        id: format!(
+            "agent:{}",
+            relative_path.to_string_lossy().replace('\\', "/")
+        ),
+        kind: CapabilityKind::Agent,
+        name,
+        source_path: agent_file.to_path_buf(),
+        relative_path,
+        source_id: "workspace".to_string(),
+        source_label: "Workspace".to_string(),
+        source: SourceRef {
+            rel_home: tildify(repository_root),
+            folder: repository_root
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        },
+        valid: true,
+        validation_errors: Vec::new(),
+    })
+}
+
 fn resolve_occurrence<'a>(
     entries: &'a [CatalogEntry],
     source_tool: &str,
     occurrence: &NormalizedOccurrence,
 ) -> Option<&'a CatalogEntry> {
     if let Some(path) = occurrence.exact_skill_path.as_deref() {
-        if !path.is_absolute() || !path_is_skill_file(path) {
+        if !path.is_absolute() || !path_is_capability_file(path) {
             return None;
         }
         let canonical = path.canonicalize().ok()?;
@@ -324,10 +442,9 @@ fn resolve_occurrence<'a>(
         .filter(|entry| entry.scope == CapabilityScope::Global && entry.item.name == name)
         .collect();
     match source_tool {
-        "cursor" => unique(locals.into_iter()).or_else(|| unique(globals.into_iter())),
         "claude" => unique(globals.into_iter()).or_else(|| unique(locals.into_iter())),
-        "codex" if !locals.is_empty() && !globals.is_empty() => None,
-        _ => unique(locals.into_iter().chain(globals)),
+        // Cursor and Codex: workspace-unique first, then global-unique.
+        _ => unique(locals.into_iter()).or_else(|| unique(globals.into_iter())),
     }
 }
 

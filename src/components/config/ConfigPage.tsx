@@ -24,6 +24,12 @@ import { ALL_TOOLS, messageOf, resolveSourceIds, TOOL_LABELS } from "@/shared";
 import { getToolProjectionTargets } from "@/lib/toolTargets";
 import { formatLocalTimestamp } from "@/lib/format";
 import { useManagerStore } from "@/state/manager";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -832,73 +838,81 @@ function ToolsPanel({ settings, onChanged }: PanelProps) {
       <CardContent className="flex flex-col gap-2 p-0">
         <p className={hint}>
           Enabled tools appear as columns in the manager. Kiro, Copilot, and Antigravity are off by
-          default — enable them here when you use those tools. Each row lists where the hub writes
-          skills, agents, rules, hooks, and commands; use{" "}
+          default — enable them here when you use those tools. Expand a tool to see where the hub
+          writes skills, agents, rules, hooks, and commands; use{" "}
           <FolderOpen className="inline h-3 w-3 align-text-bottom" aria-hidden /> to reveal the
           target in Finder.
         </p>
-        <ul className="flex flex-col gap-2">
+        <Accordion type="single" collapsible className="flex flex-col gap-2">
           {ALL_TOOLS.map((t) => {
             const ts = settings.tools[t.id];
             const targets = getToolProjectionTargets(t.id, ts);
             return (
-              <li key={t.id} className="overflow-hidden rounded-lg border bg-secondary">
-                <div className="flex items-center gap-2.5 px-2.5 py-2">
-                  <Label className="flex cursor-pointer items-center gap-2.5">
+              <AccordionItem
+                key={t.id}
+                value={t.id}
+                className="overflow-hidden rounded-lg border bg-secondary last:border-b"
+              >
+                <div className="flex items-center gap-2 px-2.5">
+                  <Label className="flex shrink-0 cursor-pointer items-center py-2">
                     <Switch
                       checked={ts.enabled}
                       disabled={busy}
                       onCheckedChange={(v) => void toggle(t.id, v)}
                     />
-                    <span className="font-semibold">{t.label}</span>
                   </Label>
+                  <AccordionTrigger className="py-2 hover:no-underline">
+                    <span className="font-semibold">{t.label}</span>
+                  </AccordionTrigger>
                 </div>
-                <ul className="border-t border-border/40 px-2.5 py-1">
-                  {targets.map((target) => (
-                    <li
-                      key={target.kind}
-                      className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-x-2 py-1"
-                    >
-                      <span className="text-[11px] text-muted-foreground">{target.label}</span>
-                      {target.unsupported ? (
-                        <span className="col-span-2 text-[11px] italic text-muted-foreground">
-                          Not projected
-                        </span>
-                      ) : (
-                        <>
-                          <div className="min-w-0">
-                            <code
-                              className="block truncate font-mono text-[11px] text-muted-foreground"
-                              title={target.path ?? undefined}
+                <AccordionContent className="pb-0">
+                  <ul className="border-t border-border/40 px-2.5 py-1">
+                    {targets.map((target) => (
+                      <li
+                        key={target.kind}
+                        className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-x-2 py-1"
+                      >
+                        <span className="text-[11px] text-muted-foreground">{target.label}</span>
+                        {target.unsupported ? (
+                          <span className="col-span-2 text-[11px] italic text-muted-foreground">
+                            Not projected
+                          </span>
+                        ) : (
+                          <>
+                            <div className="min-w-0">
+                              <code
+                                className="block truncate font-mono text-[11px] text-muted-foreground"
+                                title={target.path ?? undefined}
+                              >
+                                {target.path}
+                              </code>
+                              {target.detail && (
+                                <span className="block truncate text-[10px] text-muted-foreground/80">
+                                  {target.detail}
+                                </span>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0"
+                              disabled={busy || !target.path}
+                              aria-label={`Reveal ${t.label} ${target.label} target`}
+                              onClick={() => void revealTarget(target.path!, target.label)}
                             >
-                              {target.path}
-                            </code>
-                            {target.detail && (
-                              <span className="block truncate text-[10px] text-muted-foreground/80">
-                                {target.detail}
-                              </span>
-                            )}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0"
-                            disabled={busy || !target.path}
-                            aria-label={`Reveal ${t.label} ${target.label} target`}
-                            onClick={() => void revealTarget(target.path!, target.label)}
-                          >
-                            <FolderOpen className="h-3.5 w-3.5" />
-                          </Button>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </li>
+                              <FolderOpen className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </AccordionContent>
+              </AccordionItem>
             );
           })}
-        </ul>
+        </Accordion>
       </CardContent>
     </Card>
   );

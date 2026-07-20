@@ -11,6 +11,7 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  Clock,
   Database,
   FolderTree,
   List,
@@ -41,10 +42,13 @@ import {
   TOOL_LABELS,
   type KindFilter,
   type ToolDef,
+  type UsageSort,
   type View,
+  USAGE_SORT_LABEL,
 } from "@/shared";
 import { useManagerStore, type OwnershipInfo } from "@/state/manager";
 import { useManagerFiltersStore } from "@/state/managerFilters";
+import { compareByUsageSort } from "@/state/managerSort";
 import { useWorkspaceStore } from "@/state/workspace";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -126,6 +130,8 @@ export function Matrix() {
   const setKind = useManagerFiltersStore((s) => s.setKind);
   const enabledOnly = useManagerFiltersStore((s) => s.enabledOnly);
   const setEnabledOnly = useManagerFiltersStore((s) => s.setEnabledOnly);
+  const usageSort = useManagerFiltersStore((s) => s.usageSort);
+  const setUsageSort = useManagerFiltersStore((s) => s.setUsageSort);
   const locateId = useManagerFiltersStore((s) => s.locateId);
   const clearLocate = useManagerFiltersStore((s) => s.clearLocate);
 
@@ -295,6 +301,18 @@ export function Matrix() {
             <SelectItem value="command">Commands</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={usageSort} onValueChange={(v) => setUsageSort(v as UsageSort)}>
+          <SelectTrigger className="w-[150px]" title="Sort by usage">
+            <span className="flex min-w-0 items-center gap-2">
+              <Clock />
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="lastUsed">{USAGE_SORT_LABEL.lastUsed}</SelectItem>
+            <SelectItem value="usageCount">{USAGE_SORT_LABEL.usageCount}</SelectItem>
+          </SelectContent>
+        </Select>
         {sources.length > 1 && (
           <Select value={source || "all"} onValueChange={(v) => setSource(v === "all" ? "" : v)}>
             <SelectTrigger className="w-[160px]" title="Filter by source">
@@ -402,13 +420,14 @@ export function Matrix() {
           </TableHeader>
           <TableBody>
             {view === "flat"
-              ? renderFlat(filtered, ctx)
+              ? renderFlat(filtered, ctx, usageSort)
               : renderNodes(
                   [...root.children.values()],
                   0,
                   ctx,
                   effectiveCollapsed,
                   toggleCollapsed,
+                  usageSort,
                 )}
           </TableBody>
         </Table>
@@ -712,9 +731,11 @@ function leafRow(item: CapabilityItem, ctx: BodyContext, padding?: number, badge
   );
 }
 
-function renderFlat(items: CapabilityItem[], ctx: BodyContext): ReactNode {
+function renderFlat(items: CapabilityItem[], ctx: BodyContext, usageSort: UsageSort): ReactNode {
   return KIND_ORDER.map((kind) => {
-    const rows = items.filter((it) => it.kind === kind);
+    const rows = items
+      .filter((it) => it.kind === kind)
+      .sort((a, b) => compareByUsageSort(a, b, usageSort, ctx.usageStats));
     if (rows.length === 0) return null;
     return (
       <Fragment key={kind}>
@@ -781,11 +802,16 @@ function renderNodes(
   ctx: BodyContext,
   collapsed: ReadonlySet<string>,
   onToggleDir: (path: string) => void,
+  usageSort: UsageSort,
 ): ReactNode[] {
   const sorted = [...nodes].sort((a, b) => {
     const af = a.children.size > 0;
     const bf = b.children.size > 0;
     if (af !== bf) return af ? -1 : 1; // folders before leaves
+    if (af && bf) return a.name.localeCompare(b.name);
+    if (a.item && b.item) {
+      return compareByUsageSort(a.item, b.item, usageSort, ctx.usageStats);
+    }
     return a.name.localeCompare(b.name);
   });
 
@@ -815,7 +841,7 @@ function renderNodes(
       );
       if (!isCollapsed) {
         out.push(
-          ...renderNodes([...node.children.values()], depth + 1, ctx, collapsed, onToggleDir),
+          ...renderNodes([...node.children.values()], depth + 1, ctx, collapsed, onToggleDir, usageSort),
         );
       }
     } else if (node.item) {

@@ -136,7 +136,9 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
   - Search field affix: `Search`
   - Filters: `Tag` (type) · `Database` (source)
   - Collapse all: `ChevronsDownUp` · Expand all: `ChevronsUpDown`
-  - Tree row caret: `ChevronRight` (collapsed) · `ChevronDown` (expanded)
+  - **Tree row caret:** `ChevronRight` (collapsed) · `ChevronDown` (expanded)
+  - **Accordion caret** (Config Tools): same pair — `ChevronRight` collapsed,
+    `ChevronDown` expanded (not a rotated single icon)
   - Row "more actions": `MoreHorizontal`
   - Matrix cell state: `Check` (on) · `Minus` (mixed)
 
@@ -158,6 +160,13 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
   `background`); 12px radius; padding 16px. Used for every config panel, the
   suite/workspace panes, and the suite bar.
 - No hover elevation on static panels.
+
+### Accordion (`@/components/ui/accordion`)
+
+- Classic single-select (`type="single"` + `collapsible`) for Config → Tools:
+  one tool’s projection paths open at a time; all start collapsed.
+- Keep interactive controls (e.g. enable `Switch`) **outside** `AccordionTrigger`
+  so they are not nested buttons and do not toggle expand/collapse.
 
 ### Inputs & Selects (`input`, `select`, `label`)
 

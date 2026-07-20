@@ -123,6 +123,7 @@ pub fn run() {
                 let _ = usage_collector::sync_tracer_hooks(&settings);
             }
             usage_collector::start_health_checker(app.handle().clone());
+            usage_collector::start_spool_drainer(app.handle().clone());
             // Seed the live telemetry consent flag, then record app start if the
             // user has opted in. No-op (and no network) when disabled.
             let telemetry_on = settings.telemetry.enabled;

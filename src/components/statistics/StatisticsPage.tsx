@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from "react";
-import { BarChart3, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, type ReactNode } from "react";
+import { ArrowDown, BarChart3, RefreshCw } from "lucide-react";
 import { ActivityChart } from "@/components/statistics/charts/ActivityChart";
 import { KindBreakdownChart } from "@/components/statistics/charts/KindBreakdownChart";
 import { SourceToolChart } from "@/components/statistics/charts/SourceToolChart";
@@ -23,9 +23,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TOOL_LABELS, KIND_LABEL, KIND_ORDER } from "@/shared";
+import { TOOL_LABELS, KIND_LABEL, KIND_ORDER, type UsageSort } from "@/shared";
 import { formatLocalTimestamp } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { compareUsageTopRows } from "@/state/managerSort";
 import { useStatisticsStore } from "@/state/statistics";
 import type { CapabilityKind, ToolId, UsageDateRange, UsageTopRow } from "@/types";
 
@@ -59,12 +60,44 @@ function formatBuckets(row: UsageTopRow): string {
     .join(" · ");
 }
 
+function SortableUsageHead(props: {
+  label: string;
+  active: boolean;
+  align?: "left" | "right";
+  onClick: () => void;
+}) {
+  return (
+    <TableHead className={props.align === "right" ? "text-right" : undefined}>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex items-center gap-1 font-medium transition-colors",
+          props.align === "right" && "ml-auto",
+          props.active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+        )}
+        onClick={props.onClick}
+        aria-sort={props.active ? "descending" : "none"}
+      >
+        {props.label}
+        {props.active && <ArrowDown className="size-3.5 shrink-0" aria-hidden />}
+      </button>
+    </TableHead>
+  );
+}
+
 function UsageCapabilityTable(props: {
   rows: UsageTopRow[];
   usesLabel: string;
   emptyMessage: string;
+  sort: UsageSort;
+  onSortChange: (sort: UsageSort) => void;
 }) {
-  if (props.rows.length === 0) {
+  const sortedRows = useMemo(
+    () => [...props.rows].sort((a, b) => compareUsageTopRows(a, b, props.sort)),
+    [props.rows, props.sort],
+  );
+
+  if (sortedRows.length === 0) {
     return <p className="text-sm text-muted-foreground">{props.emptyMessage}</p>;
   }
   return (
@@ -75,13 +108,22 @@ function UsageCapabilityTable(props: {
           <TableHead>Source</TableHead>
           <TableHead>Workspace</TableHead>
           <TableHead>Path</TableHead>
-          <TableHead className="text-right">{props.usesLabel}</TableHead>
-          <TableHead>Last used</TableHead>
+          <SortableUsageHead
+            label={props.usesLabel}
+            active={props.sort === "usageCount"}
+            align="right"
+            onClick={() => props.onSortChange("usageCount")}
+          />
+          <SortableUsageHead
+            label="Last used"
+            active={props.sort === "lastUsed"}
+            onClick={() => props.onSortChange("lastUsed")}
+          />
           <TableHead>By tool</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {props.rows.map((row) => (
+        {sortedRows.map((row) => (
           <TableRow
             key={`${row.capabilityScope}:${row.workspaceRoot ?? "global"}:${row.capabilityId}`}
           >
@@ -132,9 +174,11 @@ export function StatisticsPage() {
   const inventory = useStatisticsStore((s) => s.inventory);
   const dashboard = useStatisticsStore((s) => s.dashboard);
   const range = useStatisticsStore((s) => s.range);
+  const tableSort = useStatisticsStore((s) => s.tableSort);
   const tracingStatus = useStatisticsStore((s) => s.tracingStatus);
   const loading = useStatisticsStore((s) => s.loading);
   const setRange = useStatisticsStore((s) => s.setRange);
+  const setTableSort = useStatisticsStore((s) => s.setTableSort);
   const reload = useStatisticsStore((s) => s.reload);
 
   useEffect(() => {
@@ -286,6 +330,8 @@ export function StatisticsPage() {
                   rows={dashboard.todayTopCapabilities}
                   usesLabel="Uses today"
                   emptyMessage="No usage recorded yet today."
+                  sort={tableSort}
+                  onSortChange={setTableSort}
                 />
               </CardContent>
             </Card>
@@ -359,6 +405,8 @@ export function StatisticsPage() {
                   rows={dashboard.topCapabilities}
                   usesLabel="Uses"
                   emptyMessage="No attributed usage yet."
+                  sort={tableSort}
+                  onSortChange={setTableSort}
                 />
               </CardContent>
             </Card>
