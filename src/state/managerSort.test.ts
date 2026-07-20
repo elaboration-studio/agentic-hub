@@ -12,6 +12,9 @@ function item(id: string, name: string): CapabilityItem {
     sourceLabel: "Shared",
     sourcePath: `/shared/${name}`,
     relativePath: name,
+    source: { relHome: "~/.agentic", folder: ".agentic" },
+    valid: true,
+    validationErrors: [],
   };
 }
 
