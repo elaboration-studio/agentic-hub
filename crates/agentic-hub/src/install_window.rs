@@ -223,6 +223,38 @@ pub async fn cmd_open_install_window(
     Ok(())
 }
 
+/// Open (or focus) the install window with no workspace context — the Global
+/// Manager's entry point. With no `workspaceId`, the window defaults to
+/// Library scope and disables the Workspace toggle option (there is nothing
+/// for it to target); the Library source picker + destination field render
+/// immediately.
+#[tauri::command]
+pub async fn cmd_open_library_install_window(
+    app: AppHandle,
+    ctx_state: State<'_, InstallContextState>,
+) -> IpcResult<()> {
+    let existed = app.get_webview_window(INSTALL_LABEL).is_some();
+    {
+        let mut guard = ctx_state
+            .0
+            .lock()
+            .map_err(|_| IpcError::new("internal", "install context poisoned"))?;
+        *guard = Some(InstallContext {
+            workspace_id: None,
+            workspace_label: None,
+            update: None,
+        });
+    }
+
+    let win = build_install_window(&app)
+        .map_err(|e| IpcError::new("window_build_failed", e.to_string()))?;
+    show_install_window(&app, &win);
+    if existed {
+        let _ = win.emit("install-context-changed", ());
+    }
+    Ok(())
+}
+
 /// Open (or focus) the install window in **update mode** for one skill. Mirrors
 /// [`cmd_open_install_window`] but stashes an [`UpdateTarget`] so the window runs
 /// `npx skills update <name>` instead of showing the install matrix. The ref +

@@ -17,6 +17,14 @@ badge type is `LibraryLockedSkill`; the source picker is backed by
 `cmd_resolve_sources`. Full detail in
 [skill-sources.md](../tech/modules/skill-sources.md#library-install).
 
+**Entry point correction.** The install FAB only ever rendered in Workspace
+scope (`ManagerView.tsx`), so "toggle to Library inside the window" was
+unreachable from Global scope — there was no way to open the window at all
+without a workspace open. Fixed by rendering the FAB in Global scope too, wired
+to a new no-workspace open path, `cmd_open_library_install_window` /
+`openLibraryInstallWindow()`, which opens the window with `workspaceId: null`
+and the window defaults straight to Library scope (Workspace option disabled).
+
 ## Why now
 
 Today the skills.sh integration installs a starred skill into **one workspace

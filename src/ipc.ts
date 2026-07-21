@@ -390,6 +390,11 @@ export const onSkillsFavoritesChanged = (cb: () => void): Promise<UnlistenFn> =>
 export const openInstallWindow = (workspaceId: string): Promise<void> =>
   invoke("cmd_open_install_window", { workspaceId });
 
+/// Open (or focus) the install window with no workspace context — the Global
+/// Manager's entry point. The window defaults to Library scope.
+export const openLibraryInstallWindow = (): Promise<void> =>
+  invoke("cmd_open_library_install_window");
+
 /// Install window: read the workspace context set when it was opened.
 export const takeInstallContext = (): Promise<InstallContext> =>
   invoke("cmd_take_install_context");

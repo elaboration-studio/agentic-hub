@@ -68,7 +68,9 @@ export function InstallWindow() {
     try {
       const ctx = await takeInstallContext();
       setContext(ctx);
-      setScope(ctx.update?.scope ?? "workspace");
+      // Install mode with no workspace (opened from global scope) has nothing
+      // for the Workspace option to target, so it defaults straight to Library.
+      setScope(ctx.update?.scope ?? (ctx.workspaceId ? "workspace" : "library"));
     } catch {
       // No context (window opened out of band) — leave null; the UI guides.
     }
@@ -355,7 +357,12 @@ export function InstallWindow() {
             variant="outline"
             disabled={installing}
           >
-            <ToggleGroupItem value="workspace" aria-label="Install into this workspace">
+            <ToggleGroupItem
+              value="workspace"
+              aria-label="Install into this workspace"
+              disabled={!context.workspaceId}
+              title={context.workspaceId ? undefined : "No workspace open — reopen from a workspace"}
+            >
               Workspace
             </ToggleGroupItem>
             <ToggleGroupItem value="library" aria-label="Install into your library">

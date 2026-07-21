@@ -178,12 +178,18 @@ skill write, streaming output live with a Cancel. It has two **scopes**
 carries an `update` target, update (one skill, one button). The lifecycle
 (all in `crates/agentic-hub/src/install_window.rs`):
 
-- `cmd_open_install_window(workspaceId)` — the workspace FAB stores an
-  `InstallContext { workspaceId: Some(id), workspaceLabel: Some(label), update:
-  None }` and builds/shows the window. The window itself renders the
-  Workspace | Library toggle; switching to Library shows a source picker
-  (`cmd_resolve_sources`) and a destination-subpath input instead of the
-  per-tool matrix.
+- `cmd_open_install_window(workspaceId)` — the Manager's install FAB
+  (`InstallFab.tsx`) stores an `InstallContext { workspaceId: Some(id),
+  workspaceLabel: Some(label), update: None }` and builds/shows the window.
+  The window itself renders the Workspace | Library toggle; switching to
+  Library shows a source picker (`cmd_resolve_sources`) and a
+  destination-subpath input instead of the per-tool matrix.
+- `cmd_open_library_install_window()` — the **same FAB, rendered in Global
+  scope** (no workspace to target) calls this instead: `InstallContext {
+  workspaceId: None, workspaceLabel: None, update: None }`. The window opens
+  with the Workspace toggle option disabled and defaults straight to Library
+  scope — this is the only entry point into a library install with no
+  workspace open at all.
 - `cmd_open_update_window(workspaceId, provider, installRef, name)` — a
   Workspace-scope row's "Update via skills.sh" action stores the same context
   with `update: Some(UpdateTarget { provider, installRef, name, scope:
