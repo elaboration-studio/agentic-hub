@@ -45,6 +45,7 @@ export type { RuleSyncOutcome } from "./generated/RuleSyncOutcome";
 export type { SyncRulesResult } from "./generated/SyncRulesResult";
 export type { ScanError } from "./generated/ScanError";
 export type { ScanResult } from "./generated/ScanResult";
+export type { LibraryLockedSkill } from "./generated/LibraryLockedSkill";
 export type { SessionSummary } from "./generated/SessionSummary";
 export type { SessionMessage } from "./generated/SessionMessage";
 export type { SessionRole } from "./generated/SessionRole";

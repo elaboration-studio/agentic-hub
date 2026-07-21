@@ -153,6 +153,10 @@ pub struct ScanError {
 pub struct ScanResult {
     pub items: Vec<CapabilityItem>,
     pub errors: Vec<ScanError>,
+    /// Skill items a Hub source root's skills.sh lock manages (library
+    /// installs), so the Manager can badge them and offer a re-install update.
+    #[serde(default)]
+    pub locked_skills: Vec<crate::source_skill_lock::LibraryLockedSkill>,
 }
 
 /// The eight supported AI tools.

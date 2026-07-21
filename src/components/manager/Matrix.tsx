@@ -31,7 +31,7 @@ import type {
   ToolId,
   UsageStats,
 } from "@/types";
-import { openPath, openUpdateWindow, revealPath } from "@/ipc";
+import { openLibraryUpdateWindow, openPath, openUpdateWindow, revealPath } from "@/ipc";
 import {
   editorApp,
   key,
@@ -451,8 +451,13 @@ interface BodyContext {
   readOnlyItemIds: ReadonlySet<string>;
   // The row to surface from a palette locate (namespaced item id), or "".
   locateId: string;
-  // Namespaced item id -> skills.sh install behind it (workspace scope only).
-  lockedSkills: Map<string, { name: string; source: string }>;
+  // Item id -> skills.sh install behind it. Workspace scope keys a namespaced
+  // id; global scope keys the plain item id and carries sourceId/destSubpath
+  // (a library install) so the update targets the right source root.
+  lockedSkills: Map<
+    string,
+    { name: string; source: string; sourceId?: string; destSubpath?: string }
+  >;
   usageStats: Map<string, UsageStats>;
   // The active workspace id, needed to target an update run. "" in global scope.
   workspaceId: string;
@@ -575,8 +580,9 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
         !!x.state && x.state.state === "enabled" && !!x.state.targetPath,
     );
 
-  // skills.sh manages this row (workspace scope) — offer a one-click update.
-  const locked = ctx.readOnly ? ctx.lockedSkills.get(item.id) : undefined;
+  // skills.sh manages this row — a workspace project install or a library
+  // install into a source root — offer a one-click update either way.
+  const locked = ctx.lockedSkills.get(item.id);
 
   return (
     <DropdownMenu>
@@ -593,17 +599,20 @@ function RowActions(props: { item: CapabilityItem; ctx: BodyContext }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {locked && ctx.workspaceId && (
+        {locked && (locked.sourceId || ctx.workspaceId) && (
           <>
             <DropdownMenuItem
               onClick={() =>
                 run(
-                  openUpdateWindow(
-                    ctx.workspaceId,
-                    "skills.sh",
-                    locked.source,
-                    locked.name,
-                  ),
+                  locked.sourceId
+                    ? openLibraryUpdateWindow(
+                        "skills.sh",
+                        locked.source,
+                        locked.name,
+                        locked.sourceId,
+                        locked.destSubpath ?? "",
+                      )
+                    : openUpdateWindow(ctx.workspaceId, "skills.sh", locked.source, locked.name),
                 )
               }
             >

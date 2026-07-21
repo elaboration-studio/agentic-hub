@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{CoreError, Result};
 use crate::managed_copy::{content_hash, copy_dir, remove_existing};
+use crate::model::{CapabilityItem, CapabilityKind};
+use crate::settings::SourceConfig;
 use crate::skill_source::validate_skill_slug;
 
 /// File name at the source root — same name skills.sh writes at a project root.
@@ -172,6 +174,87 @@ pub fn normalize_into_source_root(
 fn relative_unix(base: &Path, target: &Path) -> String {
     let rel: PathBuf = target.strip_prefix(base).unwrap_or(target).to_path_buf();
     rel.to_string_lossy().replace('\\', "/")
+}
+
+/// One skill a Hub source root's lock manages, matched against a Global scan
+/// so the Manager can badge the row and offer a re-install update. Mirrors
+/// `workspace_inventory::LockedSkill` for the source-root case, plus the
+/// fields a library update needs to target the right root and destination.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryLockedSkill {
+    /// The scanned item id this annotates (`skill:<rel>`).
+    pub item_id: String,
+    /// The lock key — the skill's install name.
+    pub name: String,
+    /// The `owner/repo` (or other transport) source it was installed from.
+    pub source: String,
+    /// Transport hint from the lock: `github`, `local`, etc.
+    pub source_type: String,
+    /// Which source root's lock this came from — needed to target a re-install.
+    pub source_id: String,
+    /// Destination subpath under `skills/`, recovered from the lock's
+    /// `skillPath` so an update lands back at the same place.
+    pub dest_subpath: String,
+}
+
+/// Recover the `dest_subpath` a lock's `skillPath` implies: for
+/// `skills/<dest…>/<name>/SKILL.md` this is `<dest…>` (empty when the skill
+/// sits directly at `skills/<name>/`). Structural, mirroring how
+/// `normalize_into_source_root` builds the path in the first place — an
+/// unexpected shape (a hand-edited lock) falls back to the empty destination
+/// rather than guessing.
+pub fn dest_subpath_from_skill_path(skill_path: &str, name: &str) -> String {
+    let path = Path::new(skill_path);
+    let Some(skill_dir) = path.parent() else {
+        return String::new();
+    };
+    if skill_dir.file_name().and_then(|s| s.to_str()) != Some(name) {
+        return String::new();
+    }
+    let Some(dest_dir) = skill_dir.parent() else {
+        return String::new();
+    };
+    let dest = dest_dir.strip_prefix("skills").unwrap_or(dest_dir);
+    dest.to_string_lossy().replace('\\', "/")
+}
+
+/// Match scanned skill items against every source root's lock, keyed by leaf
+/// name within that item's own source (so two sources can each lock a
+/// same-named skill without colliding). Tolerant: a missing or malformed lock
+/// contributes nothing and never fails the scan.
+pub fn mark_locked_library_skills(
+    sources: &[SourceConfig],
+    items: &[CapabilityItem],
+) -> Vec<LibraryLockedSkill> {
+    let mut out = Vec::new();
+    for source in sources {
+        let lock = read_source_lock(&source.path).unwrap_or_default();
+        if lock.skills.is_empty() {
+            continue;
+        }
+        for item in items
+            .iter()
+            .filter(|it| it.kind == CapabilityKind::Skill && it.source_id == source.id)
+        {
+            if let Some(entry) = lock.skills.get(&item.name) {
+                out.push(LibraryLockedSkill {
+                    item_id: item.id.clone(),
+                    name: item.name.clone(),
+                    source: entry.source.clone(),
+                    source_type: entry.source_type.clone(),
+                    source_id: source.id.clone(),
+                    dest_subpath: dest_subpath_from_skill_path(&entry.skill_path, &item.name),
+                });
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -380,5 +463,88 @@ mod tests {
         let err =
             normalize_into_source_root(&staged, source_root.path(), "", "../escape").unwrap_err();
         assert!(matches!(err, CoreError::InvalidSkillRef(_)));
+    }
+
+    #[test]
+    fn dest_subpath_recovered_for_nested_and_flat_skill_paths() {
+        assert_eq!(
+            dest_subpath_from_skill_path("skills/arno/cmo/ad-creative/SKILL.md", "ad-creative"),
+            "arno/cmo"
+        );
+        assert_eq!(
+            dest_subpath_from_skill_path("skills/flat-skill/SKILL.md", "flat-skill"),
+            ""
+        );
+    }
+
+    #[test]
+    fn dest_subpath_falls_back_to_empty_for_unexpected_shape() {
+        // The lock entry's skillPath doesn't end in `<name>/SKILL.md` — a
+        // hand-edited or mismatched lock, not a Hub-normalized layout.
+        assert_eq!(dest_subpath_from_skill_path("skills/other/SKILL.md", "ad-creative"), "");
+        assert_eq!(dest_subpath_from_skill_path("SKILL.md", "ad-creative"), "");
+    }
+
+    fn skill_item(source_id: &str, name: &str) -> CapabilityItem {
+        CapabilityItem {
+            id: format!("skill:{name}"),
+            kind: CapabilityKind::Skill,
+            name: name.to_string(),
+            source_path: PathBuf::from(format!("/tmp/{name}")),
+            relative_path: PathBuf::from(name),
+            source_id: source_id.to_string(),
+            source_label: source_id.to_string(),
+            source: crate::model::SourceRef {
+                rel_home: format!("~/{source_id}"),
+                folder: source_id.to_string(),
+            },
+            valid: true,
+            validation_errors: vec![],
+        }
+    }
+
+    fn source(id: &str, path: &Path) -> SourceConfig {
+        SourceConfig {
+            id: id.to_string(),
+            label: id.to_string(),
+            path: path.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn mark_locked_library_skills_matches_by_name_within_owning_source() {
+        let root_a = tempfile::tempdir().unwrap();
+        let root_b = tempfile::tempdir().unwrap();
+        let mut lock_a = SourceSkillLock::default();
+        upsert_entry(
+            &mut lock_a,
+            "ad-creative",
+            entry("coreyhaines31/marketingskills", "skills/arno/cmo/ad-creative/SKILL.md"),
+        );
+        write_source_lock(root_a.path(), &lock_a).unwrap();
+        // root_b has no lock for "ad-creative" — a same-named item there must
+        // not pick up root_a's entry.
+
+        let sources = vec![source("a", root_a.path()), source("b", root_b.path())];
+        let items = vec![skill_item("a", "ad-creative"), skill_item("b", "ad-creative")];
+
+        let locked = mark_locked_library_skills(&sources, &items);
+        assert_eq!(locked.len(), 1);
+        assert_eq!(locked[0].item_id, "skill:ad-creative");
+        assert_eq!(locked[0].source_id, "a");
+        assert_eq!(locked[0].dest_subpath, "arno/cmo");
+        assert_eq!(locked[0].source, "coreyhaines31/marketingskills");
+    }
+
+    #[test]
+    fn mark_locked_library_skills_tolerates_missing_and_malformed_lock() {
+        let missing = tempfile::tempdir().unwrap();
+        let malformed = tempfile::tempdir().unwrap();
+        std::fs::write(malformed.path().join(SOURCE_LOCK_FILE), "not json").unwrap();
+
+        let sources = vec![source("missing", missing.path()), source("bad", malformed.path())];
+        let items = vec![skill_item("missing", "x"), skill_item("bad", "x")];
+
+        assert!(mark_locked_library_skills(&sources, &items).is_empty());
     }
 }

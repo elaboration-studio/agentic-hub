@@ -429,6 +429,24 @@ export const openUpdateWindow = (
 ): Promise<void> =>
   invoke("cmd_open_update_window", { workspaceId, provider, installRef, name });
 
+/// Open (or focus) the install window in update mode for one Library-scope
+/// (source-root-locked) skill — the Global Manager's "Update via skills.sh"
+/// row action. No workspace is involved.
+export const openLibraryUpdateWindow = (
+  provider: string,
+  installRef: string,
+  name: string,
+  sourceId: string,
+  destSubpath: string,
+): Promise<void> =>
+  invoke("cmd_open_library_update_window", {
+    provider,
+    installRef,
+    name,
+    sourceId,
+    destSubpath,
+  });
+
 export interface UpdateSkillStreamPayload {
   provider: string;
   scope: InstallScope;

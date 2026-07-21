@@ -273,6 +273,52 @@ pub async fn cmd_open_update_window(
     Ok(())
 }
 
+/// Open (or focus) the install window in **update mode** for one Library-scope
+/// skill — the Global Manager's "Update via skills.sh" action for a row a
+/// source root's lock manages. No workspace is involved: `source_id` names the
+/// source root to re-install into and `dest_subpath` is the destination the
+/// lock recorded at install time. The ref + slug are re-validated in
+/// [`cmd_update_skill_stream`] before any spawn.
+#[tauri::command]
+pub async fn cmd_open_library_update_window(
+    app: AppHandle,
+    ctx_state: State<'_, InstallContextState>,
+    provider: String,
+    install_ref: String,
+    name: String,
+    source_id: String,
+    dest_subpath: String,
+) -> IpcResult<()> {
+    let existed = app.get_webview_window(INSTALL_LABEL).is_some();
+    {
+        let mut guard = ctx_state
+            .0
+            .lock()
+            .map_err(|_| IpcError::new("internal", "install context poisoned"))?;
+        *guard = Some(InstallContext {
+            workspace_id: None,
+            workspace_label: None,
+            update: Some(UpdateTarget {
+                provider,
+                install_ref,
+                name,
+                scope: InstallScope::Library,
+                source_id: Some(source_id),
+                dest_subpath: Some(dest_subpath),
+                slug: None,
+            }),
+        });
+    }
+
+    let win = build_install_window(&app)
+        .map_err(|e| IpcError::new("window_build_failed", e.to_string()))?;
+    show_install_window(&app, &win);
+    if existed {
+        let _ = win.emit("install-context-changed", ());
+    }
+    Ok(())
+}
+
 /// Read the install context set for this window (cloned so a reopen can re-read
 /// it). Errors when nothing is set — the window must be opened via
 /// [`cmd_open_install_window`].

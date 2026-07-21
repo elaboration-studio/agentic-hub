@@ -235,7 +235,7 @@ describe("useStatisticsStore", () => {
     useStatisticsStore.setState(getInitialState(), true);
     managerRefresh.mockResolvedValue(undefined);
     mocked.listSkillFavorites.mockResolvedValue({ favorites: [] });
-    mocked.scan.mockResolvedValue({ items: [], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [], errors: [], lockedSkills: [] });
     mocked.loadSettings.mockResolvedValue(makeSettings());
     seedManager([]);
   });

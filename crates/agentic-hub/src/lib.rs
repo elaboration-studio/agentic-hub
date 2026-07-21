@@ -243,6 +243,7 @@ pub fn run() {
             commands::cmd_remove_skill_favorite,
             install_window::cmd_open_install_window,
             install_window::cmd_open_update_window,
+            install_window::cmd_open_library_update_window,
             install_window::cmd_take_install_context,
             install_window::cmd_install_skill_stream,
             install_window::cmd_update_skill_stream,

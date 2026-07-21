@@ -76,7 +76,11 @@ pub fn scan_all(sources: &[SourceConfig]) -> ScanResult {
     // Deterministic output regardless of OS directory-read order.
     items.sort_by(|a, b| a.id.cmp(&b.id));
 
-    ScanResult { items, errors }
+    ScanResult {
+        items,
+        errors,
+        locked_skills: Vec::new(),
+    }
 }
 
 fn walk(
