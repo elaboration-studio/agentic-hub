@@ -33,6 +33,7 @@ pub mod shell_env;
 pub mod skill_favorites;
 pub mod skill_lock;
 pub mod skill_source;
+pub mod source_skill_lock;
 pub mod suite_binding_store;
 pub mod suite_store;
 pub mod usage_store;

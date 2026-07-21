@@ -10,7 +10,7 @@
 //! user from Workspace scope; the inventory scan itself stays read-only. See
 //! `docs/tech/modules/skill-sources.md`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
@@ -245,6 +245,75 @@ pub fn skills_update_command(skill: &str) -> Command {
     let mut cmd = npx_command();
     cmd.args(skills_update_npx_args(skill));
     cmd
+}
+
+/// The full, non-interactive `npx` argument vector for a **library** install —
+/// staged into a scratch directory rather than a workspace, then normalized
+/// into the shared-root contract layout by the caller (see
+/// `source_skill_lock::normalize_into_source_root`). Any agent works here
+/// since the produced agent-native tree is discarded after the skill folder is
+/// copied out; `claude-code` is fixed so the CLI never prompts for one.
+/// `--copy` writes real files (no symlinks to resolve). Callers must
+/// `validate_install_ref` / `validate_skill_slug` first.
+pub fn skills_library_npx_args(install_ref: &str, skill: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "--yes".to_string(),
+        "skills@latest".to_string(),
+        "add".to_string(),
+        install_ref.to_string(),
+    ];
+    if let Some(slug) = skill {
+        args.push("--skill".to_string());
+        args.push(slug.to_string());
+    }
+    args.push("--agent".to_string());
+    args.push("claude-code".to_string());
+    args.push("--copy".to_string());
+    args.push("--yes".to_string());
+    args
+}
+
+/// Build the library-install `npx skills add …` command (login `PATH`,
+/// telemetry disabled) — ready for the caller to set `current_dir` to a
+/// staging directory, pipe stdio, and spawn. Pure assembly; the exact program
+/// and argv are asserted in tests. Callers must `validate_install_ref` /
+/// `validate_skill_slug` first — this does not re-check.
+pub fn skills_library_install_command(install_ref: &str, skill: Option<&str>) -> Command {
+    let mut cmd = npx_command();
+    cmd.args(skills_library_npx_args(install_ref, skill));
+    cmd
+}
+
+/// Find the skill folder a library install produced under `staging_dir`. The
+/// CLI writes into an agent-native tree (e.g. `.claude/skills/<name>/`) whose
+/// exact shape is not this module's contract, so this walks the staged tree
+/// (bounded depth, skipping `node_modules`/`.git`) for a directory named
+/// `name` that directly contains `SKILL.md`. Pure filesystem walk, no spawn.
+pub fn locate_installed_skill(staging_dir: &Path, name: &str) -> Option<PathBuf> {
+    fn walk(dir: &Path, name: &str, depth: u32) -> Option<PathBuf> {
+        if depth > 6 {
+            return None;
+        }
+        let entries = std::fs::read_dir(dir).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let file_name = entry.file_name();
+            if file_name == "node_modules" || file_name == ".git" {
+                continue;
+            }
+            if file_name.to_str() == Some(name) && path.join("SKILL.md").is_file() {
+                return Some(path);
+            }
+            if let Some(found) = walk(&path, name, depth + 1) {
+                return Some(found);
+            }
+        }
+        None
+    }
+    walk(staging_dir, name, 0)
 }
 
 /// Percent-encode a query component (RFC 3986 unreserved set passes through).
@@ -547,6 +616,100 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         assert_eq!(args, skills_update_npx_args("rust-best-practices"));
+    }
+
+    #[test]
+    fn library_npx_args_pin_agent_and_copy() {
+        // No tool prompt (fixed claude-code agent), no symlinks (--copy); the
+        // produced folder is discarded after normalize_into_source_root copies
+        // the skill out, so the target agent choice is otherwise irrelevant.
+        assert_eq!(
+            skills_library_npx_args("vercel-labs/agent-skills", Some("pr-review")),
+            vec![
+                "--yes".to_string(),
+                "skills@latest".to_string(),
+                "add".to_string(),
+                "vercel-labs/agent-skills".to_string(),
+                "--skill".to_string(),
+                "pr-review".to_string(),
+                "--agent".to_string(),
+                "claude-code".to_string(),
+                "--copy".to_string(),
+                "--yes".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn library_npx_args_omit_skill_when_unspecified() {
+        assert_eq!(
+            skills_library_npx_args("vercel-labs/agent-skills", None),
+            vec![
+                "--yes".to_string(),
+                "skills@latest".to_string(),
+                "add".to_string(),
+                "vercel-labs/agent-skills".to_string(),
+                "--agent".to_string(),
+                "claude-code".to_string(),
+                "--copy".to_string(),
+                "--yes".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn library_install_command_builds_the_pinned_npx_invocation() {
+        let cmd = skills_library_install_command("vercel-labs/agent-skills", Some("pr-review"));
+        assert_eq!(cmd.get_program().to_string_lossy(), "npx");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            skills_library_npx_args("vercel-labs/agent-skills", Some("pr-review"))
+        );
+    }
+
+    #[test]
+    fn locate_installed_skill_finds_nested_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join(".claude/skills/pr-review");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# pr-review").unwrap();
+
+        let found = locate_installed_skill(dir.path(), "pr-review").unwrap();
+        assert_eq!(found, skill_dir);
+    }
+
+    #[test]
+    fn locate_installed_skill_requires_skill_md_directly_inside() {
+        let dir = tempfile::tempdir().unwrap();
+        // A folder named right but with no SKILL.md is not a match.
+        std::fs::create_dir_all(dir.path().join("pr-review")).unwrap();
+        assert!(locate_installed_skill(dir.path(), "pr-review").is_none());
+    }
+
+    #[test]
+    fn locate_installed_skill_returns_none_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(locate_installed_skill(dir.path(), "nope").is_none());
+    }
+
+    #[test]
+    fn locate_installed_skill_skips_node_modules_and_git() {
+        let dir = tempfile::tempdir().unwrap();
+        // A same-named folder buried in node_modules must never be picked up.
+        let decoy = dir.path().join("node_modules/pr-review");
+        std::fs::create_dir_all(&decoy).unwrap();
+        std::fs::write(decoy.join("SKILL.md"), "decoy").unwrap();
+
+        let real = dir.path().join(".claude/skills/pr-review");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("SKILL.md"), "real").unwrap();
+
+        let found = locate_installed_skill(dir.path(), "pr-review").unwrap();
+        assert_eq!(found, real);
     }
 
     #[test]
