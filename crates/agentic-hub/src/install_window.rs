@@ -3,9 +3,12 @@
 //! The workspace FAB opens a real `install` window (not a modal) that loads the
 //! starred-skill matrix, runs `npx skills add` per selected skill while
 //! streaming stdout/stderr live over a Tauri [`Channel`], and exposes a Cancel
-//! that kills the in-flight child. This is the **only** workspace write path
-//! (the inventory scan stays read-only); the target dir is always resolved from
-//! the workspace store, never an arbitrary path, and the argv is a fixed,
+//! that kills the in-flight child. The window has two scopes ([`InstallScope`]):
+//! **Workspace** (the original path — installs into a project via the
+//! workspace store; the inventory scan itself stays read-only) and **Library**
+//! (installs into a Hub source root's contract layout, so one install is
+//! projectable across every tool and project). Either way the target dir is
+//! resolved server-side, never an arbitrary path, and the argv is a fixed,
 //! validated vector — see `docs/tech/modules/skill-sources.md`.
 
 use std::io::{BufRead, BufReader, Read};
@@ -13,10 +16,17 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 use agentic_core::error::CoreError;
-use agentic_core::model::ToolId;
+use agentic_core::model::{ToolId, WorkspaceTarget};
+use agentic_core::settings::{Settings, SourceConfig};
 use agentic_core::skill_source::{
-    provider_for, skills_install_command, skills_npx_args, skills_update_command,
-    skills_update_npx_args, validate_install_ref, validate_skill_slug, SkillInstallEvent,
+    locate_installed_skill, provider_for, skills_install_command,
+    skills_library_install_command, skills_library_npx_args, skills_npx_args,
+    skills_update_command, skills_update_npx_args, validate_install_ref, validate_skill_slug,
+    SkillInstallEvent,
+};
+use agentic_core::source_skill_lock::{
+    normalize_into_source_root, read_source_lock, upsert_entry, validate_dest_subpath,
+    write_source_lock, SourceLockEntry,
 };
 use agentic_core::workspace_target_store::WorkspaceTargetStore;
 use serde::{Deserialize, Serialize};
@@ -37,9 +47,26 @@ pub const INSTALL_LABEL: &str = "install";
 const INSTALL_WIDTH: f64 = 760.0;
 const INSTALL_HEIGHT: f64 = 620.0;
 
+/// Where a skill install/update writes: a workspace project (the original
+/// path) or a Hub source root — the shared agentic-resources library, so one
+/// install is projectable across every tool and project. See
+/// `docs/tech/modules/skill-sources.md#library-install`.
+#[cfg_attr(
+    feature = "ts-export",
+    derive(ts_rs::TS),
+    ts(export, export_to = "../../../src/types/generated/")
+)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstallScope {
+    #[default]
+    Workspace,
+    Library,
+}
+
 /// A single skill the window should **update** (rather than install). Set when
-/// the window is opened from a workspace row's "Update via skills.sh" action; the
-/// window then runs `npx skills update <name>` instead of showing the install
+/// the window is opened from a row's "Update via skills.sh" action; the window
+/// then re-runs the install for this one skill instead of showing the install
 /// matrix.
 #[cfg_attr(
     feature = "ts-export",
@@ -52,13 +79,28 @@ pub struct UpdateTarget {
     pub provider: String,
     /// The install source (`owner/repo`), shown for context.
     pub install_ref: String,
-    /// The skill's install name — the `skills-lock.json` key passed to update.
+    /// The skill's install name — the lock key passed to update.
     pub name: String,
+    #[serde(default)]
+    pub scope: InstallScope,
+    /// Library scope only: which source root to re-install into.
+    #[serde(default)]
+    pub source_id: Option<String>,
+    /// Library scope only: destination subpath under `skills/`, recorded at
+    /// install time.
+    #[serde(default)]
+    pub dest_subpath: Option<String>,
+    /// Library scope only: the `--skill` slug to reinstall, when it differs
+    /// from `name`.
+    #[serde(default)]
+    pub slug: Option<String>,
 }
 
 /// Which workspace the install window targets, handed to it on mount. The label
-/// lets the window name the project it is installing into. When `update` is set,
-/// the window runs in single-skill update mode instead of the install matrix.
+/// lets the window name the project it is installing into. `workspace_id` /
+/// `workspace_label` are absent when the window is opened directly in Library
+/// scope (no workspace involved). When `update` is set, the window runs in
+/// single-skill update mode instead of the install matrix.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
@@ -67,8 +109,10 @@ pub struct UpdateTarget {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallContext {
-    pub workspace_id: String,
-    pub workspace_label: String,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+    #[serde(default)]
+    pub workspace_label: Option<String>,
     /// Present only in update mode: the one skill to update.
     #[serde(default)]
     pub update: Option<UpdateTarget>,
@@ -164,8 +208,8 @@ pub async fn cmd_open_install_window(
             .lock()
             .map_err(|_| IpcError::new("internal", "install context poisoned"))?;
         *guard = Some(InstallContext {
-            workspace_id: target.id,
-            workspace_label: target.label,
+            workspace_id: Some(target.id),
+            workspace_label: Some(target.label),
             update: None,
         });
     }
@@ -206,12 +250,16 @@ pub async fn cmd_open_update_window(
             .lock()
             .map_err(|_| IpcError::new("internal", "install context poisoned"))?;
         *guard = Some(InstallContext {
-            workspace_id: target.id,
-            workspace_label: target.label,
+            workspace_id: Some(target.id),
+            workspace_label: Some(target.label),
             update: Some(UpdateTarget {
                 provider,
                 install_ref,
                 name,
+                scope: InstallScope::Workspace,
+                source_id: None,
+                dest_subpath: None,
+                slug: None,
             }),
         });
     }
@@ -261,20 +309,161 @@ fn stream_pipe<R: Read>(pipe: R, stream: &str, ch: &Channel<SkillInstallEvent>) 
 pub struct InstallSkillInput {
     pub provider: String,
     pub install_ref: String,
-    pub workspace_id: String,
+    #[serde(default)]
+    pub scope: InstallScope,
+    /// Workspace scope only.
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+    /// Library scope only: which source root to install into.
+    #[serde(default)]
+    pub source_id: Option<String>,
+    /// Library scope only: destination subpath under `skills/` (empty lands
+    /// the skill directly at `skills/<name>/`).
+    #[serde(default)]
+    pub dest_subpath: Option<String>,
     /// The one skill slug to install. Pins `--skill` so a multi-skill repo does
     /// not open an interactive picker (which would hang this headless run).
+    /// Required for Library scope (the lock needs the exact install name).
     #[serde(default)]
     pub slug: Option<String>,
+    /// Workspace scope only.
     #[serde(default)]
     pub tool_ids: Vec<ToolId>,
 }
 
-/// Install one skill into the target workspace, streaming output live and
-/// terminating with a single [`SkillInstallEvent::Done`]. The child is stored in
-/// [`InstallState`] so [`cmd_cancel_install`] can kill it mid-run. On success
-/// the watcher is nudged and `workspace-changed` is emitted so the main window
-/// re-scans the read-only inventory.
+/// Resolve and validate a workspace target by id, erroring with the same
+/// `workspace_not_found` / `NotADirectory` shape both install and update use.
+fn resolve_workspace_target(workspace_id: Option<&str>) -> IpcResult<WorkspaceTarget> {
+    let workspace_id =
+        workspace_id.ok_or_else(|| IpcError::new("workspace_not_found", "No workspace selected"))?;
+    let target = WorkspaceTargetStore::new()
+        .read()?
+        .workspace_targets
+        .into_iter()
+        .find(|t| t.id == workspace_id)
+        .ok_or_else(|| IpcError::new("workspace_not_found", "Workspace target no longer exists"))?;
+    if !target.dir.is_dir() {
+        return Err(IpcError::from(CoreError::NotADirectory(target.dir)));
+    }
+    Ok(target)
+}
+
+/// Resolve and validate a Hub source root by id, for the Library scope.
+fn resolve_source(source_id: Option<&str>) -> IpcResult<SourceConfig> {
+    let source_id =
+        source_id.ok_or_else(|| IpcError::new("source_not_found", "No source selected"))?;
+    let source = Settings::load()?
+        .resolve_sources()
+        .into_iter()
+        .find(|s| s.id == source_id)
+        .ok_or_else(|| IpcError::new("source_not_found", "Source no longer exists"))?;
+    if !source.path.is_dir() {
+        return Err(IpcError::from(CoreError::NotADirectory(source.path)));
+    }
+    Ok(source)
+}
+
+/// Echo the resolved, non-interactive invocation so the console reads like a
+/// terminal — `--skill`/`--agent` are explicit (no picker prompts), so the
+/// command line itself shows exactly what runs.
+fn echo_command(on_event: &Channel<SkillInstallEvent>, program: &str, args: &[String]) {
+    let _ = on_event.send(SkillInstallEvent::Line {
+        stream: "stdout".into(),
+        text: format!("$ {program} {}", args.join(" ")),
+    });
+}
+
+/// Everything [`finish_library`] needs to normalize a staged install into the
+/// contract layout and record it in the source-root lock, once the streamed
+/// process has finished. `staging` is dropped (and its directory removed) at
+/// the end of `finish_library` regardless of outcome.
+struct LibraryInstallCtx {
+    staging: tempfile::TempDir,
+    source: SourceConfig,
+    dest_subpath: String,
+    name: String,
+    install_ref: String,
+}
+
+/// After a library-scope install/update process exits, locate the skill it
+/// staged, copy it into `<source>/skills/<destSubpath>/<name>/`, and upsert the
+/// source-root lock. Streams a diagnostic line and returns `false` on any
+/// failure past the process exit itself (nothing landed, or a partial normalize
+/// failed) — the caller reports this as a failed run. Emits `sources-changed` on
+/// success so the Global Manager re-scans. `ctx.staging` is removed when this
+/// function returns, on every path.
+fn finish_library(
+    app: &AppHandle,
+    ctx: LibraryInstallCtx,
+    ok: bool,
+    cancelled: bool,
+    on_event: &Channel<SkillInstallEvent>,
+) -> bool {
+    if !ok || cancelled {
+        return false;
+    }
+    let Some(found) = locate_installed_skill(ctx.staging.path(), &ctx.name) else {
+        let _ = on_event.send(SkillInstallEvent::Line {
+            stream: "stderr".into(),
+            text: "Could not locate the installed skill folder after install.".into(),
+        });
+        return false;
+    };
+    let installed =
+        match normalize_into_source_root(&found, &ctx.source.path, &ctx.dest_subpath, &ctx.name) {
+            Ok(i) => i,
+            Err(e) => {
+                let _ = on_event.send(SkillInstallEvent::Line {
+                    stream: "stderr".into(),
+                    text: e.to_string(),
+                });
+                return false;
+            }
+        };
+    let mut lock = match read_source_lock(&ctx.source.path) {
+        Ok(l) => l,
+        Err(e) => {
+            let _ = on_event.send(SkillInstallEvent::Line {
+                stream: "stderr".into(),
+                text: e.to_string(),
+            });
+            return false;
+        }
+    };
+    upsert_entry(
+        &mut lock,
+        &installed.name,
+        SourceLockEntry {
+            source: ctx.install_ref,
+            source_type: "github".to_string(),
+            skill_path: installed.skill_path,
+            computed_hash: installed.computed_hash,
+        },
+    );
+    if let Err(e) = write_source_lock(&ctx.source.path, &lock) {
+        let _ = on_event.send(SkillInstallEvent::Line {
+            stream: "stderr".into(),
+            text: e.to_string(),
+        });
+        return false;
+    }
+    // The source root changed — tell the main window to re-scan the Global
+    // Manager. Unlike workspace scope, there is no "active workspace" tool
+    // dir to re-subscribe the watcher to; the source root is already watched
+    // whenever the watcher is running.
+    let _ = app.emit("sources-changed", ());
+    true
+}
+
+/// Install one skill, streaming output live and terminating with a single
+/// [`SkillInstallEvent::Done`]. The child is stored in [`InstallState`] so
+/// [`cmd_cancel_install`] can kill it mid-run.
+///
+/// Workspace scope runs in the target project dir; on success the watcher is
+/// nudged and `workspace-changed` is emitted. Library scope stages the install
+/// in a scratch dir, then normalizes the produced skill into a Hub source
+/// root's contract layout and records it in that root's `skills-lock.json`;
+/// on success `sources-changed` is emitted.
 #[tauri::command]
 pub async fn cmd_install_skill_stream(
     app: AppHandle,
@@ -299,45 +488,96 @@ pub async fn cmd_install_skill_stream(
             return Err(IpcError::new("invalid_skill_slug", "Unsafe skill slug"));
         }
     }
-    let target = WorkspaceTargetStore::new()
-        .read()?
-        .workspace_targets
-        .into_iter()
-        .find(|t| t.id == input.workspace_id)
-        .ok_or_else(|| IpcError::new("workspace_not_found", "Workspace target no longer exists"))?;
-    if !target.dir.is_dir() {
-        return Err(IpcError::from(CoreError::NotADirectory(target.dir.clone())));
+
+    match input.scope {
+        InstallScope::Workspace => {
+            let target = resolve_workspace_target(input.workspace_id.as_deref())?;
+            let slug = input.slug.as_deref();
+            let args = skills_npx_args(&input.install_ref, slug, &input.tool_ids);
+            echo_command(&on_event, "npx", &args);
+
+            let mut cmd = skills_install_command(&input.install_ref, slug, &input.tool_ids);
+            cmd.current_dir(&target.dir);
+            let (ok, cancelled) = run_skill_stream(&install_state, cmd, &on_event).await?;
+            if ok && !cancelled {
+                watcher.restart_if_running(app.clone());
+                let _ = app.emit("workspace-changed", ());
+            }
+            let _ = on_event.send(SkillInstallEvent::Done { ok, cancelled });
+            Ok(())
+        }
+        InstallScope::Library => {
+            let dest_subpath = input.dest_subpath.clone().unwrap_or_default();
+            if !validate_dest_subpath(&dest_subpath) {
+                return Err(IpcError::new(
+                    "invalid_dest_subpath",
+                    "Unsafe destination path",
+                ));
+            }
+            let source = resolve_source(input.source_id.as_deref())?;
+            let slug = input
+                .slug
+                .clone()
+                .ok_or_else(|| IpcError::new("invalid_skill_slug", "Library install requires a skill"))?;
+
+            let staging = tempfile::tempdir()
+                .map_err(|e| IpcError::new("staging_failed", e.to_string()))?;
+            let args = skills_library_npx_args(&input.install_ref, Some(&slug));
+            echo_command(&on_event, "npx", &args);
+
+            let mut cmd = skills_library_install_command(&input.install_ref, Some(&slug));
+            cmd.current_dir(staging.path());
+            let (ok, cancelled) = run_skill_stream(&install_state, cmd, &on_event).await?;
+            let ctx = LibraryInstallCtx {
+                staging,
+                source,
+                dest_subpath,
+                name: slug,
+                install_ref: input.install_ref.clone(),
+            };
+            let ok = finish_library(&app, ctx, ok, cancelled, &on_event);
+            let _ = on_event.send(SkillInstallEvent::Done { ok, cancelled });
+            Ok(())
+        }
     }
-
-    // Echo the resolved, non-interactive invocation so the console reads like a
-    // terminal. `--skill`/`--agent` are explicit (no picker prompts), so the
-    // command line itself shows exactly what runs.
-    let slug = input.slug.as_deref();
-    let args = skills_npx_args(&input.install_ref, slug, &input.tool_ids);
-    let _ = on_event.send(SkillInstallEvent::Line {
-        stream: "stdout".into(),
-        text: format!("$ npx {}", args.join(" ")),
-    });
-
-    let mut cmd = skills_install_command(&input.install_ref, slug, &input.tool_ids);
-    cmd.current_dir(&target.dir);
-    run_skill_stream(app, install_state, watcher, cmd, on_event).await
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSkillInput {
     pub provider: String,
-    pub workspace_id: String,
-    /// The skill's install name — the `skills-lock.json` key. Re-validated as a
-    /// slug before it reaches a process arg.
+    #[serde(default)]
+    pub scope: InstallScope,
+    /// Workspace scope only.
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+    /// The skill's install name — the lock key. Re-validated as a slug before
+    /// it reaches a process arg.
     pub name: String,
+    /// Library scope only: which source root to re-install into.
+    #[serde(default)]
+    pub source_id: Option<String>,
+    /// Library scope only: the ref to re-install (recorded at install time).
+    #[serde(default)]
+    pub install_ref: Option<String>,
+    /// Library scope only: `--skill` slug, when it differs from `name`.
+    #[serde(default)]
+    pub slug: Option<String>,
+    /// Library scope only: destination subpath under `skills/`, recorded at
+    /// install time.
+    #[serde(default)]
+    pub dest_subpath: Option<String>,
 }
 
-/// Update one already-installed skill in the target workspace via
-/// `npx skills update <name> --project --yes`, streaming output live and
-/// finishing with a single [`SkillInstallEvent::Done`]. Shares the streaming +
-/// cancel + re-scan machinery with install (see [`run_skill_stream`]).
+/// Update one already-installed skill, streaming output live and finishing
+/// with a single [`SkillInstallEvent::Done`]. Shares the streaming + cancel
+/// machinery with install (see [`run_skill_stream`]).
+///
+/// Workspace scope delegates to `npx skills update <name> --project --yes`.
+/// Library scope has no such CLI counterpart once a skill has been normalized
+/// into the contract layout (it may have moved/nested under `skills/`), so it
+/// **re-runs the staged install** for the recorded ref/slug and overwrites the
+/// same destination — the Hub-owned equivalent of an update.
 #[tauri::command]
 pub async fn cmd_update_skill_stream(
     app: AppHandle,
@@ -355,39 +595,75 @@ pub async fn cmd_update_skill_stream(
     if !validate_skill_slug(&input.name) {
         return Err(IpcError::new("invalid_skill_slug", "Unsafe skill name"));
     }
-    let target = WorkspaceTargetStore::new()
-        .read()?
-        .workspace_targets
-        .into_iter()
-        .find(|t| t.id == input.workspace_id)
-        .ok_or_else(|| IpcError::new("workspace_not_found", "Workspace target no longer exists"))?;
-    if !target.dir.is_dir() {
-        return Err(IpcError::from(CoreError::NotADirectory(target.dir.clone())));
+
+    match input.scope {
+        InstallScope::Workspace => {
+            let target = resolve_workspace_target(input.workspace_id.as_deref())?;
+            let args = skills_update_npx_args(&input.name);
+            echo_command(&on_event, "npx", &args);
+
+            let mut cmd = skills_update_command(&input.name);
+            cmd.current_dir(&target.dir);
+            let (ok, cancelled) = run_skill_stream(&install_state, cmd, &on_event).await?;
+            if ok && !cancelled {
+                watcher.restart_if_running(app.clone());
+                let _ = app.emit("workspace-changed", ());
+            }
+            let _ = on_event.send(SkillInstallEvent::Done { ok, cancelled });
+            Ok(())
+        }
+        InstallScope::Library => {
+            let source = resolve_source(input.source_id.as_deref())?;
+            let install_ref = input.install_ref.clone().ok_or_else(|| {
+                IpcError::new("invalid_skill_ref", "Missing install ref for library update")
+            })?;
+            if !validate_install_ref(&install_ref) {
+                return Err(IpcError::from(CoreError::InvalidSkillRef(install_ref)));
+            }
+            let slug = input.slug.clone().unwrap_or_else(|| input.name.clone());
+            if !validate_skill_slug(&slug) {
+                return Err(IpcError::new("invalid_skill_slug", "Unsafe skill slug"));
+            }
+            let dest_subpath = input.dest_subpath.clone().unwrap_or_default();
+            if !validate_dest_subpath(&dest_subpath) {
+                return Err(IpcError::new(
+                    "invalid_dest_subpath",
+                    "Unsafe destination path",
+                ));
+            }
+
+            let staging = tempfile::tempdir()
+                .map_err(|e| IpcError::new("staging_failed", e.to_string()))?;
+            let args = skills_library_npx_args(&install_ref, Some(&slug));
+            echo_command(&on_event, "npx", &args);
+
+            let mut cmd = skills_library_install_command(&install_ref, Some(&slug));
+            cmd.current_dir(staging.path());
+            let (ok, cancelled) = run_skill_stream(&install_state, cmd, &on_event).await?;
+            let ctx = LibraryInstallCtx {
+                staging,
+                source,
+                dest_subpath,
+                name: input.name.clone(),
+                install_ref,
+            };
+            let ok = finish_library(&app, ctx, ok, cancelled, &on_event);
+            let _ = on_event.send(SkillInstallEvent::Done { ok, cancelled });
+            Ok(())
+        }
     }
-
-    let args = skills_update_npx_args(&input.name);
-    let _ = on_event.send(SkillInstallEvent::Line {
-        stream: "stdout".into(),
-        text: format!("$ npx {}", args.join(" ")),
-    });
-
-    let mut cmd = skills_update_command(&input.name);
-    cmd.current_dir(&target.dir);
-    run_skill_stream(app, install_state, watcher, cmd, on_event).await
 }
 
 /// Spawn `cmd` (cwd already set), stream its stdout/stderr live as
-/// [`SkillInstallEvent::Line`] events, store the child in [`InstallState`] so
-/// Cancel can kill it, and finish with a single [`SkillInstallEvent::Done`]. On
-/// a clean success the watcher is nudged and `workspace-changed` is emitted so
-/// the main window re-scans the read-only inventory. Shared by install + update.
+/// [`SkillInstallEvent::Line`] events, and store the child in [`InstallState`]
+/// so Cancel can kill it. Returns `(ok, cancelled)` once the process exits (or
+/// is killed) — callers own the scope-specific post-processing and the
+/// terminal [`SkillInstallEvent::Done`]. Shared by install + update, both scopes.
 async fn run_skill_stream(
-    app: AppHandle,
-    install_state: State<'_, InstallState>,
-    watcher: State<'_, WatcherState>,
+    install_state: &State<'_, InstallState>,
     mut cmd: Command,
-    on_event: Channel<SkillInstallEvent>,
-) -> IpcResult<()> {
+    on_event: &Channel<SkillInstallEvent>,
+) -> IpcResult<(bool, bool)> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| match e.kind() {
         // The common failure: `npx` isn't on the resolved PATH. Map it to the
@@ -436,15 +712,7 @@ async fn run_skill_stream(
         Some(mut child) => (child.wait().map(|s| s.success()).unwrap_or(false), false),
         None => (false, true),
     };
-
-    if ok && !cancelled {
-        // The project's tool dirs changed — re-subscribe the watcher and tell
-        // the main window to re-scan the read-only inventory.
-        watcher.restart_if_running(app.clone());
-        let _ = app.emit("workspace-changed", ());
-    }
-    let _ = on_event.send(SkillInstallEvent::Done { ok, cancelled });
-    Ok(())
+    Ok((ok, cancelled))
 }
 
 /// Kill the in-flight install child, if any. The stream loop then sees closed

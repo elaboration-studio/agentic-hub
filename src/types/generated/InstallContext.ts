@@ -3,10 +3,12 @@ import type { UpdateTarget } from "./UpdateTarget";
 
 /**
  * Which workspace the install window targets, handed to it on mount. The label
- * lets the window name the project it is installing into. When `update` is set,
- * the window runs in single-skill update mode instead of the install matrix.
+ * lets the window name the project it is installing into. `workspace_id` /
+ * `workspace_label` are absent when the window is opened directly in Library
+ * scope (no workspace involved). When `update` is set, the window runs in
+ * single-skill update mode instead of the install matrix.
  */
-export type InstallContext = { workspaceId: string, workspaceLabel: string, 
+export type InstallContext = { workspaceId: string | null, workspaceLabel: string | null, 
 /**
  * Present only in update mode: the one skill to update.
  */

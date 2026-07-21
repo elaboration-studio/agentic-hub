@@ -190,6 +190,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::cmd_load_settings,
+            commands::cmd_resolve_sources,
             commands::cmd_set_color_scheme,
             commands::cmd_save_settings,
             commands::cmd_set_watcher_enabled,
