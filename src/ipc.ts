@@ -17,6 +17,7 @@ import type {
   ColorScheme,
   InspectResult,
   InstallContext,
+  InstallScope,
   InstalledToolInventory,
   PlannedOperation,
   ScaffoldMode,
@@ -53,6 +54,10 @@ import type {
 export type DesiredMap = Record<string, boolean>;
 
 export const loadSettings = (): Promise<Settings> => invoke("cmd_load_settings");
+
+/// The resolved source forest (stable `id`s filled in). Used by the install
+/// window's Library-scope source picker.
+export const resolveSources = (): Promise<SourceConfig[]> => invoke("cmd_resolve_sources");
 
 export const setColorScheme = (colorScheme: ColorScheme): Promise<void> =>
   invoke("cmd_set_color_scheme", { colorScheme });
@@ -392,10 +397,18 @@ export const takeInstallContext = (): Promise<InstallContext> =>
 export interface InstallSkillStreamPayload {
   provider: string;
   installRef: string;
-  workspaceId: string;
+  scope: InstallScope;
+  /// Workspace scope only.
+  workspaceId?: string;
+  /// Library scope only: which source root to install into.
+  sourceId?: string;
+  /// Library scope only: destination subpath under `skills/` (empty lands the
+  /// skill directly at `skills/<name>/`).
+  destSubpath?: string;
   /// The one skill slug to install — pins `--skill` so a multi-skill repo never
-  /// opens an interactive picker.
+  /// opens an interactive picker. Required for Library scope.
   slug: string;
+  /// Workspace scope only.
   toolIds: ToolId[];
 }
 
@@ -418,9 +431,20 @@ export const openUpdateWindow = (
 
 export interface UpdateSkillStreamPayload {
   provider: string;
-  workspaceId: string;
-  /// The skill's install name — the `skills-lock.json` key passed to `update`.
+  scope: InstallScope;
+  /// Workspace scope only.
+  workspaceId?: string;
+  /// The skill's install name — the lock key passed to update.
   name: string;
+  /// Library scope only: which source root to re-install into.
+  sourceId?: string;
+  /// Library scope only: the ref to re-install (recorded at install time).
+  installRef?: string;
+  /// Library scope only: `--skill` slug, when it differs from `name`.
+  slug?: string;
+  /// Library scope only: destination subpath under `skills/`, recorded at
+  /// install time.
+  destSubpath?: string;
 }
 
 /// Update one already-installed skill, streaming output (then a terminal `done`)

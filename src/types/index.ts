@@ -32,6 +32,8 @@ export type { HookSyncOutcome } from "./generated/HookSyncOutcome";
 export type { SyncHooksResult } from "./generated/SyncHooksResult";
 export type { InspectResult } from "./generated/InspectResult";
 export type { InstallContext } from "./generated/InstallContext";
+export type { InstallScope } from "./generated/InstallScope";
+export type { UpdateTarget } from "./generated/UpdateTarget";
 export type { InstalledToolInventory } from "./generated/InstalledToolInventory";
 export type { IpcError } from "./generated/IpcError";
 export type { LinkState } from "./generated/LinkState";
