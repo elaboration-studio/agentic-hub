@@ -8,6 +8,17 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Install skills.sh skills into your library.** The install window gains a
+  Workspace | Library scope toggle: Library stages a skill install, normalizes
+  it into a configured Hub source root's `skills/` contract layout, and
+  records it in that root's own `skills-lock.json` — so one install projects
+  to every tool and project instead of living in a single throwaway project.
+  Library-installed skills are badged in the Global Manager with the same
+  "skills.sh" indicator and **Update via skills.sh** row action Workspace
+  scope already had.
+
 ### Fixed
 
 - **Cursor `/skill` usage tracing.** Prompt-submit hooks now extract

@@ -3,8 +3,8 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-06-04
-Related Docs: [docs/tech/modules/skill-sources.md](../tech/modules/skill-sources.md), [docs/features/workspace-inventory.md](./workspace-inventory.md), [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md)
+Last Updated: 2026-07-21
+Related Docs: [docs/tech/modules/skill-sources.md](../tech/modules/skill-sources.md), [docs/features/workspace-inventory.md](./workspace-inventory.md), [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md), [docs/features/skills-sh-library-install.md](./skills-sh-library-install.md)
 
 ## What it is
 
@@ -35,6 +35,15 @@ Three surfaces:
    skills.sh**, which reopens the install window in a focused **update mode** for
    that single skill and runs `npx skills update <name>` with the same live
    streaming, Cancel, and re-scan.
+5. **Manager (Global) → install into your library** — the same install window
+   also offers a **Library** scope: instead of a project, it installs a starred
+   skill into a configured Hub source root (the shared agentic-resources repo
+   used for global projection), normalized into that root's `skills/` contract
+   layout and tracked in its own `skills-lock.json`. The Global Manager badges
+   and offers **Update via skills.sh** for those rows exactly like Workspace
+   scope does for project installs. See
+   [skills-sh-library-install.md](./skills-sh-library-install.md) for the full
+   design; this doc stays the source of truth for the original workspace path.
 
 ## How the marking works
 

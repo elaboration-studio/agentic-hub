@@ -1,10 +1,21 @@
 # Feature: Install skills.sh Skills into the Global Library (Source Root)
 
-Status: Planned
+Status: Shipped
 Mode: Detailed
 Owner: Arno
 Last Updated: 2026-07-21
 Depends On: [PRODUCT.md](../../PRODUCT.md), [docs/features/skills-sh-integration.md](./skills-sh-integration.md), [docs/tech/modules/skill-sources.md](../tech/modules/skill-sources.md), [docs/tech/modules/multi-source-roots.md](../tech/modules/multi-source-roots.md), [docs/tech/reference/shared-root-contract.md](../tech/reference/shared-root-contract.md)
+
+## Shipped shape
+
+Implemented as planned, with these naming differences from the original draft
+below (kept for the slice-by-slice rationale): the update-window open path for
+a Global-scope lock is a separate command, `cmd_open_library_update_window`
+(not a scope param on `cmd_open_update_window`), since it has no workspace at
+all; the source-root lock module is `agentic_core::source_skill_lock`; the
+badge type is `LibraryLockedSkill`; the source picker is backed by
+`cmd_resolve_sources`. Full detail in
+[skill-sources.md](../tech/modules/skill-sources.md#library-install).
 
 ## Why now
 
