@@ -8,8 +8,13 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.15.2] — 2026-07-22
+
 ### Added
 
+- **App-wide color scheme.** Config now offers Light, Dark, and Follow system.
+  The selected appearance applies immediately and stays synchronized across the
+  main app, command palette, install window, and native chrome.
 - **Install skills.sh skills into your library.** The install window gains a
   Workspace | Library scope toggle: Library stages a skill install, normalizes
   it into a configured Hub source root's `skills/` contract layout, and
@@ -21,6 +26,9 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ### Fixed
 
+- **Statistics chart tooltips.** Recharts tooltip label, item, and hover cursor
+  colors now follow the dark chart theme instead of defaulting to unreadable
+  light-theme text.
 - **Cursor `/skill` usage tracing.** Prompt-submit hooks now extract
   catalog-validated slash skills (`/name`), agent mentions (`@agent-*` /
   `/agent`), and agent markdown reads under `/agents/`, so Cursor no longer

@@ -5,37 +5,41 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.15.1] — 2026-07-20
+## [0.15.2] — 2026-07-22
+
+### Highlights
+
+- **Install skills.sh skills into your library** — one install normalizes into
+  your Hub source root and projects everywhere, not just a single workspace.
+- **App-wide appearance** — choose Light, Dark, or Follow system; every window
+  and native chrome updates immediately.
+- **More reliable usage tracing** — Cursor slash skills, resilient event
+  delivery, and clearer Codex/repo-local resolution.
 
 ### Added
 
-- **Repository-local usage tracing.** Skills used from active Cursor, Claude
-  Code, and Codex repositories now receive their own local usage counts even
-  when the repository was never saved in Agentic Hub.
-- **Complete multi-skill capture.** Every distinct skill used in one turn is
-  recorded once, while repeated references and overlapping hook events remain
-  deduplicated.
-- **Tracing diagnostics.** Config shows hook installation, the latest captured
-  event, and resolved/unresolved totals for each supported tool.
-
-### Changed
-
-- Statistics preserves repository context for historical local usage, including
-  repositories that are not currently selected in Manager.
-- Local usage data now distinguishes same-named global and repository skills.
+- **Library-scope skills.sh install.** The install window adds a Workspace |
+  Library toggle. Library installs stage into a configured Hub source root,
+  normalize to the shared `skills/` layout, and record in that root's
+  `skills-lock.json`. Library-installed skills are badged in the Global Manager
+  with **Update via skills.sh**, matching workspace scope.
+- **App-wide color scheme.** Config offers Light, Dark, and Follow system.
+  The choice applies immediately across the main app, command palette, install
+  window, and native chrome.
 
 ### Fixed
 
-- Generic slash commands, clipboard files, images, and arbitrary paths no
-  longer appear as unresolved skill usage.
-- Existing unresolved local history is reconciled when its repository still
-  exists and the skill can be identified without ambiguity.
-
-### Privacy and security
-
-- Prompts, tool arguments, skill contents, tokens, and secrets are never stored
-  by usage tracing. Repository paths are canonicalized and bounded to documented
-  skill roots before any skill attribution occurs.
+- **Statistics chart tooltips** are readable on the dark chart theme (label,
+  item, and hover cursor colors).
+- **Cursor `/skill` usage tracing** from prompt-submit hooks — slash skills,
+  agent mentions, and agent markdown reads under `/agents/` — without relying
+  on a secondary Skill tool or `SKILL.md` attachment.
+- **Delivery resilience** — failed tracer events spool under
+  `~/.agentic-hub/usage/spool/` and drain on collector start and every 30s.
+- **Codex name precedence** — same-named global and repository skills resolve
+  workspace-first, aligned with Cursor.
+- Repository-local agents under documented tool agent dirs are included in the
+  usage catalog for `/agent` and agent `Read` resolution.
 
 ### Known Issues
 
