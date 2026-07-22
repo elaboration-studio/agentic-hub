@@ -10,7 +10,14 @@ import {
 import type { UsageSourceBucket } from "@/types";
 import { TOOL_LABELS } from "@/shared";
 import type { ToolId } from "@/types";
-import { CHART_COLORS, chartMargin } from "./chartTheme";
+import {
+  CHART_COLORS,
+  chartMargin,
+  tooltipContentStyle,
+  tooltipCursorStyle,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+} from "./chartTheme";
 
 interface SourceToolChartProps {
   data: UsageSourceBucket[];
@@ -46,12 +53,10 @@ export function SourceToolChart({ data }: SourceToolChartProps) {
             axisLine={false}
           />
           <Tooltip
-            contentStyle={{
-              background: CHART_COLORS.tooltipBg,
-              border: `1px solid ${CHART_COLORS.tooltipBorder}`,
-              borderRadius: 8,
-              fontSize: 12,
-            }}
+            contentStyle={tooltipContentStyle}
+            labelStyle={tooltipLabelStyle}
+            itemStyle={tooltipItemStyle}
+            cursor={tooltipCursorStyle}
             formatter={(value) => [value, "Uses"]}
           />
           <Bar dataKey="executionCount" fill={CHART_COLORS.primary} radius={[0, 4, 4, 0]} />

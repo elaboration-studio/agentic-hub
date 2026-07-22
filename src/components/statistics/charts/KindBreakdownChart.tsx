@@ -11,7 +11,15 @@ import {
 import type { UsageKindBucket } from "@/types";
 import { KIND_LABEL } from "@/shared";
 import type { CapabilityKind } from "@/types";
-import { CHART_COLORS, chartMargin, kindChartColor } from "./chartTheme";
+import {
+  CHART_COLORS,
+  chartMargin,
+  kindChartColor,
+  tooltipContentStyle,
+  tooltipCursorStyle,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+} from "./chartTheme";
 
 interface KindBreakdownChartProps {
   data: UsageKindBucket[];
@@ -50,12 +58,10 @@ export function KindBreakdownChart({ data }: KindBreakdownChartProps) {
             axisLine={false}
           />
           <Tooltip
-            contentStyle={{
-              background: CHART_COLORS.tooltipBg,
-              border: `1px solid ${CHART_COLORS.tooltipBorder}`,
-              borderRadius: 8,
-              fontSize: 12,
-            }}
+            contentStyle={tooltipContentStyle}
+            labelStyle={tooltipLabelStyle}
+            itemStyle={tooltipItemStyle}
+            cursor={tooltipCursorStyle}
             formatter={(value) => [value, "Uses"]}
           />
           <Bar dataKey="executionCount" radius={[0, 4, 4, 0]}>

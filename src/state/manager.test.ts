@@ -178,7 +178,7 @@ function seedHappyPath(result?: Partial<InspectResult>) {
     ...result,
   };
   mocked.loadSettings.mockResolvedValue(makeSettings());
-  mocked.scan.mockResolvedValue({ items: [item], errors: [] });
+  mocked.scan.mockResolvedValue({ items: [item], errors: [], lockedSkills: [] });
   mocked.scanInstalledTools.mockResolvedValue({ items: [], states: [], errors: [] });
   mocked.inspect.mockResolvedValue(inspectResult);
   mocked.suiteOwnership.mockResolvedValue([]);
@@ -330,7 +330,7 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
 
   // No globally-applied resources: empty shared scan + inspect.
   function noGlobal() {
-    mocked.scan.mockResolvedValue({ items: [], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [], errors: [], lockedSkills: [] });
     mocked.inspect.mockResolvedValue({ states: [], adapterStatuses: [] });
   }
 
@@ -377,6 +377,7 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
     mocked.scan.mockResolvedValue({
       items: [makeItem("skill:global-on"), makeItem("skill:global-off")],
       errors: [],
+      lockedSkills: [],
     });
     mocked.inspect.mockResolvedValue({
       states: [
@@ -610,7 +611,7 @@ describe("manager store — apply pipeline", () => {
   it("requestApply with a foreign_file enable surfaces a conflict instead of applying", async () => {
     const item = makeItem("skill:a");
     mocked.loadSettings.mockResolvedValue(makeSettings());
-    mocked.scan.mockResolvedValue({ items: [item], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [item], errors: [], lockedSkills: [] });
     mocked.inspect.mockResolvedValue({
       states: [makeState("codex", "skill:a", "foreign_file")],
       adapterStatuses: [{ tool: "codex", available: true, unavailableReason: null }],
@@ -702,7 +703,7 @@ describe("manager store — apply pipeline", () => {
     const hook = makeAgenticHubHook("cursor");
     const item = makeItem("skill:a");
     mocked.loadSettings.mockResolvedValue(makeSettings());
-    mocked.scan.mockResolvedValue({ items: [item, hook], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [item, hook], errors: [], lockedSkills: [] });
     mocked.scanInstalledTools.mockResolvedValue({ items: [], states: [], errors: [] });
     mocked.inspect.mockResolvedValue({
       states: [

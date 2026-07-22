@@ -1,6 +1,6 @@
 [package]
 name = "agentic-hub"
-version = "0.15.1"
+version = "0.15.2"
 description = "Tauri 2.x desktop shell for Agentic Hub. Thin #[tauri::command] wrappers over agentic-core."
 edition.workspace = true
 license.workspace = true
@@ -37,6 +37,9 @@ tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-store = "2"
 tauri-plugin-updater = "2"
+# Scratch staging dir for a library-scope skill install (RAII-cleaned even on
+# a failed or cancelled run) — see install_window.rs.
+tempfile = "3"
 # Aptabase's plugin setup spawns its background flush loop with a bare
 # `tokio::spawn`, so an active Tokio runtime must be entered before the app is
 # built (Tauri does not enter one on the main thread). We own that runtime in

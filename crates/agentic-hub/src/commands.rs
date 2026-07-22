@@ -64,6 +64,15 @@ pub async fn cmd_load_settings() -> IpcResult<Settings> {
     Ok(Settings::load()?)
 }
 
+/// The resolved source forest — same shape `cmd_scan` items key against, with
+/// stable `id`s filled in (persisted `sources` entries carry an empty `id`).
+/// Used by the install window's Library-scope source picker, which must
+/// reference a source unambiguously even when two sources share a label.
+#[tauri::command]
+pub async fn cmd_resolve_sources() -> IpcResult<Vec<SourceConfig>> {
+    Ok(Settings::load()?.resolve_sources())
+}
+
 /// Persist and apply the app-wide color scheme without rewriting unrelated
 /// settings supplied by the untrusted WebView.
 #[tauri::command]

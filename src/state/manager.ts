@@ -89,10 +89,15 @@ interface ManagerState {
   // `key(tool, itemId)` -> owning suite, for cells a suite binding manages
   // (locked in the matrix). Empty when no suite is applied.
   ownership: Map<string, OwnershipInfo>;
-  // Namespaced item id -> the skills.sh install behind it, for workspace skills
-  // recorded in `skills-lock.json`. Drives the row badge + "Update" action.
-  // Empty in global scope.
-  lockedSkills: Map<string, { name: string; source: string }>;
+  // Item id -> the skills.sh install behind it, so the row badge + "Update"
+  // action can offer a one-click re-install. In workspace scope this is a
+  // namespaced id keyed from the project's `skills-lock.json`; in global scope
+  // it's keyed from a source root's `skills-lock.json` (a library install),
+  // and carries `sourceId`/`destSubpath` so the update targets the right root.
+  lockedSkills: Map<
+    string,
+    { name: string; source: string; sourceId?: string; destSubpath?: string }
+  >;
   // Capability id -> local usage stats. Empty when tracing is disabled or the
   // usage DB is unavailable.
   usageStats: Map<string, UsageStats>;
@@ -262,7 +267,13 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     set({ status: "loading", error: "" });
     try {
       const settings = await loadSettings();
-      const { items, errors } = await scan(settings.sources);
+      const { items, errors, lockedSkills: locked } = await scan(settings.sources);
+      const lockedSkills = new Map(
+        locked.map((l) => [
+          l.itemId,
+          { name: l.name, source: l.source, sourceId: l.sourceId, destSubpath: l.destSubpath },
+        ]),
+      );
       const [managedResult, installedRaw] = await Promise.all([
         inspect(items, settings.tools),
         scanInstalledTools(settings.tools),
@@ -292,7 +303,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         workspaceTools: tools.filter((t) => WORKSPACE_TOOL_IDS.has(t.id)),
         pendingKeys: [],
         ownership,
-        lockedSkills: new Map(),
+        lockedSkills,
         usageStats,
         readOnlyItemIds,
         settingsManagedItemIds,

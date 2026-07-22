@@ -50,11 +50,18 @@ pub struct InspectResult {
 }
 
 /// Scan the source forest configured in settings (resolving the legacy single
-/// root fallback). Hook items are annotated with `hook.json` validation results.
+/// root fallback). Hook items are annotated with `hook.json` validation
+/// results; skill items a source root's skills.sh lock manages are annotated
+/// with `locked_skills` so the Manager can badge them.
 pub fn scan(settings: &Settings) -> ScanResult {
-    let mut result = scanner::scan_all(&settings.resolve_sources());
+    let sources = settings.resolve_sources();
+    let mut result = scanner::scan_all(&sources);
     hook_sync::annotate_validation(&mut result.items);
     internal_hooks::append_items(&mut result.items, settings);
+    result.locked_skills = crate::source_skill_lock::mark_locked_library_skills(
+        &sources,
+        &result.items,
+    );
     result
 }
 

@@ -17,6 +17,7 @@ import type {
   ColorScheme,
   InspectResult,
   InstallContext,
+  InstallScope,
   InstalledToolInventory,
   PlannedOperation,
   ScaffoldMode,
@@ -53,6 +54,10 @@ import type {
 export type DesiredMap = Record<string, boolean>;
 
 export const loadSettings = (): Promise<Settings> => invoke("cmd_load_settings");
+
+/// The resolved source forest (stable `id`s filled in). Used by the install
+/// window's Library-scope source picker.
+export const resolveSources = (): Promise<SourceConfig[]> => invoke("cmd_resolve_sources");
 
 export const setColorScheme = (colorScheme: ColorScheme): Promise<void> =>
   invoke("cmd_set_color_scheme", { colorScheme });
@@ -385,6 +390,11 @@ export const onSkillsFavoritesChanged = (cb: () => void): Promise<UnlistenFn> =>
 export const openInstallWindow = (workspaceId: string): Promise<void> =>
   invoke("cmd_open_install_window", { workspaceId });
 
+/// Open (or focus) the install window with no workspace context — the Global
+/// Manager's entry point. The window defaults to Library scope.
+export const openLibraryInstallWindow = (): Promise<void> =>
+  invoke("cmd_open_library_install_window");
+
 /// Install window: read the workspace context set when it was opened.
 export const takeInstallContext = (): Promise<InstallContext> =>
   invoke("cmd_take_install_context");
@@ -392,10 +402,18 @@ export const takeInstallContext = (): Promise<InstallContext> =>
 export interface InstallSkillStreamPayload {
   provider: string;
   installRef: string;
-  workspaceId: string;
+  scope: InstallScope;
+  /// Workspace scope only.
+  workspaceId?: string;
+  /// Library scope only: which source root to install into.
+  sourceId?: string;
+  /// Library scope only: destination subpath under `skills/` (empty lands the
+  /// skill directly at `skills/<name>/`).
+  destSubpath?: string;
   /// The one skill slug to install — pins `--skill` so a multi-skill repo never
-  /// opens an interactive picker.
+  /// opens an interactive picker. Required for Library scope.
   slug: string;
+  /// Workspace scope only.
   toolIds: ToolId[];
 }
 
@@ -416,11 +434,40 @@ export const openUpdateWindow = (
 ): Promise<void> =>
   invoke("cmd_open_update_window", { workspaceId, provider, installRef, name });
 
+/// Open (or focus) the install window in update mode for one Library-scope
+/// (source-root-locked) skill — the Global Manager's "Update via skills.sh"
+/// row action. No workspace is involved.
+export const openLibraryUpdateWindow = (
+  provider: string,
+  installRef: string,
+  name: string,
+  sourceId: string,
+  destSubpath: string,
+): Promise<void> =>
+  invoke("cmd_open_library_update_window", {
+    provider,
+    installRef,
+    name,
+    sourceId,
+    destSubpath,
+  });
+
 export interface UpdateSkillStreamPayload {
   provider: string;
-  workspaceId: string;
-  /// The skill's install name — the `skills-lock.json` key passed to `update`.
+  scope: InstallScope;
+  /// Workspace scope only.
+  workspaceId?: string;
+  /// The skill's install name — the lock key passed to update.
   name: string;
+  /// Library scope only: which source root to re-install into.
+  sourceId?: string;
+  /// Library scope only: the ref to re-install (recorded at install time).
+  installRef?: string;
+  /// Library scope only: `--skill` slug, when it differs from `name`.
+  slug?: string;
+  /// Library scope only: destination subpath under `skills/`, recorded at
+  /// install time.
+  destSubpath?: string;
 }
 
 /// Update one already-installed skill, streaming output (then a terminal `done`)

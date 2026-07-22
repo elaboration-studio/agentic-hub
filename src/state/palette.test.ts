@@ -197,7 +197,7 @@ function makeAgenticHubHook(tool: ToolId): CapabilityItem {
 
 async function loadReady(suites: SuiteDefinition[] = [makeSuite("s1", "Backend")]) {
   mocked.loadSettings.mockResolvedValue(makeSettings());
-  mocked.scan.mockResolvedValue({ items: [makeItem("skill:tdd")], errors: [] });
+  mocked.scan.mockResolvedValue({ items: [makeItem("skill:tdd")], errors: [], lockedSkills: [] });
   mocked.listSuites.mockResolvedValue(suites);
   mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
   await usePaletteStore.getState().load();
@@ -242,7 +242,7 @@ describe("palette store — loading", () => {
 describe("palette store — workspace inventories", () => {
   it("load scans every remembered workspace and populates results on a query", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
-    mocked.scan.mockResolvedValue({ items: [], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [], errors: [], lockedSkills: [] });
     mocked.listSuites.mockResolvedValue([]);
     mocked.listWorkspaceTargets.mockResolvedValue({
       workspaceTargets: [makeTarget("w1", "alpha"), makeTarget("w2", "beta")],
@@ -272,7 +272,7 @@ describe("palette store — workspace inventories", () => {
 
   it("skips a workspace whose scan fails without breaking summon", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
-    mocked.scan.mockResolvedValue({ items: [], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [], errors: [], lockedSkills: [] });
     mocked.listSuites.mockResolvedValue([]);
     mocked.listWorkspaceTargets.mockResolvedValue({
       workspaceTargets: [makeTarget("w1", "alpha"), makeTarget("w2", "beta")],
@@ -405,7 +405,7 @@ describe("palette store — suite flow (suite mode → suite-tools)", () => {
 describe("palette store — capability-tools (inline per-tool toggle)", () => {
   it("inspects per-tool state in the background and populates currentMap", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
-    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [], lockedSkills: [] });
     mocked.listSuites.mockResolvedValue([]);
     mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
     mocked.inspect.mockResolvedValue({
@@ -423,7 +423,7 @@ describe("palette store — capability-tools (inline per-tool toggle)", () => {
 
   it("drilling into a resource shows per-tool toggle rows reflecting state", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
-    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [], lockedSkills: [] });
     mocked.listSuites.mockResolvedValue([]);
     mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
     mocked.inspect.mockResolvedValue({
@@ -465,6 +465,7 @@ describe("palette store — capability-tools (inline per-tool toggle)", () => {
         makeKindItem("rule:c", "rule"),
       ],
       errors: [],
+      lockedSkills: [],
     });
     mocked.listSuites.mockResolvedValue([]);
     mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
@@ -494,6 +495,7 @@ describe("palette store — capability-tools (inline per-tool toggle)", () => {
     mocked.scan.mockResolvedValue({
       items: [makeItem("skill:tdd"), hook],
       errors: [],
+      lockedSkills: [],
     });
     mocked.listSuites.mockResolvedValue([]);
     mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
@@ -523,7 +525,7 @@ describe("palette store — capability-tools (inline per-tool toggle)", () => {
 
   it("toggleCapability applies the plan ops and re-inspects to reconcile", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
-    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [], lockedSkills: [] });
     mocked.listSuites.mockResolvedValue([]);
     mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
     mocked.inspect.mockResolvedValue({
@@ -545,7 +547,7 @@ describe("palette store — capability-tools (inline per-tool toggle)", () => {
 
   it("toggleCapability is a no-op on a suite-locked cell", async () => {
     mocked.loadSettings.mockResolvedValue(makeSettings());
-    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [] });
+    mocked.scan.mockResolvedValue({ items: [makeKindItem("skill:tdd", "skill")], errors: [], lockedSkills: [] });
     mocked.listSuites.mockResolvedValue([]);
     mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
     mocked.inspect.mockResolvedValue({

@@ -1,8 +1,10 @@
 // The unified Manager surface: a left scope rail (Global + workspaces) and a
 // content pane. Global scope renders the editable shared matrix (or the empty
 // state); workspace scope renders the selected project's read-only inventory.
-// The install FAB shows only in workspace scope with an active target and the
-// skills source enabled — the one explicit workspace write path.
+// The install FAB shows whenever the skills source is enabled: in workspace
+// scope it targets the active workspace (the workspace write path); in
+// global scope it opens straight into Library scope (the source-root write
+// path) since there is no workspace to target.
 
 import { useEffect } from "react";
 import { useManagerStore } from "@/state/manager";
@@ -64,9 +66,8 @@ export function ManagerView() {
           </Alert>
         )}
       </div>
-      {scope === "workspace" && activeId && skillsEnabled && (
-        <InstallFab workspaceId={activeId} />
-      )}
+      {skillsEnabled &&
+        (scope === "workspace" ? activeId && <InstallFab workspaceId={activeId} /> : <InstallFab />)}
     </div>
   );
 }
