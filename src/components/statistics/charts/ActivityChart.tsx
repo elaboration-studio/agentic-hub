@@ -8,7 +8,14 @@ import {
   YAxis,
 } from "recharts";
 import type { UsageDayBucket } from "@/types";
-import { CHART_COLORS, chartMargin } from "./chartTheme";
+import {
+  CHART_COLORS,
+  chartMargin,
+  tooltipContentStyle,
+  tooltipCursorStyle,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+} from "./chartTheme";
 
 interface ActivityChartProps {
   data: UsageDayBucket[];
@@ -38,13 +45,10 @@ export function ActivityChart({ data }: ActivityChartProps) {
             width={32}
           />
           <Tooltip
-            contentStyle={{
-              background: CHART_COLORS.tooltipBg,
-              border: `1px solid ${CHART_COLORS.tooltipBorder}`,
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            labelStyle={{ color: CHART_COLORS.axis }}
+            contentStyle={tooltipContentStyle}
+            labelStyle={tooltipLabelStyle}
+            itemStyle={tooltipItemStyle}
+            cursor={tooltipCursorStyle}
             formatter={(value) => [value, "Events"]}
           />
           <Bar dataKey="executionCount" fill={CHART_COLORS.primary} radius={[4, 4, 0, 0]} />
