@@ -972,6 +972,21 @@ pub async fn cmd_suite_ownership() -> IpcResult<Vec<SuiteOwnership>> {
     ))
 }
 
+/// Complete one locked recovery attempt, then notify every Manager view even
+/// when a later phase (such as binding persistence) returned a typed error.
+/// Settings/store setup errors happen before this function and do not emit.
+fn resync_suite_binding_and_refresh(
+    settings: &Settings,
+    suites: &SuiteStore,
+    bindings: &SuiteBindingStore,
+    tool_id: ToolId,
+    emit_refresh: impl FnOnce(),
+) -> IpcResult<ApplySuiteResult> {
+    let result = suite_recovery::resync_suite_binding_for_tool(settings, suites, bindings, tool_id);
+    emit_refresh();
+    result
+}
+
 #[tauri::command]
 pub async fn cmd_resync_suite_binding(
     app: AppHandle,
@@ -980,10 +995,9 @@ pub async fn cmd_resync_suite_binding(
     let settings = Settings::load()?;
     let suites = SuiteStore::with_path(settings.resolved_suites_path());
     let bindings = SuiteBindingStore::new();
-    let result =
-        suite_recovery::resync_suite_binding_for_tool(&settings, &suites, &bindings, tool_id)?;
-    let _ = app.emit("sources-changed", ());
-    Ok(result)
+    resync_suite_binding_and_refresh(&settings, &suites, &bindings, tool_id, || {
+        let _ = app.emit("sources-changed", ());
+    })
 }
 
 // ---- Workspace scope ------------------------------------------------------
@@ -1169,3 +1183,62 @@ pub async fn cmd_remove_skill_favorite(input: RemoveFavoriteInput) -> IpcResult<
 
 // Skill install is a streaming, cancellable flow that owns its own window; see
 // `install_window.rs` for `cmd_install_skill_stream` / `cmd_cancel_install`.
+
+#[cfg(test)]
+mod tests {
+    use agentic_core::model::ToolId;
+    use agentic_core::settings::Settings;
+    use agentic_core::suite_binding_store::SuiteBindingStore;
+    use agentic_core::suite_store::{SuiteCreateInput, SuiteStore};
+
+    use super::resync_suite_binding_and_refresh;
+
+    #[test]
+    fn suite_recovery_refreshes_after_projection_success_and_binding_persistence_failure() {
+        let state = tempfile::tempdir().unwrap();
+        let suites = SuiteStore::with_path(state.path().join("suites.json"));
+        let selected = suites
+            .create(SuiteCreateInput {
+                name: "Selected".into(),
+                description: None,
+                capabilities: vec!["skill:selected".into()],
+            })
+            .unwrap();
+        let bindings_path = state.path().join("bindings.json");
+        let bindings = SuiteBindingStore::with_path(&bindings_path);
+        bindings
+            .record(ToolId::Claude, &selected.id, Vec::new())
+            .unwrap();
+        // The store reads its existing binding, but its later atomic temp write
+        // fails after the projection has already completed.
+        std::fs::create_dir(bindings_path.with_extension("json.tmp")).unwrap();
+
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("skills/selected")).unwrap();
+        std::fs::write(root.path().join("skills/selected/SKILL.md"), "selected").unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        let mut settings = Settings::default();
+        settings.sources.clear();
+        settings.shared_root = root.path().to_path_buf();
+        settings.usage_tracing.enabled = false;
+        settings.tools.claude.enabled = true;
+        settings.tools.claude.skills_path = tools.path().join("claude/skills");
+        settings.tools.claude.agents_path = tools.path().join("claude/agents");
+        settings.tools.claude.rules_path = tools.path().join("claude/rules");
+        settings.tools.claude.instructions_path = Some(tools.path().join("claude/CLAUDE.md"));
+        settings.tools.claude.hooks_enabled = false;
+        settings.tools.claude.hooks_file = Some(tools.path().join("claude/hooks.json"));
+        settings.tools.claude.commands_path = Some(tools.path().join("claude/commands"));
+
+        let mut refresh_count = 0;
+        let error =
+            resync_suite_binding_and_refresh(&settings, &suites, &bindings, ToolId::Claude, || {
+                refresh_count += 1
+            })
+            .unwrap_err();
+
+        assert_eq!(error.code, "internal");
+        assert_eq!(refresh_count, 1);
+        assert!(tools.path().join("claude/skills/selected").is_dir());
+    }
+}

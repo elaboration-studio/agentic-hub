@@ -425,7 +425,10 @@ write phases succeed; a partial result leaves the prior binding unchanged. The
 shared projection transaction guard covers binding read through conditional
 record so separate windows cannot interleave recovery with suite apply or
 mutation re-sync. The command emits `sources-changed` after any completed
-attempt so partially changed projections are re-inspected.
+locked attempt, including when projection or sync writes succeeded but binding
+persistence then returned a typed error. Emission does not mask that error: the
+original `IpcError` still reaches the caller. Settings-load failures occur
+before a recovery attempt and therefore do not emit.
 
 Errors are typed: `suite_binding_not_found` when the tool has no binding and
 `suite_not_found` when the binding's selected suite no longer exists. Neither
