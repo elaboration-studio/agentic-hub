@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::{CoreError, Result};
 use crate::model::{SourceRef, ToolId};
 use crate::paths::{expand_tilde, home_dir, tildify};
+pub use crate::settings_shortcuts::{
+    default_palette_shortcut, is_valid_shortcut, validate_palette_shortcuts, PaletteLaunchMode,
+    PaletteQuickSearchShortcuts, PaletteShortcutValidationError,
+};
 
 /// A capability source: an ordered, priority-bearing shared root. See
 /// `docs/tech/modules/multi-source-roots.md`.
@@ -311,55 +315,6 @@ pub struct MainWindowState {
     pub y: Option<i32>,
 }
 
-/// Direct command-palette search accelerators persisted alongside the hub
-/// toggle shortcut. These strings are parsed by the Tauri global-shortcut
-/// plugin before they are registered with the operating system.
-#[cfg_attr(
-    feature = "ts-export",
-    derive(ts_rs::TS),
-    ts(export, export_to = "../../../src/types/generated/")
-)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PaletteQuickSearchShortcuts {
-    pub all_resources: String,
-    pub skills: String,
-    pub commands: String,
-}
-
-impl Default for PaletteQuickSearchShortcuts {
-    fn default() -> Self {
-        Self {
-            all_resources: "Cmd+Alt+Ctrl+A".to_string(),
-            skills: "Cmd+Alt+Ctrl+S".to_string(),
-            commands: "Cmd+Alt+Ctrl+C".to_string(),
-        }
-    }
-}
-
-/// One-shot destination requested by a global palette accelerator.
-#[cfg_attr(
-    feature = "ts-export",
-    derive(ts_rs::TS),
-    ts(export, export_to = "../../../src/types/generated/")
-)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PaletteLaunchMode {
-    #[default]
-    Hub,
-    AllResources,
-    Skills,
-    Commands,
-}
-
-/// User-facing validation failure for the complete palette accelerator set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaletteShortcutValidationError {
-    Invalid(String),
-    Duplicate(String),
-}
-
 /// Global settings persisted at `~/.agentic-hub/config.json`.
 #[cfg_attr(
     feature = "ts-export",
@@ -443,65 +398,6 @@ pub struct Settings {
 
 fn default_true() -> bool {
     true
-}
-
-/// Default global accelerator for the command palette.
-pub fn default_palette_shortcut() -> String {
-    "Cmd+Alt+A".to_string()
-}
-
-/// Lightweight sanity check for a palette accelerator string: it must be a
-/// `+`-joined list of tokens carrying at least one non-modifier key. The
-/// authoritative parse happens in the Tauri shell via the global-shortcut
-/// plugin; this only rejects obviously-bad input before we persist or register.
-pub fn is_valid_shortcut(accelerator: &str) -> bool {
-    const MODIFIERS: [&str; 11] = [
-        "cmd",
-        "command",
-        "ctrl",
-        "control",
-        "alt",
-        "option",
-        "shift",
-        "super",
-        "meta",
-        "cmdorctrl",
-        "commandorcontrol",
-    ];
-    let parts: Vec<&str> = accelerator
-        .split('+')
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .collect();
-    if parts.is_empty() {
-        return false;
-    }
-    parts
-        .iter()
-        .any(|p| !MODIFIERS.contains(&p.to_ascii_lowercase().as_str()))
-}
-
-/// Validate the four persisted palette accelerators before any settings write.
-pub fn validate_palette_shortcuts(
-    settings: &Settings,
-) -> std::result::Result<(), PaletteShortcutValidationError> {
-    let shortcuts = [
-        &settings.palette_shortcut,
-        &settings.palette_quick_search_shortcuts.all_resources,
-        &settings.palette_quick_search_shortcuts.skills,
-        &settings.palette_quick_search_shortcuts.commands,
-    ];
-    let mut seen = std::collections::HashSet::new();
-    for shortcut in shortcuts {
-        if !is_valid_shortcut(shortcut) {
-            return Err(PaletteShortcutValidationError::Invalid(shortcut.clone()));
-        }
-        let normalized = shortcut.trim().to_ascii_lowercase();
-        if !seen.insert(normalized) {
-            return Err(PaletteShortcutValidationError::Duplicate(shortcut.clone()));
-        }
-    }
-    Ok(())
 }
 
 /// Default slash-command directory per tool. `None` for OpenClaw (no command
@@ -1478,42 +1374,6 @@ mod tests {
     }
 
     #[test]
-    fn palette_shortcut_defaults_to_cmd_alt_a() {
-        let s = Settings::default();
-        assert_eq!(s.palette_shortcut, "Cmd+Alt+A");
-    }
-
-    #[test]
-    fn palette_quick_search_shortcuts_have_stable_defaults() {
-        let s = Settings::default();
-
-        assert_eq!(
-            s.palette_quick_search_shortcuts,
-            PaletteQuickSearchShortcuts {
-                all_resources: "Cmd+Alt+Ctrl+A".to_string(),
-                skills: "Cmd+Alt+Ctrl+S".to_string(),
-                commands: "Cmd+Alt+Ctrl+C".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn legacy_config_without_quick_search_shortcuts_uses_defaults() {
-        let mut value = serde_json::to_value(Settings::default()).unwrap();
-        value
-            .as_object_mut()
-            .unwrap()
-            .remove("paletteQuickSearchShortcuts");
-
-        let loaded: Settings = serde_json::from_value(value).unwrap();
-
-        assert_eq!(
-            loaded.palette_quick_search_shortcuts,
-            PaletteQuickSearchShortcuts::default()
-        );
-    }
-
-    #[test]
     fn paste_into_focused_defaults_off_and_roundtrips() {
         let s = Settings::default();
         assert!(!s.paste_into_focused);
@@ -1538,43 +1398,6 @@ mod tests {
         fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
         let loaded = Settings::load_from(&path).unwrap();
         assert!(!loaded.paste_into_focused, "absent field defaults to off");
-    }
-
-    #[test]
-    fn validates_palette_shortcut_shape() {
-        assert!(is_valid_shortcut("Cmd+Alt+A"));
-        assert!(is_valid_shortcut("CmdOrCtrl+Shift+K"));
-        assert!(is_valid_shortcut("Space"));
-        // Only modifiers, no key — rejected.
-        assert!(!is_valid_shortcut("Cmd+Alt"));
-        assert!(!is_valid_shortcut(""));
-        assert!(!is_valid_shortcut("   "));
-    }
-
-    #[test]
-    fn palette_shortcut_set_rejects_a_malformed_direct_shortcut() {
-        let mut settings = Settings::default();
-        settings.palette_quick_search_shortcuts.skills = "Cmd+Alt".to_string();
-
-        let error = validate_palette_shortcuts(&settings).unwrap_err();
-
-        assert_eq!(
-            error,
-            PaletteShortcutValidationError::Invalid("Cmd+Alt".to_string())
-        );
-    }
-
-    #[test]
-    fn palette_shortcut_set_rejects_duplicates_across_all_four_shortcuts() {
-        let mut settings = Settings::default();
-        settings.palette_quick_search_shortcuts.commands = settings.palette_shortcut.clone();
-
-        let error = validate_palette_shortcuts(&settings).unwrap_err();
-
-        assert_eq!(
-            error,
-            PaletteShortcutValidationError::Duplicate("Cmd+Alt+A".to_string())
-        );
     }
 
     #[test]

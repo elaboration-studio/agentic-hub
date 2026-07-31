@@ -198,7 +198,11 @@ pub struct PaletteShortcutSet {
 
 impl PaletteShortcutSet {
     pub fn from_settings(settings: &Settings) -> Result<Self, String> {
-        validate_palette_shortcuts(settings).map_err(|error| match error {
+        validate_palette_shortcuts(
+            &settings.palette_shortcut,
+            &settings.palette_quick_search_shortcuts,
+        )
+        .map_err(|error| match error {
             PaletteShortcutValidationError::Invalid(shortcut) => {
                 format!("Invalid shortcut: {shortcut}")
             }

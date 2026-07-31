@@ -29,6 +29,7 @@ pub mod scaffold;
 pub mod scanner;
 pub mod sessions;
 pub mod settings;
+mod settings_shortcuts;
 pub mod shell_env;
 pub mod skill_favorites;
 pub mod skill_lock;
