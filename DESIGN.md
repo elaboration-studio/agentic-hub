@@ -80,6 +80,12 @@ exposes each as a `--color-*` utility.
 - Kind: Skill uses **primary** (indigo); Kind: Rule uses **success** (green);
   Kind: Hook uses **warning** (amber)
 
+Stale Manager cells use a full warning-triangle button, not an unlabeled status
+dot. Its accessible menu explains the drift and offers the applicable safe
+recovery (stage source refresh or re-sync the live suite binding) plus Open
+source and Reveal target. Broken and foreign cells keep their existing state
+treatment and never expose stale-only recovery actions.
+
 ## Typography
 
 ### Font Family

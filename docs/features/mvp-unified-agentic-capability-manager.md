@@ -157,11 +157,19 @@ That is the MVP. Everything else is optional.
 - `enabled` — target is a symlink to the correct source (or managed copy with matching metadata)
 - `disabled` — target does not exist
 - `broken` — target is a symlink to a non-existent path
-- `stale` — target is a managed copy whose metadata mismatches the shared source (Cursor agents only)
+- `stale` — target is a managed copy whose metadata mismatches the shared source
+  (supported for any capability kind whose adapter uses managed-copy or managed
+  JSON/file projection)
 - `foreign_file` — target is a real file or directory not owned by the manager
 - `foreign_link` — target is a symlink to a different source
 
 `foreign_file` and `foreign_link` may be collapsed to a single `conflict` badge in the UI when that reduces complexity, but the host-side state is preserved distinctly so the apply path can react correctly.
+
+A stale cell is an accessible recovery control. Unowned projections stage a
+source refresh for the normal ActionBar Apply; suite-owned projections re-sync
+the tool's live selected suite, base, and manual extras without changing the
+binding. Open source and Reveal target remain manual fallbacks. These remedies
+do not apply to `broken` or foreign states.
 
 ### Staged operations
 

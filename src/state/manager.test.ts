@@ -15,6 +15,7 @@ vi.mock("@/ipc", () => ({
   syncHooks: vi.fn(),
   setWatcherEnabled: vi.fn(),
   suiteOwnership: vi.fn(),
+  resyncSuiteBinding: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -31,6 +32,7 @@ import {
   scanWorkspace,
   setWatcherEnabled,
   suiteOwnership,
+  resyncSuiteBinding,
   syncHooks,
   syncRules,
 } from "@/ipc";
@@ -60,6 +62,7 @@ const mocked = {
   syncHooks: vi.mocked(syncHooks),
   setWatcherEnabled: vi.mocked(setWatcherEnabled),
   suiteOwnership: vi.mocked(suiteOwnership),
+  resyncSuiteBinding: vi.mocked(resyncSuiteBinding),
 };
 
 function toolSettings(enabled: boolean): ToolSettings {
@@ -307,7 +310,11 @@ describe("manager store — refresh", () => {
     const s = useManagerStore.getState();
 
     expect(s.desired["cursor::skill:a"]).toBe(true);
-    expect(s.ownership.get("cursor::skill:a")).toEqual({ suiteName: "Backend", fromBase: false });
+    expect(s.ownership.get("cursor::skill:a")).toEqual({
+      suiteId: "s1",
+      suiteName: "Backend",
+      fromBase: false,
+    });
     expect(s.pendingKeys).toEqual([]);
   });
 
@@ -580,6 +587,7 @@ describe("manager store — staging", () => {
     await useManagerStore.getState().refresh();
 
     expect(useManagerStore.getState().ownership.get("codex::skill:a")).toEqual({
+      suiteId: "s1",
       suiteName: "Backend",
       fromBase: false,
     });
@@ -591,6 +599,75 @@ describe("manager store — staging", () => {
     // Batch toggles skip owned cells too.
     useManagerStore.getState().toggleMany("codex", ["skill:a"], false);
     expect(useManagerStore.getState().pendingKeys).toEqual([]);
+  });
+
+  it("stageStaleRefresh enables only an unowned stale projection for normal Apply", async () => {
+    seedHappyPath();
+    mocked.inspect.mockResolvedValue({
+      states: [makeState("codex", "skill:a", "stale")],
+      adapterStatuses: [{ tool: "codex", available: true, unavailableReason: null }],
+    });
+    await useManagerStore.getState().refresh();
+
+    useManagerStore.getState().stageStaleRefresh("codex", "skill:a");
+
+    const state = useManagerStore.getState();
+    expect(state.desired["codex::skill:a"]).toBe(true);
+    expect(state.pendingKeys).toEqual(["codex::skill:a"]);
+    expect(mocked.apply).not.toHaveBeenCalled();
+  });
+
+  it("stageStaleRefresh rejects owned and non-stale projections", async () => {
+    seedHappyPath();
+    mocked.inspect.mockResolvedValue({
+      states: [
+        makeState("codex", "skill:a", "stale"),
+        makeState("cursor", "skill:a", "broken"),
+      ],
+      adapterStatuses: [],
+    });
+    mocked.suiteOwnership.mockResolvedValue([
+      { tool: "codex", itemId: "skill:a", suiteId: "s1", suiteName: "Backend", fromBase: false },
+    ]);
+    await useManagerStore.getState().refresh();
+
+    useManagerStore.getState().stageStaleRefresh("codex", "skill:a");
+    useManagerStore.getState().stageStaleRefresh("cursor", "skill:a");
+
+    expect(useManagerStore.getState().pendingKeys).toEqual([]);
+  });
+
+  it("resyncStaleBinding invokes the typed suite recovery and refreshes the matrix", async () => {
+    seedHappyPath();
+    mocked.inspect.mockResolvedValue({
+      states: [makeState("codex", "skill:a", "stale")],
+      adapterStatuses: [],
+    });
+    mocked.suiteOwnership.mockResolvedValue([
+      { tool: "codex", itemId: "skill:a", suiteId: "s1", suiteName: "Backend", fromBase: false },
+    ]);
+    mocked.resyncSuiteBinding.mockResolvedValue({
+      applyResult: APPLY_RESULT,
+      skippedStale: 0,
+      skippedAbsentSource: 0,
+      suite: {
+        id: "s1",
+        name: "Backend",
+        description: null,
+        capabilities: [],
+        isBase: false,
+        createdAt: "t",
+        updatedAt: "t",
+      },
+      manualItemIds: ["skill:manual"],
+    });
+
+    await useManagerStore.getState().refresh();
+    await useManagerStore.getState().resyncStaleBinding("codex");
+
+    expect(mocked.resyncSuiteBinding).toHaveBeenCalledWith("codex");
+    expect(mocked.inspect).toHaveBeenCalledTimes(2);
+    expect(toast.success).toHaveBeenCalledWith("Suite binding re-synced for Codex.");
   });
 
   it("toggleMany stages several keys and resetDesired restores the seeded state", async () => {

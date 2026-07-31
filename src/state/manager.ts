@@ -15,6 +15,7 @@ import {
   scan,
   scanInstalledTools,
   scanWorkspace,
+  resyncSuiteBinding,
   setWatcherEnabled,
   suiteOwnership,
   syncHooks,
@@ -45,6 +46,7 @@ import {
 export type Status = "loading" | "ready" | "error";
 
 export interface OwnershipInfo {
+  suiteId: string;
   suiteName: string;
   fromBase: boolean;
 }
@@ -111,6 +113,8 @@ interface ManagerState {
   setWatching: (watching: boolean) => void;
   toggle: (tool: ToolId, itemId: string) => void;
   toggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
+  stageStaleRefresh: (tool: ToolId, itemId: string) => void;
+  resyncStaleBinding: (tool: ToolId) => Promise<void>;
   resetDesired: () => void;
   setProgress: (p: { done: number; total: number } | null) => void;
   requestApply: () => void;
@@ -186,7 +190,11 @@ async function loadOwnership(): Promise<Map<string, OwnershipInfo>> {
   const map = new Map<string, OwnershipInfo>();
   try {
     for (const o of await suiteOwnership()) {
-      map.set(key(o.tool, o.itemId), { suiteName: o.suiteName, fromBase: o.fromBase });
+      map.set(key(o.tool, o.itemId), {
+        suiteId: o.suiteId,
+        suiteName: o.suiteName,
+        fromBase: o.fromBase,
+      });
     }
   } catch {
     // Leave empty — cells stay editable.
@@ -409,6 +417,26 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       if (currentMap.has(k) && !ownership.has(k)) next[k] = value;
     }
     set({ desired: next, pendingKeys: computePending(next, currentMap) });
+  },
+
+  stageStaleRefresh: (tool, itemId) => {
+    const { currentMap, desired, ownership, readOnly, readOnlyItemIds } = get();
+    if (readOnly || readOnlyItemIds.has(itemId)) return;
+    const k = key(tool, itemId);
+    if (ownership.has(k) || currentMap.get(k)?.state !== "stale") return;
+    const nextDesired = { ...desired, [k]: true };
+    set({ desired: nextDesired, pendingKeys: computePending(nextDesired, currentMap) });
+  },
+
+  resyncStaleBinding: async (tool) => {
+    try {
+      await resyncSuiteBinding(tool);
+      await get().refresh();
+      const label = get().tools.find((candidate) => candidate.id === tool)?.label ?? tool;
+      toast.success(`Suite binding re-synced for ${label}.`);
+    } catch (error) {
+      toast.error(messageOf(error));
+    }
   },
 
   resetDesired: () => {

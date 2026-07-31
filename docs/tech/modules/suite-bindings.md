@@ -62,6 +62,8 @@ flowchart TD
   tf --> resync["resync_bindings (base-merged, guarded) → emit sources-changed"]
   allb --> resync
   setb["cmd_set_base_suite(id?)"] --> allb
+  repair["cmd_resync_suite_binding(tool)"] --> one["resolve live binding"]
+  one --> resync
   del["cmd_delete_suite"] --> drop["store.drop_suite(id) (projections untouched)"]
 ```
 
@@ -76,12 +78,22 @@ flowchart TD
   re-merged). Emits `sources-changed` so the Manager refreshes.
 - **Set base** (`cmd_set_base_suite`): flip the single-base flag, then re-sync
   every binding so all tools pick up (or drop) the new base.
+- **Guided stale recovery** (`cmd_resync_suite_binding`): resolve the requested
+  tool's live selected suite, merge the current base, union persisted manual
+  extras with newly enabled extras, and full-reset apply under the reconcile
+  guard. The binding keeps the same selected suite id. A missing binding or
+  missing selected suite returns a typed error before any projection changes.
 - **Delete**: drop the suite's bindings only. Deleting a suite is not a
   destructive tool wipe — on-disk projections are left as they are.
 
 `resync_bindings` resolves each binding's selected suite fresh, unions the
 current base via `api::merge_base_caps`, and full-reset applies per tool under
 one reconcile guard.
+
+The Manager uses the ownership response's `suiteId` as well as its display
+name/base flag. A stale owned cell offers this binding re-sync; an unowned stale
+cell instead stages `enabled` and waits for the normal plan → ActionBar Apply
+flow.
 
 ## Cross-device note
 

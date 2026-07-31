@@ -399,6 +399,14 @@ Remove: delete the file/folder + drop its manifest entry (delete manifest when e
 
 Stale detection vs ForeignFile: managed-copy state is **Stale** only when a manifest entry attributes the target to the same shared source but content has diverged. Without an entry, the file/folder is treated as user-owned (`ForeignFile`) and apply refuses to overwrite.
 
+Manager recovery preserves the same boundary. An unowned stale projection only
+stages `desired = true`; the normal plan and explicit Apply produce
+`ReplaceManagedCopy`. A suite-owned stale projection resolves the tool's live
+binding and re-applies `selected ∪ base ∪ manual extras` through
+`api::apply_suite` with `force = false`. Both paths offer validated source-open
+and target-reveal fallbacks. Broken and foreign states do not inherit either
+automatic remedy.
+
 ## Marker-delimited managed-block contract
 
 For `markdown_section_sync` tools (Codex, Claude, OpenClaw, OpenStandard), the rule sync module owns exactly one block in the instruction file:

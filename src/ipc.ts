@@ -317,6 +317,11 @@ export const setBaseSuite = (id: string | null): Promise<void> =>
 export const suiteOwnership = (): Promise<SuiteOwnership[]> =>
   invoke("cmd_suite_ownership");
 
+// Re-apply the tool's actual live suite binding (selected + base + manual
+// extras). The Rust command rejects tools without a live binding.
+export const resyncSuiteBinding = (toolId: ToolId): Promise<ApplySuiteResult> =>
+  invoke("cmd_resync_suite_binding", { toolId });
+
 export const onSuiteStoreChanged = (
   cb: (e: SuiteStoreChangedEvent) => void,
 ): Promise<UnlistenFn> =>

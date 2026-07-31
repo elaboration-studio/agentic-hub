@@ -44,6 +44,7 @@ Common error codes:
 | `tool_disabled` | A tool is disabled in settings |
 | `tool_unsupported_in_scope` | E.g. OpenClaw in workspace scope |
 | `suite_not_found` | A suite id does not exist in the store |
+| `suite_binding_not_found` | A requested tool has no live suite binding to re-sync |
 | `suite_name_collision` | A suite name is already in use |
 | `workspace_not_found` | A workspace target id does not exist in the store |
 | `rule_sync_malformed_markers` | Instruction file has malformed managed-block markers |
@@ -402,6 +403,18 @@ type SuiteOwnership = {
 ```
 
 Bound-suite ownership wins when an item is in both the bound suite and the base.
+
+### `cmd_resync_suite_binding(toolId: ToolId) -> ApplySuiteResult`
+
+Re-applies the tool's actual live binding as `selected suite ∪ current base ∪
+manual extras` through the existing non-force suite pipeline. Persisted manual
+extras are unioned with currently enabled extras, so drift recovery cannot drop
+either set. The command keeps the same selected `suiteId`, refreshes its stored
+manual set from the apply result, and emits `sources-changed`.
+
+Errors are typed: `suite_binding_not_found` when the tool has no binding and
+`suite_not_found` when the binding's selected suite no longer exists. Neither
+case changes the binding or any projection.
 
 ## Workspace commands
 

@@ -28,8 +28,11 @@ interface MatrixContext {
   currentMap: Map<string, ToolCapabilityState>;
   desired: Record<string, boolean>;
   ownership: Map<string, OwnershipInfo>;
+  settings: NonNullable<ReturnType<typeof useManagerStore.getState>["data"]>["settings"];
   onToggle: (tool: ToolId, itemId: string) => void;
   onToggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
+  onStageStaleRefresh: (tool: ToolId, itemId: string) => void;
+  onResyncStaleBinding: (tool: ToolId) => Promise<void>;
   readOnly: boolean;
   readOnlyItemIds: ReadonlySet<string>;
   lockedSkills: Map<string, { name: string; source: string; sourceId?: string; destSubpath?: string }>;
@@ -44,6 +47,8 @@ export function Matrix() {
   const ownership = useManagerStore((state) => state.ownership);
   const onToggle = useManagerStore((state) => state.toggle);
   const onToggleMany = useManagerStore((state) => state.toggleMany);
+  const onStageStaleRefresh = useManagerStore((state) => state.stageStaleRefresh);
+  const onResyncStaleBinding = useManagerStore((state) => state.resyncStaleBinding);
   const readOnly = useManagerStore((state) => state.readOnly);
   const readOnlyItemIds = useManagerStore((state) => state.readOnlyItemIds);
   const lockedSkills = useManagerStore((state) => state.lockedSkills);
@@ -105,8 +110,11 @@ export function Matrix() {
     currentMap,
     desired,
     ownership,
+    settings: data.settings,
     onToggle,
     onToggleMany,
+    onStageStaleRefresh,
+    onResyncStaleBinding,
     readOnly,
     readOnlyItemIds,
     lockedSkills,
@@ -159,7 +167,10 @@ function ManagerStateCells({ item, context }: { item: CapabilityItem; context: M
       currentMap={context.currentMap}
       desired={context.desired}
       ownership={context.ownership}
+      settings={context.settings}
       onToggle={context.onToggle}
+      onStageStaleRefresh={context.onStageStaleRefresh}
+      onResyncStaleBinding={context.onResyncStaleBinding}
       readOnly={context.readOnly}
       readOnlyItemIds={context.readOnlyItemIds}
     />

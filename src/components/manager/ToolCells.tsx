@@ -5,12 +5,14 @@ import { cn } from "@/lib/utils";
 import type {
   AdapterStatus,
   CapabilityItem,
+  Settings,
   ToolCapabilityState,
   ToolId,
 } from "@/types";
 import type { DesiredMap } from "@/ipc";
 import { ABNORMAL, key, type ToolDef } from "@/shared";
 import type { OwnershipInfo } from "@/state/manager";
+import { StaleRecoveryControl } from "./StaleRecoveryControl";
 
 // Per-tool toggle cells for one capability row. Shared by the flat and tree
 // renderers so toggle behaviour stays identical across views.
@@ -21,7 +23,10 @@ export function ToolCells(props: {
   currentMap: Map<string, ToolCapabilityState>;
   desired: DesiredMap;
   ownership: Map<string, OwnershipInfo>;
+  settings: Settings;
   onToggle: (tool: ToolId, itemId: string) => void;
+  onStageStaleRefresh: (tool: ToolId, itemId: string) => void;
+  onResyncStaleBinding: (tool: ToolId) => Promise<void>;
   // Workspace scope: render a static present/blank indicator, never a toggle.
   readOnly?: boolean;
   // Global installed rows are individually read-only.
@@ -34,7 +39,10 @@ export function ToolCells(props: {
     currentMap,
     desired,
     ownership,
+    settings,
     onToggle,
+    onStageStaleRefresh,
+    onResyncStaleBinding,
     readOnly,
     readOnlyItemIds,
   } = props;
@@ -71,6 +79,21 @@ export function ToolCells(props: {
         // keys in `toggle`. Locked cells read as an indigo dashed lock, which
         // is visually distinct from a manually enabled green check.
         const owner = ownership.get(k);
+        if (cur.state === "stale") {
+          return (
+            <TableCell key={t.id} className="text-center">
+              <StaleRecoveryControl
+                item={item}
+                tool={t}
+                state={cur}
+                owner={owner}
+                settings={settings}
+                onStageRefresh={onStageStaleRefresh}
+                onResyncSuite={onResyncStaleBinding}
+              />
+            </TableCell>
+          );
+        }
         return (
           <TableCell key={t.id} className="text-center">
             <Button

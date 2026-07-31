@@ -34,6 +34,7 @@ pub mod skill_favorites;
 pub mod skill_lock;
 pub mod skill_source;
 pub mod source_skill_lock;
+pub mod suite_binding_recovery;
 pub mod suite_binding_store;
 pub mod suite_store;
 pub mod usage_store;
@@ -83,6 +84,7 @@ pub use skill_source::{
     provider_for, SkillCliStatus, SkillInstallResult, SkillProvider, SkillSearchHit,
     SkillsShProvider,
 };
+pub use suite_binding_recovery::resync_suite_binding;
 pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 pub use usage_store::{

@@ -38,6 +38,7 @@ use crate::appearance;
 use crate::error::IpcError;
 use crate::palette;
 use crate::paste::{self, PasteOutcome};
+use crate::suite_recovery;
 use crate::usage_collector::{
     self, UsageCollectorState, UsageTracerHooksSyncResult, UsageTracingStatus,
 };
@@ -950,6 +951,22 @@ pub async fn cmd_suite_ownership() -> IpcResult<Vec<SuiteOwnership>> {
         &suites,
         base.as_ref(),
     ))
+}
+
+#[tauri::command]
+pub async fn cmd_resync_suite_binding(
+    app: AppHandle,
+    tool_id: ToolId,
+) -> IpcResult<ApplySuiteResult> {
+    let settings = Settings::load()?;
+    let suites = SuiteStore::with_path(settings.resolved_suites_path());
+    let bindings = SuiteBindingStore::new();
+    let scanned = api::scan(&settings);
+    let result = suite_recovery::resync_suite_binding_for_tool(
+        &settings, &suites, &bindings, &scanned, tool_id,
+    )?;
+    let _ = app.emit("sources-changed", ());
+    Ok(result)
 }
 
 // ---- Workspace scope ------------------------------------------------------
