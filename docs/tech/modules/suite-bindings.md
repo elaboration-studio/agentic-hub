@@ -67,7 +67,7 @@ flowchart TD
   del["cmd_delete_suite"] --> drop["store.drop_suite(id) (projections untouched)"]
 ```
 
-- **Apply** (palette or Suites page): merge the base suite into the selected
+- **Apply** (palette or Manager Suites scope): merge the base suite into the selected
   suite, full-reset apply, then record the binding to the **selected** suite
   (the base is never the recorded binding).
 - **Update** (capability edit): re-apply as a full reset, base-merged, serialized

@@ -131,7 +131,7 @@ Exactly one suite may be marked **base** (`is_base: true`). Its capabilities are
 
 - **Single-base invariant**: setting one suite base clears the flag on every other. `SuiteStore::set_base(Some(id))` (or `update` with `is_base: Some(true)`) funnels through this rule; `set_base(None)` clears all.
 - **Merge semantics**: `api::merge_base_caps(selected, base)` clones the selected suite and appends the base's capabilities, deduped by `(cap, source)`. It keeps the **selected** suite's identity, so `ApplySuiteResult.suite` and the recorded binding still point at the explicitly chosen suite — the base is invisible to binding bookkeeping. A `None` base, or a base whose id equals the selected suite, is a no-op.
-- **Where it merges**: every global apply path — the Suites page apply, the palette suite apply, and bound-tool re-syncs — applies the merged "effective" suite. `apply_suite` itself takes the already-merged suite; it does not know about the base.
+- **Where it merges**: every global apply path — the Manager Suites scope apply, the palette suite apply, and bound-tool re-syncs — applies the merged "effective" suite. `apply_suite` itself takes the already-merged suite; it does not know about the base.
 - **Re-sync on base change**: setting/unsetting/editing the base re-applies **every** bound tool (each tool's own selected suite re-merged with the new base). Editing a normal suite re-applies only the tools bound to it (still base-merged).
 
 ### Dotfile contract

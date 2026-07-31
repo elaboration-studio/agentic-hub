@@ -389,7 +389,7 @@ path.
 Side effect: records a suite<->tool binding (`record(toolId, suiteId, manualItemIds)`,
 upsert per tool) so a later `cmd_update_suite` re-syncs this tool with the stored
 manual set, and backfills unqualified refs against the live scan. Both the
-palette suite-apply flow and the Suites page flow through here. When tracked
+palette suite-apply flow and the Manager Suites scope flow through here. When tracked
 manual extras exist outside the effective suite (base + selected), the UI
 calls `cmd_suite_apply_preview` first and prompts the user to fully override or
 keep manually added items before apply.
