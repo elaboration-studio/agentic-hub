@@ -14,11 +14,11 @@
   - RED evidence: new core result-field tests initially failed to compile, the recovery failure regression dropped `skill:recorded`, Manager regressions lost the staged key / emitted no partial-warning toast, and the persistence-failure refresh regression initially had no command orchestration seam.
   - GREEN verification: `pnpm gen:types`; focused core recovery/error tests (2), shell recovery/transaction tests (6), and Manager/apply tests (37); `pnpm test` (22 files, 231 tests); `pnpm build`; core + shell tests; Task 2 Rust edits formatted (unrelated repo-wide formatter drift reverted); targeted all-feature Clippy; and `git diff --check`.
   - Final review: `Spec: PASS`, `Quality: APPROVED`; no remaining findings.
-- Task 3: implementation complete, awaiting review — Today-first Statistics
+- Task 3: complete (commits c1d1171..07a8d9b, review clean) — Today-first Statistics
   - Statistics now opens on Today with a local-calendar-day table independent of the range.
   - Activity, Top usage, and Unused alone expose the date selector; Usage overview moved above Most used and Inventory remains available with tracing disabled.
   - Review hardening: `DEFAULT_STATISTICS_TAB` is the typed contract shared by the component and focused navigation test; JSX formatting normalized.
-  - Focused RED/GREEN Vitest coverage, production build, full frontend suite, and diff check completed.
+  - Focused RED/GREEN Vitest coverage, production build, full frontend suite (232 tests), and diff check completed; final review `Spec: PASS`, `Quality: APPROVED`.
 - Task 4: pending — Resources order and ripgrep catalog
 - Task 5: pending — Transactional direct palette shortcuts
 - Task 6: pending — Release integration and verification
