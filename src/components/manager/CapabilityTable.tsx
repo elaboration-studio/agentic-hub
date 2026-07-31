@@ -284,7 +284,11 @@ function UsageCell({ item, stats }: { item: CapabilityItem; stats?: UsageStats }
     <TableCell className="text-right">
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" className="rounded px-1.5 py-0.5 font-mono text-xs tabular-nums text-primary hover:bg-primary/10">
+          <button
+            type="button"
+            className="rounded px-1.5 py-0.5 font-mono text-xs tabular-nums text-primary hover:bg-primary/10"
+            aria-label={`${item.name} usage count`}
+          >
             {stats.executionCount}
           </button>
         </TooltipTrigger>

@@ -1,32 +1,25 @@
 import { useCallback, useMemo } from "react";
-import { Check, Minus, MoreHorizontal, RefreshCw } from "lucide-react";
+import { Check, Minus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import type {
   AdapterStatus,
   CapabilityItem,
-  Settings,
   ToolCapabilityState,
   ToolId,
 } from "@/types";
-import { openLibraryUpdateWindow, openPath, openUpdateWindow, revealPath } from "@/ipc";
-import { editorApp, key, messageOf, originalFile, type ToolDef } from "@/shared";
+import { key, type ToolDef } from "@/shared";
 import { useManagerStore, type OwnershipInfo } from "@/state/manager";
 import { useManagerFiltersStore } from "@/state/managerFilters";
 import { useWorkspaceStore } from "@/state/workspace";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { TableCell } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { CapabilityTable, type CapabilityStateColumn } from "./CapabilityTable";
+import { CapabilityRowActions } from "./CapabilityRowActions";
+import { isReadOnlyAggregateComplete } from "./capabilityTableModel";
 import { ToolCells } from "./ToolCells";
 
 interface MatrixContext {
@@ -37,7 +30,6 @@ interface MatrixContext {
   ownership: Map<string, OwnershipInfo>;
   onToggle: (tool: ToolId, itemId: string) => void;
   onToggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
-  settings: Settings;
   readOnly: boolean;
   readOnlyItemIds: ReadonlySet<string>;
   lockedSkills: Map<string, { name: string; source: string; sourceId?: string; destSubpath?: string }>;
@@ -115,7 +107,6 @@ export function Matrix() {
     ownership,
     onToggle,
     onToggleMany,
-    settings: data.settings,
     readOnly,
     readOnlyItemIds,
     lockedSkills,
@@ -144,7 +135,16 @@ export function Matrix() {
       refreshing={status === "loading"}
       renderStateCells={(item) => <ManagerStateCells item={item} context={context} />}
       renderAggregateCells={(rows) => <AggregateCells items={rows} context={context} />}
-      renderRowActions={(item) => <RowActions item={item} context={context} />}
+      renderRowActions={(item) => (
+        <CapabilityRowActions
+          item={item}
+          settings={data.settings}
+          tools={tools}
+          currentMap={currentMap}
+          locked={lockedSkills.get(item.id)}
+          workspaceId={workspaceId}
+        />
+      )}
       renderItemMeta={(item) => <ItemMeta item={item} context={context} />}
     />
   );
@@ -174,7 +174,18 @@ function AggregateCells({ items, context }: { items: CapabilityItem[]; context: 
         const togglable = present.filter((item) => !context.readOnlyItemIds.has(item.id));
         if (present.length === 0) return <TableCell key={tool.id} className="text-center text-muted-foreground/50">—</TableCell>;
         if (context.readOnly) {
-          return <TableCell key={tool.id} className="text-center text-xs tabular-nums text-success">{togglable.length}</TableCell>;
+          const complete = isReadOnlyAggregateComplete(items.length, togglable.length);
+          return (
+            <TableCell
+              key={tool.id}
+              className={cn(
+                "text-center text-xs tabular-nums",
+                complete ? "text-success" : "text-muted-foreground",
+              )}
+            >
+              {togglable.length}
+            </TableCell>
+          );
         }
         if (togglable.length === 0) return <TableCell key={tool.id} className="text-center text-xs tabular-nums text-success">{present.length}</TableCell>;
         const onCount = togglable.filter((item) => context.desired[key(tool.id, item.id)]).length;
@@ -207,37 +218,5 @@ function ItemMeta({ item, context }: { item: CapabilityItem; context: MatrixCont
       </TooltipTrigger>
       <TooltipContent>Installed via skills.sh — update from the row menu</TooltipContent>
     </Tooltip>
-  );
-}
-
-function RowActions({ item, context }: { item: CapabilityItem; context: MatrixContext }) {
-  const app = editorApp(context.settings);
-  const run = (operation: Promise<void>) => void operation.catch((error) => toast.error(messageOf(error)));
-  const projected = context.tools
-    .map((tool) => ({ tool, state: context.currentMap.get(key(tool.id, item.id)) }))
-    .filter((entry): entry is { tool: ToolDef; state: ToolCapabilityState } => !!entry.state && entry.state.state === "enabled" && !!entry.state.targetPath);
-  const locked = context.lockedSkills.get(item.id);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-xs" className="ml-2 align-middle opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100" title="More actions" aria-label="More actions">
-          <MoreHorizontal className="size-3.5" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {locked && (locked.sourceId || context.workspaceId) && (
-          <>
-            <DropdownMenuItem onClick={() => run(locked.sourceId ? openLibraryUpdateWindow("skills.sh", locked.source, locked.name, locked.sourceId, locked.destSubpath ?? "") : openUpdateWindow(context.workspaceId, "skills.sh", locked.source, locked.name))}>
-              <RefreshCw className="size-3.5" />Update via skills.sh
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        )}
-        <DropdownMenuItem onClick={() => run(openPath(originalFile(item), app))}>Open original</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => run(revealPath(item.sourcePath))}>Reveal in Finder</DropdownMenuItem>
-        {projected.length > 0 && <DropdownMenuSeparator />}
-        {projected.map(({ tool, state }) => <DropdownMenuItem key={tool.id} onClick={() => run(openPath(state.targetPath))}>Open in {tool.label}</DropdownMenuItem>)}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

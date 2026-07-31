@@ -73,7 +73,7 @@ flowchart TD
   (`watcher::with_reconcile_guard`) so the two never write the same tool dirs.
   Editing a **normal** suite re-syncs only the tools bound to it; editing the
   **base** suite re-syncs **every** binding (each with its own selected suite
-  re-merged). Emits `sources-changed` so the main window refreshes.
+  re-merged). Emits `sources-changed` so the Manager refreshes.
 - **Set base** (`cmd_set_base_suite`): flip the single-base flag, then re-sync
   every binding so all tools pick up (or drop) the new base.
 - **Delete**: drop the suite's bindings only. Deleting a suite is not a

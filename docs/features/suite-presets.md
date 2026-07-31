@@ -11,7 +11,7 @@ Related Docs: [docs/tech/modules/suite-presets.md](../tech/modules/suite-presets
 
 The MVP capability manager enables per-item toggling. This works for small deltas but forces users to manually reconstruct entire configurations when switching between scenarios — coding, research, writing, debugging. There is no save/restore mechanism today.
 
-Suites collapse "switch context" into one action: pick a named preset, apply it. The focused tool resets to exactly the capabilities the suite defines. After that, the user can free-edit as before.
+Suites collapse "switch context" into one action: pick a named preset, apply it. The chosen target tool resets to exactly the capabilities the suite defines. After that, the user can free-edit as before.
 
 ## User story
 
@@ -26,7 +26,7 @@ As a power user managing multiple AI tools, I want to save a named capability co
 - Manager Suite scope for creating, editing, renaming, deleting, and applying suites through the shared capability table
 - "Create from current" shortcut: ask for a tool and capture only its enabled Hub-managed capabilities
 - Compatibility aliases: `#/suites` and the palette's Open Suites command enter Manager Suite scope
-- Apply semantics: full reset — disable everything for the focused tool, then enable only the suite's capabilities, then run projection sync
+- Apply semantics: full reset — disable everything for the chosen target tool, then enable only the suite's capabilities, then run projection sync
 - Post-apply free editing: after a suite apply, the user can toggle individual items normally
 - Validation: surface warnings when a suite references capabilities that no longer exist in the shared root
 
@@ -66,22 +66,15 @@ Behaviors:
 - **Rename**: inline rename on the name field (uniqueness check)
 - **Validation**: missing source-qualified or stale refs are preserved, shown in a warning, skipped on apply, and removed only through **Remove missing references**
 
-### Main window integration
+### Suite actions in Manager
 
-The capability manager header gains a suite selector:
-
-```
-Header
-  Agentic Hub      Shared root: ~/.agentic   [ Global | Workspace ]
-  Tool tabs:  [Codex] [Claude] [Cursor] [OpenClaw]
-  Suite: [ coding-workflow ▾ ]   [Apply Suite]
-  Manage Suites…
-  Refresh   Settings
-```
+Selecting a suite in the Manager rail opens its draft in the shared table. The
+suite action bar provides the target-tool selector, **Apply Suite**, and
+**Set as base** without duplicating those controls elsewhere.
 
 Behaviors:
-- Dropdown lists all saved suites plus "Manage Suites…" (opens Suite Manager window)
-- "Apply Suite" is enabled only when a suite is selected and a tool tab is focused
+- The rail lists every saved suite and keeps the selected suite id in the suite store
+- "Apply Suite" is enabled only when a saved suite and available tool are selected
 - Clicking "Apply Suite" previews tracked manual extras via `cmd_suite_apply_preview`. When
   manually added capabilities exist outside the effective suite (base +
   selected), a confirmation lists them: **Fully clean and override** or
@@ -92,8 +85,8 @@ Behaviors:
 
 ### Apply flow (user perspective)
 
-1. User selects a tool tab (e.g., Cursor).
-2. User picks a suite from the dropdown.
+1. User selects a suite in the Manager rail.
+2. User chooses a target tool in the suite action bar.
 3. User clicks "Apply Suite".
 4. Confirmation dialog shows suite name and tool.
 5. On confirm:
@@ -114,14 +107,14 @@ When a suite references a capability ID that no longer exists in the shared root
 ## Acceptance criteria
 
 - [x] Suites are selectable from the Manager rail
-- [ ] Suite Manager lists all suites from `~/.agentic-suites.json`
+- [x] The Manager rail lists all suites from `~/.agentic-suites.json`
 - [ ] Creating a new suite writes it to the dotfile and shows it in the list
 - [x] "Create from current" asks for a tool and captures enabled Hub-managed capabilities only
 - [x] Editing uses the shared Manager table and saves on explicit Save
 - [ ] Deleting a suite removes it from the dotfile after confirmation
-- [ ] The main window header shows a suite selector dropdown listing all suites
+- [x] Selecting a suite in the Manager rail opens its shared-table editor
 - [ ] Selecting a suite and clicking "Apply Suite" triggers a confirmation dialog
-- [ ] On confirm, all existing projections for the focused tool are removed or replaced
+- [ ] On confirm, all existing projections for the chosen target tool are removed or replaced
 - [ ] Only capabilities in the suite are enabled after apply
 - [ ] Projection sync runs correctly for all kinds (symlinks, managed copies, markdown sections, hook json sections)
 - [ ] The apply result summary shows applied, skipped, and error counts
@@ -139,25 +132,25 @@ When a suite references a capability ID that no longer exists in the shared root
 - Existing `rule_sync` for markdown section projection
 - New `agentic-core::suite_store` for `~/.agentic-suites.json` CRUD
 - New IPC commands: `cmd_list_suites`, `cmd_get_suite`, `cmd_create_suite`, `cmd_update_suite`, `cmd_delete_suite`, `cmd_apply_suite` (see [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md))
-- Tauri event: `suite-store-changed` (emitted globally; both windows subscribe)
+- Tauri event: `suite-store-changed` (emitted globally; the Manager rail subscribes)
 
 ## Delivery slices
 
 | Slice | What ships | Why this cut |
 |-------|-----------|--------------|
-| V1: Storage + Service | `suite_store` reads/writes `~/.agentic-suites.json`. Types added. No UI yet. | Foundation that both windows depend on. |
-| V2: Suite Manager window | Standalone Tauri window with full CRUD. "Create from current" works. | Users can define suites before applying them. |
-| V3: Main window integration | Suite selector dropdown, "Apply Suite" button, confirmation dialog, full-reset apply flow. | The core value: one-click scenario switching. |
+| V1: Storage + Service | `suite_store` reads/writes `~/.agentic-suites.json`. Types added. No UI yet. | Foundation for the Manager and palette apply flows. |
+| V2: Manager Suite scope | Manager rail and shared-table CRUD. "Create from current" works. | Users can define suites in the same place they manage capabilities. |
+| V3: Apply integration | Target-tool selector, "Apply Suite" button, confirmation dialog, full-reset apply flow. | The core value: one-click scenario switching. |
 | V4: Validation + polish | Stale reference warnings, apply result details for skipped items, error hardening. | Trust and reliability before daily use. |
 
 ## Risks and edge cases
 
 - **Large capability sets** — suites with 100+ items should not cause apply timeouts. The existing apply pipeline handles items sequentially; performance is validated in M2 integration tests.
-- **Concurrent window edits** — if both Suite Manager and main window are open, suite apply on the main window must not conflict with an in-progress edit. The dotfile is re-read on each apply. The cross-window event broadcast updates the main window's dropdown after a save.
+- **External suite edits** — the dotfile is re-read on apply, and the store-change event reloads the Manager rail after mutations.
 - **Missing dotfile** — first save creates `~/.agentic-suites.json` with `{ "version": 1, "suites": [] }`.
 - **Disk permission errors** — dotfile write failures surface clearly; in-memory state is preserved.
 - **Suite name collisions** — UI prevents duplicates at create / rename time.
-- **Empty suite apply** — applying an empty suite disables all capabilities for the focused tool. Valid but the confirmation dialog uses a specific message ("This will disable all capabilities for {Tool}").
+- **Empty suite apply** — applying an empty suite disables all capabilities for the chosen target tool. Valid but the confirmation dialog uses a specific message ("This will disable all capabilities for {Tool}").
 
 ## Metrics or signals
 
@@ -168,5 +161,5 @@ When a suite references a capability ID that no longer exists in the shared root
 ## Open questions
 
 - Should suite apply show a dry-run preview before confirmation, or is suite name + tool sufficient? Current design: name + tool is sufficient; the apply result is the after-the-fact preview.
-- Should the Suite Manager allow drag-and-drop reordering? Defer; alphabetical sort is sufficient in v1.
+- Should the Manager suite rail allow drag-and-drop reordering? Defer; stored order is sufficient in v1.
 - Suite IDs are UUIDs (stable under rename) vs slugs (human-readable in dotfile). Current decision: UUIDs.

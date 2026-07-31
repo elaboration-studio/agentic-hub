@@ -281,6 +281,35 @@ describe("suites store — persistence", () => {
     });
   });
 
+  it("save preserves a qualified missing ref when a live same-id item comes from another source", async () => {
+    const missingSource: SourceRef = {
+      relHome: "~/team-agentic",
+      folder: "team-agentic",
+    };
+    const liveSource: SourceRef = {
+      relHome: "~/personal-agentic",
+      folder: "personal-agentic",
+    };
+    const suite = makeSuite({
+      capabilities: [{ cap: "skill:a", source: missingSource }],
+    });
+    mocked.updateSuite.mockResolvedValue(suite);
+    mocked.listSuites.mockResolvedValue([suite]);
+    useSuitesStore.setState({
+      suites: [suite],
+      selectedId: "s1",
+      draft: { name: "Backend", description: "", capabilities: ["skill:a"] },
+    });
+
+    await useSuitesStore.getState().save([makeItem("skill:a", liveSource)]);
+
+    expect(mocked.updateSuite).toHaveBeenCalledWith("s1", {
+      name: "Backend",
+      description: null,
+      capabilities: [{ cap: "skill:a", source: missingSource }],
+    });
+  });
+
   it("save keeps a legacy stale capability unqualified", async () => {
     const legacy = makeSuite({ capabilities: [{ cap: "skill:a", source: null }] });
     mocked.updateSuite.mockResolvedValue(legacy);

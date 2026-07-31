@@ -21,7 +21,7 @@ interface WorkspaceState {
   busy: boolean;
 
   reload: () => Promise<void>;
-  pick: () => Promise<void>;
+  pick: () => Promise<boolean>;
   activate: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
 }
@@ -54,9 +54,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       await get().reload();
       set({ activeId: target.id });
       await loadActive(target.id);
+      return true;
     } catch (e) {
       const msg = messageOf(e);
       if (!msg.includes("No folder selected")) toast.error(msg);
+      return false;
     } finally {
       set({ busy: false });
     }

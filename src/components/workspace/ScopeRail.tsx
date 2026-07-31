@@ -5,6 +5,10 @@ import { onSuiteStoreChanged } from "@/ipc";
 import { enabledTools } from "@/shared";
 import { useManagerStore } from "@/state/manager";
 import { useManagerFiltersStore } from "@/state/managerFilters";
+import {
+  addWorkspaceAndEnterScope,
+  enterSuiteManagerScope,
+} from "@/state/scopeNavigation";
 import { useSuitesStore } from "@/state/suites";
 import { useWorkspaceStore } from "@/state/workspace";
 import {
@@ -19,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -32,8 +37,6 @@ export function ScopeRail() {
   const scope = useManagerStore((state) => state.scope);
   const setScope = useManagerStore((state) => state.setScope);
   const data = useManagerStore((state) => state.data);
-  const readOnly = useManagerStore((state) => state.readOnly);
-  const refresh = useManagerStore((state) => state.refresh);
   const resetScopedFilters = useManagerFiltersStore((state) => state.resetScopedFilters);
 
   const suites = useSuitesStore((state) => state.suites);
@@ -80,32 +83,28 @@ export function ScopeRail() {
     setScope(next);
   };
 
-  const ensureGlobalData = async () => {
-    if (readOnly || !useManagerStore.getState().data) await refresh();
-  };
-
   const selectGlobal = () => switchScope("global");
 
   const selectSuiteRow = (id: string) => {
     void (async () => {
-      switchScope("suite");
-      await ensureGlobalData();
+      if (scope !== "suite") resetScopedFilters();
+      if (!(await enterSuiteManagerScope())) return;
       selectSuite(id);
     })();
   };
 
   const createNew = () => {
     void (async () => {
-      switchScope("suite");
-      await ensureGlobalData();
+      if (scope !== "suite") resetScopedFilters();
+      if (!(await enterSuiteManagerScope())) return;
       startCreate();
     })();
   };
 
   const createFromCurrent = () => {
     void (async () => {
-      switchScope("suite");
-      await ensureGlobalData();
+      if (scope !== "suite") resetScopedFilters();
+      if (!(await enterSuiteManagerScope())) return;
       const manager = useManagerStore.getState();
       if (!manager.data) return;
       startCreateFromCurrent(
@@ -124,8 +123,7 @@ export function ScopeRail() {
   };
 
   const addWorkspace = async () => {
-    switchScope("workspace");
-    await pick();
+    if (await addWorkspaceAndEnterScope(pick, setScope)) resetScopedFilters();
   };
 
   return (
@@ -142,7 +140,7 @@ export function ScopeRail() {
         </div>
         <div className="flex gap-1.5">
           <Button variant="outline" size="sm" className="flex-1 justify-start gap-2" onClick={createNew} disabled={suiteBusy}><Plus />New</Button>
-          <Button variant="outline" size="sm" className="flex-1 justify-start gap-2" onClick={() => setCreateDialogOpen(true)} disabled={suiteBusy || createTools.length === 0}><Save />Current</Button>
+          <Button variant="outline" size="sm" className="flex-1 justify-start gap-2" onClick={() => setCreateDialogOpen(true)} disabled={suiteBusy || createTools.length === 0} aria-label="Create suite from current tool"><Save />Current</Button>
         </div>
         {suites.length === 0 && !isCreating ? (
           <p className="rounded-lg border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">No suites yet.</p>
@@ -196,10 +194,13 @@ export function ScopeRail() {
             <AlertDialogTitle>Create suite from current</AlertDialogTitle>
             <AlertDialogDescription>Choose the tool whose enabled, Hub-managed resources should seed the new suite.</AlertDialogDescription>
           </AlertDialogHeader>
-          <Select value={createTool} onValueChange={(value) => setCreateTool(value as ToolId)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>{createTools.map((tool) => <SelectItem key={tool.id} value={tool.id}>{tool.label}</SelectItem>)}</SelectContent>
-          </Select>
+          <div className="grid gap-1.5">
+            <Label htmlFor="suite-current-tool">Tool</Label>
+            <Select value={createTool} onValueChange={(value) => setCreateTool(value as ToolId)}>
+              <SelectTrigger id="suite-current-tool"><SelectValue /></SelectTrigger>
+              <SelectContent>{createTools.map((tool) => <SelectItem key={tool.id} value={tool.id}>{tool.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={createFromCurrent}>Create draft</AlertDialogAction>

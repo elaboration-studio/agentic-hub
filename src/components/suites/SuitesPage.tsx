@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { TableCell } from "@/components/ui/table";
 import { CapabilityTable } from "@/components/manager/CapabilityTable";
+import { CapabilityRowActions } from "@/components/manager/CapabilityRowActions";
 
 const SECTION_TITLE = "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 
@@ -41,6 +42,8 @@ export function SuitesPage() {
   const allItems = data?.items ?? [];
   const readOnlyItemIds = useManagerStore((state) => state.readOnlyItemIds);
   const tools = useManagerStore((state) => state.tools);
+  const currentMap = useManagerStore((state) => state.currentMap);
+  const lockedSkills = useManagerStore((state) => state.lockedSkills);
   const usageStats = useManagerStore((state) => state.usageStats);
   const managerStatus = useManagerStore((state) => state.status);
   const refresh = useManagerStore((state) => state.refresh);
@@ -130,12 +133,12 @@ export function SuitesPage() {
     <section className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
         <div className="grid min-w-[220px] flex-1 gap-1">
-          <Label className={SECTION_TITLE}>Name</Label>
-          <Input value={draft.name} placeholder="Suite name" onChange={(event) => setDraft({ name: event.target.value })} />
+          <Label htmlFor="suite-name" className={SECTION_TITLE}>Name</Label>
+          <Input id="suite-name" value={draft.name} placeholder="Suite name" onChange={(event) => setDraft({ name: event.target.value })} />
         </div>
         <div className="grid min-w-[260px] flex-[2] gap-1">
-          <Label className={SECTION_TITLE}>Description</Label>
-          <Input value={draft.description} placeholder="Optional description" onChange={(event) => setDraft({ description: event.target.value })} />
+          <Label htmlFor="suite-description" className={SECTION_TITLE}>Description</Label>
+          <Input id="suite-description" value={draft.description} placeholder="Optional description" onChange={(event) => setDraft({ description: event.target.value })} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void save(items)} disabled={busy || !draft.name.trim()}>Save</Button>
@@ -187,6 +190,17 @@ export function SuitesPage() {
         enabledOnlyLabel="Included only"
         onRefresh={() => void refresh()}
         refreshing={managerStatus === "loading"}
+        renderRowActions={(item) =>
+          data ? (
+            <CapabilityRowActions
+              item={item}
+              settings={data.settings}
+              tools={tools}
+              currentMap={currentMap}
+              locked={lockedSkills.get(item.id)}
+            />
+          ) : null
+        }
         renderStateCells={(item) => (
           <TableCell className="text-center">
             <Checkbox

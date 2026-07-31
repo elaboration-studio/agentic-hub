@@ -181,10 +181,10 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
           ?.capabilities.map((ref) => [ref.cap, ref]) ?? [],
       );
       const capabilities: SuiteCapabilityRef[] = draft.capabilities
-        .filter((cap) => isSuiteSelectableItem(itemById.get(cap)))
+        .filter((cap) => originalById.has(cap) || isSuiteSelectableItem(itemById.get(cap)))
         .map((cap) => ({
           cap,
-          source: itemById.get(cap)?.source ?? originalById.get(cap)?.source ?? null,
+          source: originalById.get(cap)?.source ?? itemById.get(cap)?.source ?? null,
         }));
       const payload = {
         name: draft.name.trim(),

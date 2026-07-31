@@ -23,6 +23,7 @@ import { useManagerStore } from "./state/manager";
 import { UPDATE_CHECK_INTERVAL_MS, useUpdateStore } from "./state/update";
 import { useManagerFiltersStore } from "./state/managerFilters";
 import { useWorkspaceStore } from "./state/workspace";
+import { enterSuiteManagerScope } from "./state/scopeNavigation";
 import { WORKSPACE_ID_PREFIX, type Route } from "./shared";
 import { Header } from "./components/layout/Header";
 import { ActionBar } from "./components/layout/ActionBar";
@@ -38,8 +39,12 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { resolveAppRoute } from "./navigation";
 
 function navigate(route: Route) {
-  if (route === "suites") useManagerStore.getState().setScope("suite");
-  window.location.hash = route === "manager" ? "" : `#/${route}`;
+  const nextHash = route === "manager" ? "" : `#/${route}`;
+  if (route === "suites" && window.location.hash === nextHash) {
+    void enterSuiteManagerScope();
+    return;
+  }
+  window.location.hash = nextHash;
 }
 
 async function notifyUsageTracingFailure(failure: UsageTracingHealthFailure): Promise<void> {
@@ -126,7 +131,7 @@ export function App() {
     const onHash = () => {
       const resolved = resolveAppRoute(window.location.hash);
       setRoute(resolved.route);
-      if (resolved.managerScope) useManagerStore.getState().setScope(resolved.managerScope);
+      if (resolved.managerScope) void enterSuiteManagerScope();
     };
     onHash();
     window.addEventListener("hashchange", onHash);

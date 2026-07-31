@@ -87,3 +87,10 @@ export function ancestorPaths(relativePath: string): string[] {
   }
   return out;
 }
+
+export function isReadOnlyAggregateComplete(
+  totalCount: number,
+  presentCount: number,
+): boolean {
+  return totalCount > 0 && presentCount === totalCount;
+}

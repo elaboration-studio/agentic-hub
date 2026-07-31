@@ -1,6 +1,10 @@
 # 0.16.0 SDD progress
 
-- Task 1: implementation complete, awaiting review — Shared Manager table and Suite scope
+- Task 1: implementation and review fixes complete — Shared Manager table and Suite scope
+  - Preserved source-qualified missing refs across same-ID source collisions.
+  - Centralized Workspace → Suite entry so global data loads before Suite scope; cancelled workspace picks keep the current scope.
+  - Reused validated capability row actions in Suite scope and restored aggregate/accessibility behavior.
+  - Review verification: focused RED regressions confirmed, then `pnpm test` (21 files, 208 tests), `pnpm build`, and `git diff --check` passed.
 - Task 2: pending — Guided stale-copy recovery
 - Task 3: pending — Today-first Statistics
 - Task 4: pending — Resources order and ripgrep catalog

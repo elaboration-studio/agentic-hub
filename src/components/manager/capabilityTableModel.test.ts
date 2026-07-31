@@ -5,6 +5,7 @@ import {
   buildCapabilityTree,
   collectCapabilityFolderPaths,
   filterCapabilityItems,
+  isReadOnlyAggregateComplete,
 } from "./capabilityTableModel";
 
 function item(
@@ -56,5 +57,11 @@ describe("capability table model", () => {
 
     expect(collectCapabilityFolderPaths(root)).toEqual(["dev", "dev/cto", "writing"]);
     expect(root.children.get("dev")?.children.get("cto")?.children.size).toBe(2);
+  });
+
+  it("marks a read-only aggregate complete only when every row is present", () => {
+    expect(isReadOnlyAggregateComplete(3, 3)).toBe(true);
+    expect(isReadOnlyAggregateComplete(3, 2)).toBe(false);
+    expect(isReadOnlyAggregateComplete(3, 0)).toBe(false);
   });
 });
