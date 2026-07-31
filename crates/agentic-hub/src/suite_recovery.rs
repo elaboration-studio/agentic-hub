@@ -1,4 +1,5 @@
-use agentic_core::model::{ApplySuiteResult, ScanResult, ToolId};
+use agentic_core::api;
+use agentic_core::model::{ApplySuiteResult, ToolId};
 use agentic_core::settings::Settings;
 use agentic_core::suite_binding_store::SuiteBindingStore;
 use agentic_core::suite_store::SuiteStore;
@@ -10,40 +11,41 @@ pub fn resync_suite_binding_for_tool(
     settings: &Settings,
     suites: &SuiteStore,
     bindings: &SuiteBindingStore,
-    scanned: &ScanResult,
     tool: ToolId,
 ) -> Result<ApplySuiteResult, IpcError> {
-    let binding = bindings.get(tool)?.ok_or_else(|| {
-        IpcError::new(
-            "suite_binding_not_found",
-            "This tool no longer has a live suite binding",
-        )
-    })?;
-    let mut selected = suites.get(&binding.suite_id)?.ok_or_else(|| {
-        IpcError::new(
-            "suite_not_found",
-            "The suite selected by this tool binding no longer exists",
-        )
-    })?;
-    SuiteStore::backfill_sources(&mut selected, &scanned.items);
-    let base = suites.base()?;
-    let result = watcher::with_reconcile_guard(|| {
-        agentic_core::resync_suite_binding(
+    watcher::with_projection_transaction(|| {
+        let binding = bindings.get(tool)?.ok_or_else(|| {
+            IpcError::new(
+                "suite_binding_not_found",
+                "This tool no longer has a live suite binding",
+            )
+        })?;
+        let mut selected = suites.get(&binding.suite_id)?.ok_or_else(|| {
+            IpcError::new(
+                "suite_not_found",
+                "The suite selected by this tool binding no longer exists",
+            )
+        })?;
+        let scanned = api::scan(settings);
+        SuiteStore::backfill_sources(&mut selected, &scanned.items);
+        let base = suites.base()?;
+        let result = agentic_core::resync_suite_binding(
             &scanned.items,
             settings,
             &binding,
             &selected,
             base.as_ref(),
-        )
-    });
-    bindings.record(tool, &binding.suite_id, result.manual_item_ids.clone())?;
-    Ok(result)
+        );
+        if result.is_full_success() {
+            bindings.record(tool, &binding.suite_id, result.manual_item_ids.clone())?;
+        }
+        Ok(result)
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use agentic_core::api;
-    use agentic_core::model::{ScanResult, ToolId};
+    use agentic_core::model::ToolId;
     use agentic_core::settings::Settings;
     use agentic_core::suite_binding_store::SuiteBindingStore;
     use agentic_core::suite_store::{SuiteCreateInput, SuiteStore};
@@ -78,11 +80,9 @@ mod tests {
     fn resync_rejects_tool_without_live_binding() {
         let (_dir, suites, bindings) = stores();
         let settings = Settings::default();
-        let scanned = ScanResult::default();
 
-        let error =
-            resync_suite_binding_for_tool(&settings, &suites, &bindings, &scanned, ToolId::Claude)
-                .unwrap_err();
+        let error = resync_suite_binding_for_tool(&settings, &suites, &bindings, ToolId::Claude)
+            .unwrap_err();
 
         assert_eq!(error.code, "suite_binding_not_found");
     }
@@ -94,11 +94,9 @@ mod tests {
             .record(ToolId::Claude, "gone", vec!["skill:manual".into()])
             .unwrap();
         let settings = Settings::default();
-        let scanned = ScanResult::default();
 
-        let error =
-            resync_suite_binding_for_tool(&settings, &suites, &bindings, &scanned, ToolId::Claude)
-                .unwrap_err();
+        let error = resync_suite_binding_for_tool(&settings, &suites, &bindings, ToolId::Claude)
+            .unwrap_err();
 
         assert_eq!(error.code, "suite_not_found");
         assert_eq!(
@@ -138,16 +136,44 @@ mod tests {
         std::fs::write(root.path().join("skills/base/SKILL.md"), "base").unwrap();
         std::fs::write(root.path().join("skills/manual/SKILL.md"), "manual").unwrap();
         let settings = sandboxed_settings(root.path(), tools.path());
-        let scanned = api::scan(&settings);
-
         let result =
-            resync_suite_binding_for_tool(&settings, &suites, &bindings, &scanned, ToolId::Claude)
-                .unwrap();
+            resync_suite_binding_for_tool(&settings, &suites, &bindings, ToolId::Claude).unwrap();
 
         assert_eq!(result.suite.id, selected.id);
         assert_eq!(result.manual_item_ids, vec!["skill:manual"]);
         let persisted = bindings.get(ToolId::Claude).unwrap().unwrap();
         assert_eq!(persisted.suite_id, selected.id);
         assert_eq!(persisted.manual_item_ids, vec!["skill:manual"]);
+    }
+
+    #[test]
+    fn resync_apply_failure_keeps_persisted_manual_extras_unchanged() {
+        let (_dir, suites, bindings) = stores();
+        let selected = suites
+            .create(SuiteCreateInput {
+                name: "Selected".into(),
+                description: None,
+                capabilities: vec!["skill:selected".into()],
+            })
+            .unwrap();
+        bindings
+            .record(ToolId::Claude, &selected.id, vec!["skill:recorded".into()])
+            .unwrap();
+
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("skills/selected")).unwrap();
+        std::fs::write(root.path().join("skills/selected/SKILL.md"), "selected").unwrap();
+        let blocker = tools.path().join("not-a-directory");
+        std::fs::write(&blocker, "file").unwrap();
+        let mut settings = sandboxed_settings(root.path(), tools.path());
+        settings.tools.claude.skills_path = blocker.join("skills");
+        let result =
+            resync_suite_binding_for_tool(&settings, &suites, &bindings, ToolId::Claude).unwrap();
+
+        assert!(!result.apply_result.errors.is_empty());
+        let persisted = bindings.get(ToolId::Claude).unwrap().unwrap();
+        assert_eq!(persisted.suite_id, selected.id);
+        assert_eq!(persisted.manual_item_ids, vec!["skill:recorded"]);
     }
 }

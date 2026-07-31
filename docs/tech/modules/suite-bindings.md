@@ -71,8 +71,9 @@ flowchart TD
   suite, full-reset apply, then record the binding to the **selected** suite
   (the base is never the recorded binding).
 - **Update** (capability edit): re-apply as a full reset, base-merged, serialized
-  against the filesystem watcher via the reconcile guard
-  (`watcher::with_reconcile_guard`) so the two never write the same tool dirs.
+  against the filesystem watcher and every explicit suite apply via the shared
+  projection transaction guard (`watcher::with_projection_transaction`) so
+  separate windows cannot interleave binding state and tool-directory writes.
   Editing a **normal** suite re-syncs only the tools bound to it; editing the
   **base** suite re-syncs **every** binding (each with its own selected suite
   re-merged). Emits `sources-changed` so the Manager refreshes.
@@ -80,15 +81,22 @@ flowchart TD
   every binding so all tools pick up (or drop) the new base.
 - **Guided stale recovery** (`cmd_resync_suite_binding`): resolve the requested
   tool's live selected suite, merge the current base, union persisted manual
-  extras with newly enabled extras, and full-reset apply under the reconcile
-  guard. The binding keeps the same selected suite id. A missing binding or
-  missing selected suite returns a typed error before any projection changes.
+  extras with newly enabled extras, and full-reset apply under the shared
+  projection transaction guard. The guard covers binding read → suite/base
+  resolve → scan/apply/sync → binding record. The binding keeps the same
+  selected suite id, and its stored manual extras are updated only when
+  projection, rule sync, and hook sync all succeed. A partial failure is
+  returned to the UI while the prior binding remains intact. A missing binding
+  or missing selected suite returns a typed error before any projection changes.
 - **Delete**: drop the suite's bindings only. Deleting a suite is not a
-  destructive tool wipe — on-disk projections are left as they are.
+  destructive tool wipe — on-disk projections are left as they are. The suite
+  removal and binding drop share the projection transaction so they cannot
+  interleave with apply or recovery in another window.
 
-`resync_bindings` resolves each binding's selected suite fresh, unions the
-current base via `api::merge_base_caps`, and full-reset applies per tool under
-one reconcile guard.
+Suite mutation re-sync resolves each binding's selected suite fresh, unions the
+current base, and full-reset applies per tool under the same projection
+transaction. Recorded manual extras are unioned with live extras and are never
+replaced by a partial result.
 
 The Manager uses the ownership response's `suiteId` as well as its display
 name/base flag. A stale owned cell offers this binding re-sync; an unowned stale

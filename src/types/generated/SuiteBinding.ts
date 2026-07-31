@@ -7,7 +7,7 @@ import type { ToolId } from "./ToolId";
  * binding per tool — a full-reset apply makes a tool reflect exactly one
  * suite. See `docs/tech/modules/suite-bindings.md`.
  */
-export type SuiteBinding = { toolId: ToolId, suiteId: string, 
+export type SuiteBinding = { toolId: ToolId, suiteId: string,
 /**
  * Capabilities the user enabled beyond the bound suite's effective set.
  */

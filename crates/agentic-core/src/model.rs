@@ -555,6 +555,10 @@ pub struct SuiteValidationResult {
 #[serde(rename_all = "camelCase")]
 pub struct ApplySuiteResult {
     pub apply_result: ApplyResult,
+    /// Managed-block rule sync outcome from the same full-reset transaction.
+    pub rule_sync: SyncRulesResult,
+    /// Hook-config sync outcome from the same full-reset transaction.
+    pub hook_sync: SyncHooksResult,
     /// Suite caps whose source is present (or unqualified) but no scanned item
     /// matches — genuinely stale references.
     pub skipped_stale: u32,
@@ -565,6 +569,18 @@ pub struct ApplySuiteResult {
     /// Item ids enabled beyond the effective suite after this apply (persisted
     /// on the tool binding for the next switch / re-sync).
     pub manual_item_ids: Vec<String>,
+}
+
+impl ApplySuiteResult {
+    /// Total filesystem failures across projection, rule, and hook writes.
+    pub fn error_count(&self) -> usize {
+        self.apply_result.errors.len() + self.rule_sync.errors.len() + self.hook_sync.errors.len()
+    }
+
+    /// Whether every write phase in the full-reset pipeline completed cleanly.
+    pub fn is_full_success(&self) -> bool {
+        self.error_count() == 0
+    }
 }
 
 /// The suite currently applied to one tool in global scope. Persisted so a

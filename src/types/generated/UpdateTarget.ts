@@ -7,24 +7,24 @@ import type { InstallScope } from "./InstallScope";
  * then re-runs the install for this one skill instead of showing the install
  * matrix.
  */
-export type UpdateTarget = { provider: string, 
+export type UpdateTarget = { provider: string,
 /**
  * The install source (`owner/repo`), shown for context.
  */
-installRef: string, 
+installRef: string,
 /**
  * The skill's install name — the lock key passed to update.
  */
-name: string, scope: InstallScope, 
+name: string, scope: InstallScope,
 /**
  * Library scope only: which source root to re-install into.
  */
-sourceId: string | null, 
+sourceId: string | null,
 /**
  * Library scope only: destination subpath under `skills/`, recorded at
  * install time.
  */
-destSubpath: string | null, 
+destSubpath: string | null,
 /**
  * Library scope only: the `--skill` slug to reinstall, when it differs
  * from `name`.

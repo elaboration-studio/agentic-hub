@@ -21,6 +21,8 @@ const mocked = {
 function makeResult(overrides: Partial<ApplySuiteResult> = {}): ApplySuiteResult {
   return {
     applyResult: { created: 1, removed: 0, replaced: 0, refreshed: 0, skipped: 0, errors: [] },
+    ruleSync: { outcome: "no_op", errors: [] },
+    hookSync: { outcome: "no_op", notes: [], errors: [] },
     skippedStale: 0,
     skippedAbsentSource: 0,
     manualItemIds: [],
@@ -92,6 +94,24 @@ describe("apply store — confirm", () => {
     await useApplyStore.getState().confirm(false);
 
     expect(mocked.applySuite).toHaveBeenCalledWith("codex", "s2", false);
+  });
+});
+
+describe("apply store — result feedback", () => {
+  it("warns when rule or hook sync reports an error", async () => {
+    mocked.applySuite.mockResolvedValue(
+      makeResult({
+        ruleSync: {
+          outcome: "no_op",
+          errors: [{ path: "/codex/AGENTS.md", code: "write_failed", message: "blocked" }],
+        },
+      }),
+    );
+
+    await useApplyStore.getState().runApply("codex", "s1", false);
+
+    expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });
 

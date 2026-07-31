@@ -8,7 +8,7 @@ import type { UpdateTarget } from "./UpdateTarget";
  * scope (no workspace involved). When `update` is set, the window runs in
  * single-skill update mode instead of the install matrix.
  */
-export type InstallContext = { workspaceId: string | null, workspaceLabel: string | null, 
+export type InstallContext = { workspaceId: string | null, workspaceLabel: string | null,
 /**
  * Present only in update mode: the one skill to update.
  */

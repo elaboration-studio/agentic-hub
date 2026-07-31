@@ -3,7 +3,7 @@
 /**
  * Partition of a suite's capability IDs against a scan.
  */
-export type SuiteValidationResult = { validIds: Array<string>, staleIds: Array<string>, 
+export type SuiteValidationResult = { validIds: Array<string>, staleIds: Array<string>,
 /**
  * Bare cap ids whose qualifying source is not present on this machine.
  * They are preserved (never deleted), just not applicable here.

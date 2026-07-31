@@ -7,12 +7,12 @@
  * logical source by matching `rel_home`, then `folder`. See
  * `docs/tech/modules/multi-source-roots.md`.
  */
-export type SourceRef = { 
+export type SourceRef = {
 /**
  * Home-relative path (e.g. `~/.agentic`); the absolute path for sources
  * outside the home directory.
  */
-relHome: string, 
+relHome: string,
 /**
  * Last path component (e.g. `.agentic`).
  */

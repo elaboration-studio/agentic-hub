@@ -743,35 +743,38 @@ fn effective_for_suite_id(
     Ok(api::merge_base_caps(&suite, base))
 }
 
-/// Re-apply each binding as a base-merged full reset, serialized against the
-/// watcher so the two never write the same dirs. Each binding's selected suite
-/// is resolved fresh and unioned with the current base.
-fn resync_bindings(
+/// Re-apply each binding as a base-merged full reset. The caller holds the
+/// shared projection transaction so binding state and tool-directory writes
+/// cannot interleave. Each selected suite is resolved fresh with the base.
+fn resync_bindings_unlocked(
     store: &SuiteStore,
     settings: &Settings,
     scanned: &ScanResult,
     bindings: &[SuiteBinding],
 ) {
-    let base = store.base().ok().flatten();
-    watcher::with_reconcile_guard(|| {
-        for b in bindings {
-            if let Ok(Some(selected)) = store.get(&b.suite_id) {
-                let effective = api::merge_base_caps(&selected, base.as_ref());
-                let enabled = api::enabled_item_ids(&scanned.items, settings, b.tool_id);
-                let manual = api::manual_extras_from_enabled(&enabled, &effective, &scanned.items);
-                let manual_refs: Vec<&str> = manual.iter().map(String::as_str).collect();
-                let result = api::apply_suite(
-                    &scanned.items,
-                    settings,
-                    b.tool_id,
-                    &effective,
-                    &manual_refs,
+    let mut base = store.base().ok().flatten();
+    if let Some(base) = base.as_mut() {
+        SuiteStore::backfill_sources(base, &scanned.items);
+    }
+    for binding in bindings {
+        if let Ok(Some(mut selected)) = store.get(&binding.suite_id) {
+            SuiteStore::backfill_sources(&mut selected, &scanned.items);
+            let result = agentic_core::resync_suite_binding(
+                &scanned.items,
+                settings,
+                binding,
+                &selected,
+                base.as_ref(),
+            );
+            if result.is_full_success() {
+                let _ = SuiteBindingStore::new().record(
+                    binding.tool_id,
+                    &binding.suite_id,
+                    result.manual_item_ids,
                 );
-                let _ =
-                    SuiteBindingStore::new().record(b.tool_id, &b.suite_id, result.manual_item_ids);
             }
         }
-    });
+    }
 }
 
 #[tauri::command]
@@ -779,26 +782,31 @@ pub async fn cmd_update_suite(
     app: AppHandle,
     input: UpdateSuiteInput,
 ) -> IpcResult<SuiteDefinition> {
-    let store = suite_store()?;
-    let suite = store.update(&input.id, input.changes)?;
-    // Dynamic binding sync: a capability edit re-applies (full reset) to the
-    // bound tools so their projections track the new set. When the edited suite
-    // is the base, it merges into every applied suite, so re-sync ALL bindings;
-    // otherwise only the tools bound to this suite.
-    let binding_store = SuiteBindingStore::new();
-    let to_resync: Vec<SuiteBinding> = if suite.is_base {
-        binding_store.read()?
-    } else {
-        binding_store
-            .read()?
-            .into_iter()
-            .filter(|b| b.suite_id == suite.id)
-            .collect()
-    };
-    if !to_resync.is_empty() {
-        let settings = Settings::load()?;
-        let scanned = api::scan(&settings);
-        resync_bindings(&store, &settings, &scanned, &to_resync);
+    let (suite, projections_changed) = watcher::with_projection_transaction(|| {
+        let store = suite_store()?;
+        let suite = store.update(&input.id, input.changes)?;
+        // Dynamic binding sync: a capability edit re-applies (full reset) to the
+        // bound tools so their projections track the new set. When the edited suite
+        // is the base, it merges into every applied suite, so re-sync ALL bindings;
+        // otherwise only the tools bound to this suite.
+        let binding_store = SuiteBindingStore::new();
+        let to_resync: Vec<SuiteBinding> = if suite.is_base {
+            binding_store.read()?
+        } else {
+            binding_store
+                .read()?
+                .into_iter()
+                .filter(|b| b.suite_id == suite.id)
+                .collect()
+        };
+        if !to_resync.is_empty() {
+            let settings = Settings::load()?;
+            let scanned = api::scan(&settings);
+            resync_bindings_unlocked(&store, &settings, &scanned, &to_resync);
+        }
+        Ok::<_, IpcError>((suite, !to_resync.is_empty()))
+    })?;
+    if projections_changed {
         // Tool projections changed — nudge the manager to refresh.
         let _ = app.emit("sources-changed", ());
     }
@@ -808,10 +816,13 @@ pub async fn cmd_update_suite(
 
 #[tauri::command]
 pub async fn cmd_delete_suite(app: AppHandle, id: String) -> IpcResult<()> {
-    suite_store()?.remove(&id)?;
-    // Drop any tool bindings to the gone suite; on-disk projections are left
-    // untouched (deleting a suite is not a destructive tool wipe).
-    let _ = SuiteBindingStore::new().drop_suite(&id);
+    watcher::with_projection_transaction(|| {
+        suite_store()?.remove(&id)?;
+        // Drop any tool bindings to the gone suite; on-disk projections are left
+        // untouched (deleting a suite is not a destructive tool wipe).
+        let _ = SuiteBindingStore::new().drop_suite(&id);
+        Ok::<_, IpcError>(())
+    })?;
     emit_suite_changed(&app, "deleted", Some(id));
     Ok(())
 }
@@ -831,57 +842,62 @@ pub async fn cmd_apply_suite(
     input: ApplySuiteInput,
 ) -> IpcResult<ApplySuiteResult> {
     let settings = Settings::load()?;
-    let store = SuiteStore::with_path(settings.resolved_suites_path());
-    let mut suite = store
-        .get(&input.suite_id)?
-        .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
+    let result = watcher::with_projection_transaction(|| {
+        let store = SuiteStore::with_path(settings.resolved_suites_path());
+        let mut suite = store
+            .get(&input.suite_id)?
+            .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
 
-    let scanned = api::scan(&settings);
-    // Qualify unqualified refs in-memory so apply matching is source-precise.
-    // We deliberately do NOT persist this: rewriting the synced suites file
-    // behind the user's back makes two devices diverge, and a later `git pull`
-    // line-merges the divergent multi-line capability arrays into an empty set.
-    SuiteStore::backfill_sources(&mut suite, &scanned.items);
-    // Union the base suite's capabilities so its rules/skills are always present.
-    let base = store.base()?;
-    let effective = api::merge_base_caps(&suite, base.as_ref());
-    let binding_store = SuiteBindingStore::new();
-    let prior = binding_store.get(input.tool_id)?;
-    let prior_effective = match prior.as_ref() {
-        Some(b) => Some(effective_for_suite_id(
-            &store,
-            &b.suite_id,
-            base.as_ref(),
-            &scanned.items,
-        )?),
-        None => None,
-    };
-    let manual_to_preserve: Vec<String> = if input.preserve_manual {
-        api::suite_apply_manual_extras(
-            prior_effective.as_ref(),
-            &effective,
+        let scanned = api::scan(&settings);
+        // Qualify unqualified refs in-memory so apply matching is source-precise.
+        // We deliberately do NOT persist this: rewriting the synced suites file
+        // behind the user's back makes two devices diverge, and a later `git pull`
+        // line-merges the divergent multi-line capability arrays into an empty set.
+        SuiteStore::backfill_sources(&mut suite, &scanned.items);
+        // Union the base suite's capabilities so its rules/skills are always present.
+        let base = store.base()?;
+        let effective = api::merge_base_caps(&suite, base.as_ref());
+        let binding_store = SuiteBindingStore::new();
+        let prior = binding_store.get(input.tool_id)?;
+        let prior_effective = match prior.as_ref() {
+            Some(b) => Some(effective_for_suite_id(
+                &store,
+                &b.suite_id,
+                base.as_ref(),
+                &scanned.items,
+            )?),
+            None => None,
+        };
+        let manual_to_preserve: Vec<String> = if input.preserve_manual {
+            api::suite_apply_manual_extras(
+                prior_effective.as_ref(),
+                &effective,
+                &scanned.items,
+                &settings,
+                input.tool_id,
+            )
+        } else {
+            vec![]
+        };
+        let manual_refs: Vec<&str> = manual_to_preserve.iter().map(String::as_str).collect();
+        let result = api::apply_suite(
             &scanned.items,
             &settings,
             input.tool_id,
-        )
-    } else {
-        vec![]
-    };
-    let manual_refs: Vec<&str> = manual_to_preserve.iter().map(String::as_str).collect();
-    let result = api::apply_suite(
-        &scanned.items,
-        &settings,
-        input.tool_id,
-        &effective,
-        &manual_refs,
-    );
-    // Bind this tool to the selected suite (not the base) so a later capability
-    // edit re-syncs it.
-    let _ = binding_store.record(
-        input.tool_id,
-        &input.suite_id,
-        result.manual_item_ids.clone(),
-    );
+            &effective,
+            &manual_refs,
+        );
+        // Preserve the existing suite-apply binding semantics: selected suite
+        // identity is recorded even when the partial-tolerant pipeline reports
+        // per-item errors. Recovery re-sync is stricter and leaves a live
+        // binding unchanged on any write failure.
+        let _ = binding_store.record(
+            input.tool_id,
+            &input.suite_id,
+            result.manual_item_ids.clone(),
+        );
+        Ok::<_, IpcError>(result)
+    })?;
     // Tool projections + suite ownership changed — nudge the manager (this window
     // or the main window when applied from the palette) to re-scan and re-lock.
     let _ = app.emit("sources-changed", ());
@@ -920,16 +936,19 @@ pub async fn cmd_suite_apply_preview(input: ApplySuiteInput) -> IpcResult<Vec<St
 
 #[tauri::command]
 pub async fn cmd_set_base_suite(app: AppHandle, id: Option<String>) -> IpcResult<()> {
-    let store = suite_store()?;
-    store.set_base(id.as_deref())?;
-    // The base merges into every applied suite, so re-apply all bound tools so
-    // their projections reflect the new (or cleared) base.
-    let bindings = SuiteBindingStore::new().read()?;
-    if !bindings.is_empty() {
-        let settings = Settings::load()?;
-        let scanned = api::scan(&settings);
-        resync_bindings(&store, &settings, &scanned, &bindings);
-    }
+    watcher::with_projection_transaction(|| {
+        let store = suite_store()?;
+        store.set_base(id.as_deref())?;
+        // The base merges into every applied suite, so re-apply all bound tools so
+        // their projections reflect the new (or cleared) base.
+        let bindings = SuiteBindingStore::new().read()?;
+        if !bindings.is_empty() {
+            let settings = Settings::load()?;
+            let scanned = api::scan(&settings);
+            resync_bindings_unlocked(&store, &settings, &scanned, &bindings);
+        }
+        Ok::<_, IpcError>(())
+    })?;
     // Always refresh the manager: the base set changed, so cell-lock ownership
     // must be recomputed even when no tool was re-applied (no bindings yet).
     let _ = app.emit("sources-changed", ());
@@ -961,10 +980,8 @@ pub async fn cmd_resync_suite_binding(
     let settings = Settings::load()?;
     let suites = SuiteStore::with_path(settings.resolved_suites_path());
     let bindings = SuiteBindingStore::new();
-    let scanned = api::scan(&settings);
-    let result = suite_recovery::resync_suite_binding_for_tool(
-        &settings, &suites, &bindings, &scanned, tool_id,
-    )?;
+    let result =
+        suite_recovery::resync_suite_binding_for_tool(&settings, &suites, &bindings, tool_id)?;
     let _ = app.emit("sources-changed", ());
     Ok(result)
 }

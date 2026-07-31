@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { staleRecoveryActions } from "./staleRecoveryModel";
 
 interface StaleRecoveryControlProps {
@@ -45,17 +46,21 @@ export function StaleRecoveryControl({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="icon-xs"
-          className="size-[26px] rounded-md border-warning bg-warning/10 text-warning-foreground hover:bg-warning/20"
-          aria-label={label}
-          title={label}
-        >
-          <TriangleAlert className="size-3.5" />
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-xs"
+              className="size-[26px] rounded-md border-warning bg-warning/10 text-warning hover:bg-warning/20"
+              aria-label={label}
+            >
+              <TriangleAlert className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="center" className="w-72">
         <DropdownMenuLabel className="space-y-1 whitespace-normal">
           <span className="block text-foreground">Stale managed copy</span>

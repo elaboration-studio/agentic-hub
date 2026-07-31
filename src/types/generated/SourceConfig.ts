@@ -4,7 +4,7 @@
  * A capability source: an ordered, priority-bearing shared root. See
  * `docs/tech/modules/multi-source-roots.md`.
  */
-export type SourceConfig = { 
+export type SourceConfig = {
 /**
  * Stable slug derived from `label`. Empty in the persisted file; filled by
  * [`Settings::resolve_sources`].

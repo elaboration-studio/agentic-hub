@@ -648,6 +648,8 @@ describe("manager store — staging", () => {
     ]);
     mocked.resyncSuiteBinding.mockResolvedValue({
       applyResult: APPLY_RESULT,
+      ruleSync: { outcome: "no_op", errors: [] },
+      hookSync: { outcome: "no_op", notes: [], errors: [] },
       skippedStale: 0,
       skippedAbsentSource: 0,
       suite: {
@@ -668,6 +670,141 @@ describe("manager store — staging", () => {
     expect(mocked.resyncSuiteBinding).toHaveBeenCalledWith("codex");
     expect(mocked.inspect).toHaveBeenCalledTimes(2);
     expect(toast.success).toHaveBeenCalledWith("Suite binding re-synced for Codex.");
+  });
+
+  it("resyncStaleBinding preserves unrelated staged changes across refresh", async () => {
+    const stale = makeItem("skill:stale");
+    const staged = makeItem("skill:staged");
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [stale, staged], errors: [], lockedSkills: [] });
+    mocked.scanInstalledTools.mockResolvedValue({ items: [], states: [], errors: [] });
+    mocked.inspect
+      .mockResolvedValueOnce({
+        states: [
+          makeState("codex", stale.id, "stale"),
+          makeState("codex", staged.id, "enabled"),
+        ],
+        adapterStatuses: [],
+      })
+      .mockResolvedValueOnce({
+        states: [
+          makeState("codex", stale.id, "enabled"),
+          makeState("codex", staged.id, "enabled"),
+        ],
+        adapterStatuses: [],
+      });
+    mocked.suiteOwnership.mockResolvedValue([
+      { tool: "codex", itemId: stale.id, suiteId: "s1", suiteName: "Backend", fromBase: false },
+    ]);
+    mocked.queryUsageStats.mockResolvedValue([]);
+    mocked.resyncSuiteBinding.mockResolvedValue({
+      applyResult: APPLY_RESULT,
+      ruleSync: { outcome: "no_op", errors: [] },
+      hookSync: { outcome: "no_op", notes: [], errors: [] },
+      skippedStale: 0,
+      skippedAbsentSource: 0,
+      suite: {
+        id: "s1",
+        name: "Backend",
+        description: null,
+        capabilities: [],
+        isBase: false,
+        createdAt: "t",
+        updatedAt: "t",
+      },
+      manualItemIds: [],
+    });
+
+    await useManagerStore.getState().refresh();
+    useManagerStore.getState().toggle("codex", staged.id);
+    expect(useManagerStore.getState().pendingKeys).toEqual(["codex::skill:staged"]);
+
+    await useManagerStore.getState().resyncStaleBinding("codex");
+
+    expect(useManagerStore.getState().desired["codex::skill:staged"]).toBe(false);
+    expect(useManagerStore.getState().pendingKeys).toEqual(["codex::skill:staged"]);
+  });
+
+  it("resyncStaleBinding warns when recovery is only partially successful", async () => {
+    seedHappyPath();
+    mocked.resyncSuiteBinding.mockResolvedValue({
+      applyResult: { ...APPLY_RESULT, refreshed: 1 },
+      ruleSync: {
+        outcome: "no_op",
+        errors: [{ path: "/codex/AGENTS.md", code: "write_failed", message: "blocked" }],
+      },
+      hookSync: { outcome: "no_op", notes: [], errors: [] },
+      skippedStale: 0,
+      skippedAbsentSource: 0,
+      suite: {
+        id: "s1",
+        name: "Backend",
+        description: null,
+        capabilities: [],
+        isBase: false,
+        createdAt: "t",
+        updatedAt: "t",
+      },
+      manualItemIds: [],
+    });
+    await useManagerStore.getState().refresh();
+
+    await useManagerStore.getState().resyncStaleBinding("codex");
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Suite binding partially re-synced for Codex with 1 error.",
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("resyncStaleBinding reports an error when no recovery write succeeds", async () => {
+    seedHappyPath();
+    mocked.resyncSuiteBinding.mockResolvedValue({
+      applyResult: {
+        ...APPLY_RESULT,
+        created: 0,
+        errors: [
+          {
+            operation: {
+              tool: "codex",
+              itemId: "skill:a",
+              targetRoot: "/codex",
+              targetPath: "/codex/skill:a",
+              sourcePath: "/shared/skills/skill:a",
+              kind: "replace_managed_copy",
+              reason: "refresh stale copy",
+              force: false,
+              contentTransform: null,
+            },
+            code: "write_failed",
+            message: "blocked",
+          },
+        ],
+      },
+      ruleSync: { outcome: "no_op", errors: [] },
+      hookSync: { outcome: "no_op", notes: [], errors: [] },
+      skippedStale: 0,
+      skippedAbsentSource: 0,
+      suite: {
+        id: "s1",
+        name: "Backend",
+        description: null,
+        capabilities: [],
+        isBase: false,
+        createdAt: "t",
+        updatedAt: "t",
+      },
+      manualItemIds: [],
+    });
+    await useManagerStore.getState().refresh();
+
+    await useManagerStore.getState().resyncStaleBinding("codex");
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Suite binding re-sync failed for Codex with 1 error.",
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   it("toggleMany stages several keys and resetDesired restores the seeded state", async () => {

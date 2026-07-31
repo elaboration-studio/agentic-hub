@@ -5,28 +5,28 @@ import type { CliCommand } from "./CliCommand";
  * One catalog entry: how to identify, check, install, and (optionally)
  * auth-check a CLI tool.
  */
-export type CliTool = { 
+export type CliTool = {
 /**
  * Stable id (e.g. `"gh"`). Used to merge overrides and address a row.
  */
-id: string, 
+id: string,
 /**
  * Human-readable name (e.g. `"GitHub CLI"`).
  */
-name: string, 
+name: string,
 /**
  * Optional grouping label for future sectioning.
  */
-category: string | null, 
+category: string | null,
 /**
  * Web page documenting how to install the tool. Opened in the browser.
  */
-installUrl: string, 
+installUrl: string,
 /**
  * Command that succeeds when the tool is installed; its stdout yields the
  * version line.
  */
-check: CliCommand, 
+check: CliCommand,
 /**
  * Optional command that succeeds only when the tool is authenticated.
  * `None` for tools that need no auth.

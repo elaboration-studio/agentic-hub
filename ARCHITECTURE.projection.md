@@ -407,6 +407,14 @@ binding and re-applies `selected ∪ base ∪ manual extras` through
 and target-reveal fallbacks. Broken and foreign states do not inherit either
 automatic remedy.
 
+Every explicit suite apply, suite mutation re-sync, binding recovery, and
+watcher reconcile shares one process-wide projection transaction guard. For
+binding recovery the critical section spans binding read, suite/base resolve,
+filesystem apply and rule/hook sync, and the final binding record. The
+`ApplySuiteResult` carries all three write-phase outcomes; any write failure
+leaves the prior binding and its manual extras unchanged while still returning
+the partial filesystem result for honest UI feedback.
+
 ## Marker-delimited managed-block contract
 
 For `markdown_section_sync` tools (Codex, Claude, OpenClaw, OpenStandard), the rule sync module owns exactly one block in the instruction file:

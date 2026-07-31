@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "gen:types": "cargo test -p agentic-core --features ts-export && cargo test -p agentic-hub --features ts-export"
+    "gen:types": "cargo test -p agentic-core --features ts-export && cargo test -p agentic-hub --features ts-export && node scripts/normalize-generated-types.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",

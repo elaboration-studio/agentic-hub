@@ -337,8 +337,9 @@ type SuiteUpdateInput = {
 
 Side effect: after the update, the affected bound tools are re-applied as a
 full reset (base-merged) so projections track the new set, serialized against
-the watcher via the reconcile guard. A **normal** suite re-syncs only its bound
-tools; the **base** suite re-syncs **every** binding. Emits `sources-changed`
+the watcher and other suite writes via the shared projection transaction guard.
+A **normal** suite re-syncs only its bound tools; the **base** suite re-syncs
+**every** binding. Emits `sources-changed`
 when any tool was re-applied. Also opportunistically qualifies unqualified refs
 against the live scan and persists the upgrade (source backfill).
 
@@ -358,11 +359,19 @@ type ApplySuiteInput = {
 
 type ApplySuiteResult = {
   applyResult: ApplyResult;
+  ruleSync: SyncRulesResult;
+  hookSync: SyncHooksResult;
   skippedStale: number;          // present-source/unqualified refs with no match
   skippedAbsentSource: number;   // qualified refs whose source isn't on this machine (preserved)
   suite: { id: string; name: string };
 };
 ```
+
+`pnpm gen:types` remains the only supported way to update these bindings. Its
+final fixed-path hygiene step normalizes trailing whitespace in
+`src/types/generated/*.ts` with Node built-ins, so repeated ts-rs exports stay
+diff-clean without adding a formatter dependency or accepting an untrusted
+path.
 
 Side effect: records a suite<->tool binding (`record(toolId, suiteId, manualItemIds)`,
 upsert per tool) so a later `cmd_update_suite` re-syncs this tool with the stored
@@ -409,8 +418,14 @@ Bound-suite ownership wins when an item is in both the bound suite and the base.
 Re-applies the tool's actual live binding as `selected suite ∪ current base ∪
 manual extras` through the existing non-force suite pipeline. Persisted manual
 extras are unioned with currently enabled extras, so drift recovery cannot drop
-either set. The command keeps the same selected `suiteId`, refreshes its stored
-manual set from the apply result, and emits `sources-changed`.
+either set. The command returns projection, rule-sync, and hook-sync failures in
+`ApplySuiteResult`, allowing the Manager to distinguish success, partial
+success, and failure. It refreshes the stored manual set only after all three
+write phases succeed; a partial result leaves the prior binding unchanged. The
+shared projection transaction guard covers binding read through conditional
+record so separate windows cannot interleave recovery with suite apply or
+mutation re-sync. The command emits `sources-changed` after any completed
+attempt so partially changed projections are re-inspected.
 
 Errors are typed: `suite_binding_not_found` when the tool has no binding and
 `suite_not_found` when the binding's selected suite no longer exists. Neither
