@@ -19,6 +19,20 @@ import { useManagerStore } from "./manager";
 export const DEFAULT_USAGE_RANGE: UsageDateRange = "last30Days";
 export const DEFAULT_USAGE_TABLE_SORT: UsageSort = "lastUsed";
 
+export type StatisticsTab = "today" | "activity" | "top-usage" | "unused" | "inventory";
+
+export const STATISTICS_TABS: readonly { value: StatisticsTab; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "activity", label: "Activity" },
+  { value: "top-usage", label: "Top usage" },
+  { value: "unused", label: "Unused" },
+  { value: "inventory", label: "Inventory" },
+];
+
+export function showsUsageDateRange(tab: StatisticsTab): boolean {
+  return tab === "activity" || tab === "top-usage" || tab === "unused";
+}
+
 export interface ResourceInventory {
   total: number;
   sourceCount: number;

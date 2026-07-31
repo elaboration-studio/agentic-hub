@@ -35,6 +35,8 @@ import {
   computeResourceInventory,
   DEFAULT_USAGE_RANGE,
   DEFAULT_USAGE_TABLE_SORT,
+  STATISTICS_TABS,
+  showsUsageDateRange,
   useStatisticsStore,
 } from "./statistics";
 
@@ -370,5 +372,22 @@ describe("useStatisticsStore", () => {
 
     expect(useStatisticsStore.getState().error).toBe("collector offline");
     expect(toast.error).toHaveBeenCalledWith("collector offline");
+  });
+});
+
+describe("statistics dashboard navigation", () => {
+  it("defaults to Today and only exposes the date range for range-based tabs", () => {
+    expect(STATISTICS_TABS).toEqual([
+      { value: "today", label: "Today" },
+      { value: "activity", label: "Activity" },
+      { value: "top-usage", label: "Top usage" },
+      { value: "unused", label: "Unused" },
+      { value: "inventory", label: "Inventory" },
+    ]);
+    expect(showsUsageDateRange("today")).toBe(false);
+    expect(showsUsageDateRange("inventory")).toBe(false);
+    expect(showsUsageDateRange("activity")).toBe(true);
+    expect(showsUsageDateRange("top-usage")).toBe(true);
+    expect(showsUsageDateRange("unused")).toBe(true);
   });
 });

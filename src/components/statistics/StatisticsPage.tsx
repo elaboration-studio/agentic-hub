@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowDown, BarChart3, RefreshCw } from "lucide-react";
 import { ActivityChart } from "@/components/statistics/charts/ActivityChart";
 import { KindBreakdownChart } from "@/components/statistics/charts/KindBreakdownChart";
@@ -27,7 +27,12 @@ import { TOOL_LABELS, KIND_LABEL, KIND_ORDER, type UsageSort } from "@/shared";
 import { formatLocalTimestamp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { compareUsageTopRows } from "@/state/managerSort";
-import { useStatisticsStore } from "@/state/statistics";
+import {
+  showsUsageDateRange,
+  STATISTICS_TABS,
+  type StatisticsTab,
+  useStatisticsStore,
+} from "@/state/statistics";
 import type { CapabilityKind, ToolId, UsageDateRange, UsageTopRow } from "@/types";
 
 const sectionTitle = "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
@@ -180,6 +185,7 @@ export function StatisticsPage() {
   const setRange = useStatisticsStore((s) => s.setRange);
   const setTableSort = useStatisticsStore((s) => s.setTableSort);
   const reload = useStatisticsStore((s) => s.reload);
+  const [activeTab, setActiveTab] = useState<StatisticsTab>("today");
 
   useEffect(() => {
     void reload();
@@ -202,18 +208,20 @@ export function StatisticsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={range} onValueChange={(v) => setRange(v as UsageDateRange)}>
-              <SelectTrigger className="w-[150px]" aria-label="Usage date range">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RANGE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {showsUsageDateRange(activeTab) && (
+              <Select value={range} onValueChange={(v) => setRange(v as UsageDateRange)}>
+                <SelectTrigger className="w-[150px]" aria-label="Usage date range">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RANGE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -227,51 +235,6 @@ export function StatisticsPage() {
         </div>
       </Card>
 
-      {inventory && (
-        <Card className="p-4">
-          <CardHeader className="p-0 pb-3">
-            <CardTitle className={sectionTitle}>Resource inventory</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 p-0">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <StatTile label="Total resources" value={inventory.total} />
-              <StatTile
-                label="Configured sources"
-                value={inventory.sourceCount}
-                hint={`${inventory.sourceCount} source${inventory.sourceCount === 1 ? "" : "s"}`}
-              />
-              <StatTile
-                label="Enabled tools"
-                value={inventory.enabledTools}
-                hint={`${inventory.enabledTools} of ${inventory.totalTools}`}
-              />
-              <StatTile
-                label="Starred skills"
-                value={inventory.favoritesCount}
-                hint={
-                  <a
-                    href="#/skills"
-                    className="text-primary underline-offset-2 hover:underline"
-                  >
-                    View in Resources
-                  </a>
-                }
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
-              {KIND_ORDER.map((kind) => (
-                <StatTile
-                  key={kind}
-                  label={KIND_LABEL[kind]}
-                  value={inventory.byKind[kind]}
-                  labelClassName={KIND_BADGE_COLOR[kind]}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {!tracingEnabled && (
         <Alert>
           <AlertDescription>
@@ -284,40 +247,17 @@ export function StatisticsPage() {
         </Alert>
       )}
 
-      {tracingEnabled && overview && (
-        <Tabs defaultValue="overview">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as StatisticsTab)}>
           <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="top-usage">Top usage</TabsTrigger>
-            <TabsTrigger value="unused">Unused</TabsTrigger>
+            {STATISTICS_TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
-          <TabsContent value="overview" className="flex flex-col gap-[18px]">
-            <Card className="p-4">
-              <CardHeader className="p-0 pb-3">
-                <CardTitle className={sectionTitle}>Usage overview</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
-                <StatTile label="Terminal events" value={overview.terminalEvents} />
-                <StatTile
-                  label="Used capabilities"
-                  value={overview.tracedCapabilities}
-                  hint={`${overview.installedCountable} installed`}
-                />
-                <StatTile label="Unused installed" value={overview.unusedCountable} />
-                <StatTile
-                  label="Unresolved events"
-                  value={overview.unresolvedEvents}
-                  hint={
-                    tracingStatus?.collectorRunning
-                      ? "Collector running"
-                      : "Collector stopped"
-                  }
-                />
-              </CardContent>
-            </Card>
-
+          <TabsContent value="today" className="flex flex-col gap-[18px]">
+            {tracingEnabled && overview && (
             <Card className="p-4">
               <CardHeader className="p-0 pb-3">
                 <CardTitle className={sectionTitle}>Today's usage</CardTitle>
@@ -335,9 +275,11 @@ export function StatisticsPage() {
                 />
               </CardContent>
             </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="activity" className="flex flex-col gap-[18px]">
+            {tracingEnabled && overview && (
             <div className="grid gap-[18px] lg:grid-cols-2">
               <Card className="p-4">
                 <CardHeader className="p-0 pb-3">
@@ -393,9 +335,32 @@ export function StatisticsPage() {
                 </CardContent>
               </Card>
             </div>
+            )}
           </TabsContent>
 
           <TabsContent value="top-usage" className="flex flex-col gap-[18px]">
+            {tracingEnabled && overview && (
+              <Card className="p-4">
+                <CardHeader className="p-0 pb-3">
+                  <CardTitle className={sectionTitle}>Usage overview</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-3 p-0 sm:grid-cols-2 xl:grid-cols-4">
+                  <StatTile label="Terminal events" value={overview.terminalEvents} />
+                  <StatTile
+                    label="Used capabilities"
+                    value={overview.tracedCapabilities}
+                    hint={`${overview.installedCountable} installed`}
+                  />
+                  <StatTile label="Unused installed" value={overview.unusedCountable} />
+                  <StatTile
+                    label="Unresolved events"
+                    value={overview.unresolvedEvents}
+                    hint={tracingStatus?.collectorRunning ? "Collector running" : "Collector stopped"}
+                  />
+                </CardContent>
+              </Card>
+            )}
+            {tracingEnabled && overview && (
             <Card className="p-4">
               <CardHeader className="p-0 pb-3">
                 <CardTitle className={sectionTitle}>Most used</CardTitle>
@@ -410,9 +375,11 @@ export function StatisticsPage() {
                 />
               </CardContent>
             </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="unused" className="flex flex-col gap-[18px]">
+            {tracingEnabled && overview && (
             <Card className="p-4">
               <CardHeader className="p-0 pb-3">
                 <CardTitle className={sectionTitle}>Installed but unused</CardTitle>
@@ -458,9 +425,52 @@ export function StatisticsPage() {
                 )}
               </CardContent>
             </Card>
+            )}
+          </TabsContent>
+          <TabsContent value="inventory" className="flex flex-col gap-[18px]">
+            {inventory && (
+              <Card className="p-4">
+                <CardHeader className="p-0 pb-3">
+                  <CardTitle className={sectionTitle}>Resource inventory</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3 p-0">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <StatTile label="Total resources" value={inventory.total} />
+                    <StatTile
+                      label="Configured sources"
+                      value={inventory.sourceCount}
+                      hint={`${inventory.sourceCount} source${inventory.sourceCount === 1 ? "" : "s"}`}
+                    />
+                    <StatTile
+                      label="Enabled tools"
+                      value={inventory.enabledTools}
+                      hint={`${inventory.enabledTools} of ${inventory.totalTools}`}
+                    />
+                    <StatTile
+                      label="Starred skills"
+                      value={inventory.favoritesCount}
+                      hint={
+                        <a href="#/skills" className="text-primary underline-offset-2 hover:underline">
+                          View in Resources
+                        </a>
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+                    {KIND_ORDER.map((kind) => (
+                      <StatTile
+                        key={kind}
+                        label={KIND_LABEL[kind]}
+                        value={inventory.byKind[kind]}
+                        labelClassName={KIND_BADGE_COLOR[kind]}
+                      />
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
-      )}
     </div>
   );
 }
