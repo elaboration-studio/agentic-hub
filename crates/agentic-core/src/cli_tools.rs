@@ -292,6 +292,24 @@ mod tests {
     }
 
     #[test]
+    fn bundled_catalog_includes_ripgrep_without_an_auth_probe() {
+        let tools = bundled_catalog().expect("bundled catalog must be valid JSON");
+        let ripgrep = tools
+            .iter()
+            .find(|tool| tool.id == "ripgrep")
+            .expect("catalog must include ripgrep");
+
+        assert_eq!(ripgrep.name, "ripgrep");
+        assert_eq!(ripgrep.check.program, "rg");
+        assert_eq!(ripgrep.check.args, ["--version"]);
+        assert_eq!(
+            ripgrep.install_url,
+            "https://github.com/BurntSushi/ripgrep#installation"
+        );
+        assert_eq!(ripgrep.auth, None);
+    }
+
+    #[test]
     fn parse_catalog_rejects_malformed_json() {
         let err = parse_catalog("not json").unwrap_err();
         assert!(matches!(err, CoreError::SettingsParse(_)));

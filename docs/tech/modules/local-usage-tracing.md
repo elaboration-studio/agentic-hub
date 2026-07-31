@@ -184,6 +184,11 @@ entries are preserved verbatim.
 | `cmd_query_usage_dashboard` | Return workspace-aware dashboard metrics for Statistics (`UsageDashboard`, filtered by `UsageDateRange`) |
 | `cmd_record_command_palette_usage` | Record a palette command copy or paste against a command capability id |
 
+Statistics keeps local-day `todayTopCapabilities` separate from the selected
+`UsageDateRange`. The Today tab consumes that independent result first; only
+Activity, Top usage, and Unused use the selected range. Inventory is computed
+from the Manager scan and remains available when tracing is disabled.
+
 ## Failure modes
 
 | Failure | Impact | Recovery |

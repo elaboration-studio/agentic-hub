@@ -6,7 +6,7 @@ import type { ScanError } from "./ScanError";
 /**
  * Result of scanning one or more source roots.
  */
-export type ScanResult = { items: Array<CapabilityItem>, errors: Array<ScanError>, 
+export type ScanResult = { items: Array<CapabilityItem>, errors: Array<ScanError>,
 /**
  * Skill items a Hub source root's skills.sh lock manages (library
  * installs), so the Manager can badge them and offer a re-install update.

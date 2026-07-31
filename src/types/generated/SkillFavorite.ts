@@ -5,40 +5,40 @@
  * slug. `install_ref` is what a provider hands its installer (for skills.sh,
  * the `owner/repo` form the CLI accepts). Links are best-effort.
  */
-export type SkillFavorite = { 
+export type SkillFavorite = {
 /**
  * Source provider id, e.g. `"skills.sh"`.
  */
-provider: string, 
+provider: string,
 /**
  * Stable, provider-scoped id (for skills.sh: `"{source}/{slug}"`).
  */
-id: string, 
+id: string,
 /**
  * URL-safe skill slug, e.g. `"next-js-development"`.
  */
-slug: string, 
+slug: string,
 /**
  * Human-readable name.
  */
-name: string, 
+name: string,
 /**
  * Origin repo / provider, e.g. `"vercel-labs/agent-skills"`.
  */
-source: string, 
+source: string,
 /**
  * Reference handed to the provider's installer. For skills.sh this is the
  * `owner/repo` (or `owner/repo/skill`) the CLI accepts.
  */
-installRef: string, 
+installRef: string,
 /**
  * GitHub (or well-known base) URL for the skill, if known.
  */
-githubUrl: string | null, 
+githubUrl: string | null,
 /**
  * The skill's page URL on the provider site (skills.sh), if known.
  */
-pageUrl: string | null, 
+pageUrl: string | null,
 /**
  * ISO-8601 timestamp this entry was starred; set by the store on add.
  */

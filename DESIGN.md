@@ -80,6 +80,12 @@ exposes each as a `--color-*` utility.
 - Kind: Skill uses **primary** (indigo); Kind: Rule uses **success** (green);
   Kind: Hook uses **warning** (amber)
 
+Stale Manager cells use a full warning-triangle button, not an unlabeled status
+dot. Its accessible menu explains the drift and offers the applicable safe
+recovery (stage source refresh or re-sync the live suite binding) plus Open
+source and Reveal target. Broken and foreign cells keep their existing state
+treatment and never expose stale-only recovery actions.
+
 ## Typography
 
 ### Font Family
@@ -176,23 +182,26 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 
 ### Toggles & Tabs (`tabs`, `toggle-group`, `toggle`, `switch`, `checkbox`)
 
-- **Nav** (Manager / Suites / Config): `Tabs`, indigo active state — the selected
-  tab is an indigo fill with white text, never a graphite surface step. The
-  selection must be unmistakable at a glance.
+- **Nav** (Manager / Resources / Statistics / Config): `Tabs`, indigo active
+  state — the selected tab is an indigo fill with white text, never a graphite
+  surface step. The selection must be unmistakable at a glance. Suites is a
+  scope inside Manager (via the scope rail), not a separate nav tab.
 - **View** (Flat / Tree): `ToggleGroup` (single-select), indigo active (indigo
   fill + white text on the selected item, applied at the `ToggleGroupItem` level
   so the Watch `Toggle` keeps its dot look). Items are **icon-only** (`List` /
   `FolderTree`) with a `Tooltip` and `aria-label` — no text, to keep the toolbar
   compact.
-- **Scope** (Global / Workspace): a compact `Select` dropdown in the header's
-  left cluster (next to the title), not a toggle row — it switches context like
-  a workspace switcher and reclaims the vertical space a dedicated row would cost.
-  The trigger shows a leading scope icon (`Globe` / `FolderGit2`).
+- **Scope** (Global / Suites / Workspace): a sticky left `aside` rail beside
+  the Manager content pane, not a header dropdown — a single Global row, a
+  Suites section (New, Create from current, then each suite as a row with a
+  Base badge and capability count), and a Workspaces section (add + per-target
+  rows). The active row gets a `border-primary bg-primary/10` treatment.
 - **Watch pill**: `Toggle` with a status dot — green glow when watching, muted
   when paused.
 - **Tool enable** (Config): `Switch`.
-- **Capability selection** (Suites): `Checkbox` with native `indeterminate` for
-  partial folder/kind selection.
+- **Capability selection** (Manager suite scope): `Checkbox` with native
+  `indeterminate` for partial folder/kind selection in the tri-state Included
+  column of the shared capability table.
 - **Matrix tri-state cell**: a small `icon-xs` button — empty (off), `✓`
   (on, success tint), `–` (mixed, indigo tint); a `mod` ring marks a staged
   change; a warning dot marks an abnormal current state.
@@ -214,10 +223,11 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 - Solid `card` bar, hairline bottom border, 16px/24px padding. Logo + title +
   capability/source count on the left; nav tabs + watch pill on the right.
 - The header is a **stable nav**: the right cluster (nav tabs + watch pill) is
-  identical on every route and never reflows when switching Manager / Suites /
-  Config. The Manager's Global / Workspace **scope** `Select` lives in the left
-  cluster next to the title and appears only on the Manager route; because it
-  sits on the left, its show/hide leaves the right cluster anchored and stable.
+  identical on every route and never reflows when switching Manager /
+  Resources / Statistics / Config. The Manager's Global / Suites / Workspace
+  **scope rail** lives to the left of the content pane and appears only on the
+  Manager route; because it sits on the left, its show/hide leaves the right
+  cluster anchored and stable.
 
 ### Dialogs (`dialog`, `alert-dialog`)
 
@@ -269,8 +279,9 @@ All components are shadcn/ui (New York style). Do not hand-roll; compose these.
 
 - Full-window flex column: Header (fixed) / scrollable content / ActionBar
   (conditional). Content padding 20–24px.
-- Suites page is a two-column grid `minmax(240px,1fr) minmax(380px,2fr)`,
-  collapsing to one column under 760px.
+- Manager is a flex row: the fixed `w-64` scope rail (Global / Suites /
+  Workspaces) plus a `min-w-0 flex-1` content pane rendering the shared
+  capability table for every scope.
 
 ### Border Radius Scale
 
@@ -332,8 +343,8 @@ A desktop window, but it must stay usable when narrow.
 
 | Name | Width | Key Changes |
 |------|-------|-------------|
-| Narrow | < 760px | Suites page collapses to single column |
-| Default | 760–1200px | Two-pane Suites, full matrix |
+| Narrow | < 760px | Scope rail stays fixed-width; content pane and matrix scroll horizontally rather than dropping the rail |
+| Default | 760–1200px | Fixed scope rail + full matrix |
 | Wide | > 1200px | Matrix breathes; content max-width not enforced |
 
 ### Touch Targets
@@ -391,3 +402,4 @@ A desktop window, but it must stay usable when narrow.
 | 2026-06-03 | `lucide-react` as the icon system + Manager toolbar icon language | Formalize a consistent, scannable icon vocabulary; replace unlabeled text actions (Expand/Collapse all) and unicode carets with tooltip'd lucide icon buttons |
 | 2026-06-03 | Scope switcher = header-left `Select` (not a content sub-bar) | A dedicated toggle row wasted vertical space; a compact dropdown next to the title reclaims it and, by living in the left cluster, keeps the right-side nav stable across routes |
 | 2026-07-17 | App-wide appearance preference | Light, dark, and follow-system choices share one resolved token palette across every WebView and native window; the persisted preference is applied before the main window is shown |
+| 2026-07-31 | Palette shortcuts as one labeled set | Hub toggle, all-resource, skill, and command accelerators use a compact label/input grid with one Save and one Reset action so atomic behavior is visible in the UI |

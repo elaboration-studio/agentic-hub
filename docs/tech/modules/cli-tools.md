@@ -2,14 +2,16 @@
 
 The **Tools** pane in the Resources panel is a *preflight*: before building
 agentic systems, the user confirms the command-line tools their agents rely on
-(Node, Python, Homebrew, git, the GitHub/GitLab CLIs, the agent CLIs, Vercel)
+(Node, Python, Homebrew, git, ripgrep, the GitHub/GitLab CLIs, the agent CLIs, Vercel)
 are installed and — where it matters — authenticated. It is read-only and
 advisory: the hub never installs or signs anything in; it probes and reports,
 and links out to each tool's install page.
 
-This sits beside the skills.sh browser ([skill-sources.md](skill-sources.md)) in
-the same left-rail two-pane Resources view. Tools is **always** available; the
-Skills pane appears only when the skills.sh source is enabled in Config.
+This sits beside the skills.sh browser ([skill-sources.md](skill-sources.md))
+and session explorer ([session-explorer.md](session-explorer.md)) in the
+Resources rail. The rail is ordered **Skills → Tools → Sessions**; Skills is
+the default only when the skills.sh source is enabled in Config, while Tools is
+always available as the default and fallback.
 
 ## Data: a catalog, not code
 
@@ -33,7 +35,7 @@ auth-check one tool:
 `auth` is declared only where a tool has a stable status subcommand
 (`gh auth status`, `glab auth status`, `codex login status`,
 `cursor-agent status`, `vercel whoami`). Tools without it (Node, Python,
-Homebrew, git, Claude Code) simply omit `auth` and report `notApplicable`.
+Homebrew, git, ripgrep, Claude Code) simply omit `auth` and report `notApplicable`.
 
 ### User override (and a deferred remote source)
 

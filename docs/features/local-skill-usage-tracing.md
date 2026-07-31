@@ -94,16 +94,15 @@ repository skill with the same name have separate counts. Statistics retains
 the workspace label and root for historical rows even when that repository is
 not currently selected in Manager.
 
-The **Statistics** tab (beside Config) shows a **resource inventory** section
-(always visible) with total resources, per-kind counts, enabled tools, and
-starred skills. When local usage tracing is enabled, the rest of the page is
-split into sub-tabs — **Overview** (usage overview tiles plus a **today's
-usage** table scoped to the local calendar day, independent of the date
-range filter), **Activity** (daily activity, kind/source-tool/workspace
-charts), **Top usage** (most-used capabilities), and **Unused**
-(installed-but-unused rows) — over the same local trace database. Inactive
-sub-tabs don't render, so opening Statistics only mounts the Overview tab's
-charts and tables. Date range filters default to the last 30 days.
+The **Statistics** tab (beside Config) starts on **Today**, a local-calendar-day
+usage table that is independent of the selected date range. Its tabs are
+**Today**, **Activity** (daily activity, kind/source-tool/workspace charts),
+**Top usage** (usage overview tiles followed by most-used capabilities),
+**Unused** (installed-but-unused rows), and **Inventory** (total resources,
+per-kind counts, enabled tools, and starred skills). Inventory remains available
+when tracing is disabled. Inactive sub-tabs do not render their charts or tables.
+The date range selector appears only on Activity, Top usage, and Unused; it
+defaults to the last 30 days.
 
 ## Acceptance criteria
 
@@ -129,8 +128,9 @@ charts and tables. Date range filters default to the last 30 days.
 - [ ] Statistics date-range filters reload dashboard aggregates without leaving the page.
 - [ ] Statistics shows an enable-tracing prompt when local tracing is disabled.
 - [ ] Statistics shows resource inventory (total resources, per-kind counts, enabled tools, starred skills) regardless of tracing state.
-- [ ] Statistics splits usage content into Overview/Activity/Top usage/Unused sub-tabs; only the active sub-tab's charts and tables render.
-- [ ] Statistics Overview shows a today's-usage table scoped to the local calendar day, independent of the selected date range.
+- [ ] Statistics splits content into Today/Activity/Top usage/Unused/Inventory sub-tabs; only the active tab's charts and tables render.
+- [ ] Statistics opens on Today and shows a today's-usage table scoped to the local calendar day, independent of the selected date range.
+- [ ] Statistics keeps resource inventory accessible in Inventory while tracing is disabled.
 - [ ] Statistics top and today rows show workspace context even if the workspace is not selected.
 
 ## Dependencies
@@ -147,7 +147,7 @@ charts and tables. Date range filters default to the last 30 days.
 | V1 | Local store, collector, config toggle, managed hooks, matrix usage count | Complete useful loop without a new analytics surface |
 | V1.1 | Statistics page with date filters, charts, and drilldown tables | Shipped: overview, recharts, top-used, unused-installed |
 | V1.2 | Collector health checks and recovery | Shipped: authenticated probe, hourly recovery, and restart guidance |
-| V1.3 | Statistics sub-tabs, today's-usage table, tracing on by default | Shipped: Overview/Activity/Top usage/Unused tabs, local-day usage table, opt-out default |
+| V1.3 | Statistics sub-tabs, today's-usage table, tracing on by default | Shipped: Today/Activity/Top usage/Unused/Inventory tabs, local-day usage table, opt-out default |
 | V1.4 | Repository-local and multi-skill attribution | Scoped identity, tool-aware catalogs, once-per-skill-per-turn dedupe, diagnostics, and historical workspace context |
 | V2 | MCP wrapper telemetry and OpenTelemetry export | Broader observability after the local primitive is stable |
 

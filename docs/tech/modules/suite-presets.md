@@ -1,17 +1,17 @@
 # Module: Suite Presets
 
-Status: Draft
+Status: Implemented
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-05-20
+Last Updated: 2026-07-31
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md), [docs/features/suite-presets.md](../../features/suite-presets.md)
 Related Docs: [docs/tech/modules/rule-projection-sync.md](./rule-projection-sync.md), [docs/tech/modules/workspace-inventory.md](./workspace-inventory.md)
 
 ## Overview
 
-The Suite Presets module adds named capability presets to Agentic Hub. A suite is a tool-agnostic list of capability IDs. Applying a suite to a focused tool fully resets that tool's enabled capabilities to match the suite definition, then runs the existing projection pipeline.
+The Suite Presets module adds named capability presets to Agentic Hub. A suite is a tool-agnostic list of capability IDs. Applying a suite to a chosen target tool fully resets that tool's enabled capabilities to match the suite definition, then runs the existing projection pipeline.
 
-The module reuses the existing scan, plan, apply, and rule-sync code. It adds one new core module (`suite_store`), one new Tauri window (`SuiteManagerPanel`), and integration points in the main window.
+The module reuses the existing scan, plan, apply, and rule-sync code. Suite CRUD now lives directly in the Manager's `suite` scope and reuses the same capability table frame as Global and Workspace.
 
 ## Background and problem
 
@@ -39,8 +39,8 @@ The MVP manager enables per-item toggling. This works for small deltas but force
 - Suite data model and types
 - `~/.agentic-suites.json` storage contract (preserved path from VS Code extension)
 - `suite_store` for CRUD and validation
-- Suite Manager Tauri window
-- Main window changes for suite selection and apply
+- Manager rail Suite section and shared-table editor
+- Compatibility navigation aliases for the former Suites route
 - New IPC commands
 - Apply flow that computes a full-reset desired-state map
 
@@ -53,7 +53,7 @@ The MVP manager enables per-item toggling. This works for small deltas but force
 
 | Existing component | What it does | How this module reuses it |
 |---|---|---|
-| `scanner` | Scans shared root, produces `CapabilityItem[]` | Suite Manager reads scan results for the capability checklist; suite apply validates references |
+| `scanner` | Scans shared root, produces `CapabilityItem[]` | Manager Suite scope reads the global scan for the capability checklist; suite apply validates references |
 | `planner::inspect` | Current per-tool state per item | Suite apply calls this before building plan |
 | `planner::build_plan` | Plan ops from desired-state map | Suite apply provides full-coverage desired map |
 | `applier::apply` | Executes operations safely | Suite apply calls this with the generated plan |
@@ -74,21 +74,19 @@ The MVP manager enables per-item toggling. This works for small deltas but force
 
 ```
 +-------------------------------+      +--------------------------------+
-| Suite Manager Window          |      | Main Window (Capability Mgr)   |
-| - List suites                 |      | - Suite selector dropdown      |
-| - Edit / create / delete      |      | - Apply Suite button           |
-+--------------+----------------+      +--------------+-----------------+
-               |                                      |
-               v                                      v
-       +-------+-------+                  +-----------+-----------+
-       |  suite_store  | <--------------- | apply_suite handler   |
-       |  (CRUD,       |                  | (full-reset desired   |
-       |   validate)   |                  |  map -> existing      |
-       +-------+-------+                  |  plan/apply pipeline) |
-               |                          +-----------+-----------+
-               v                                      |
-   ~/.agentic-suites.json                             v
-                                          (existing plan/apply/sync)
+| Manager rail                  |      | CapabilityTable                |
+| Global / Suites / Workspaces  |----->| caller-defined state columns   |
+| suite id selection            |      | Suite: Included tri-state      |
++--------------+----------------+      +---------------+----------------+
+               |                                       |
+               v                                       v
+       +-------+-------+                     +---------+----------+
+       | suites store  |                     | apply_suite handler |
+       | draft + CRUD  |                     | existing pipeline   |
+       +-------+-------+                     +--------------------+
+               |
+               v
+   ~/.agentic-suites.json
 ```
 
 The module adds a storage layer and wires it into the existing pipeline. No new projection logic.
@@ -123,7 +121,7 @@ Suite files sync across machines. Without a source identity, a synced `skill:foo
 - **Match**: a qualified ref resolves only to a scanned item whose `source` matches (by home-relative path, then folder); an unqualified ref matches by bare id alone.
 - **Absent source**: a qualified ref whose source is not present on this machine is *skipped and preserved* — its projection cannot exist locally, so it is never deleted, and it never mis-resolves onto a same-named local capability. Counted as `skipped_absent_source`.
 - **Migration**: `SuiteCapabilityRef` deserializes tolerantly from a legacy bare string (`"skill:dev/tdd"` → `{ cap, source: None }`) and always serializes as an object, so suite files upgrade in place on the next write. Existing suites need no manual migration.
-- **Backfill (in-memory only)**: on apply/update the store qualifies unqualified refs whose bare id resolves to exactly one scanned item (`SuiteStore::backfill_sources`) so matching is source-precise. This upgrade is **never persisted from apply/update** — qualification happens at user-save time in the UI (`src/state/suites.ts`). Persisting it from apply/edit made two synced machines rewrite the file with device-specific source qualifiers at different times; a later `git pull` then line-merged the divergent multi-line `capabilities` arrays into an empty set (suite name survived, resources went empty). As of v0.8.1 apply and palette "Apply suite…" are pure reads of the suites file.
+- **Backfill (in-memory only)**: on apply/update the store qualifies unqualified refs whose bare id resolves to exactly one scanned item (`SuiteStore::backfill_sources`) so matching is source-precise. This upgrade is **never persisted from apply/update** — the UI draft preserves existing refs and records a live item's source when the user explicitly selects it, then Save persists that source-aware draft (`src/state/suites.ts`). Persisting backfill from apply/edit made two synced machines rewrite the file with device-specific source qualifiers at different times; a later `git pull` then line-merged the divergent multi-line `capabilities` arrays into an empty set (suite name survived, resources went empty). As of v0.8.1 apply and palette "Apply suite…" are pure reads of the suites file.
 
 Adding or reordering sources never changes a suite's bare IDs. A present-source (or unqualified) ref that matches no scanned item is reported as stale (see stale reconciliation below).
 
@@ -133,7 +131,7 @@ Exactly one suite may be marked **base** (`is_base: true`). Its capabilities are
 
 - **Single-base invariant**: setting one suite base clears the flag on every other. `SuiteStore::set_base(Some(id))` (or `update` with `is_base: Some(true)`) funnels through this rule; `set_base(None)` clears all.
 - **Merge semantics**: `api::merge_base_caps(selected, base)` clones the selected suite and appends the base's capabilities, deduped by `(cap, source)`. It keeps the **selected** suite's identity, so `ApplySuiteResult.suite` and the recorded binding still point at the explicitly chosen suite — the base is invisible to binding bookkeeping. A `None` base, or a base whose id equals the selected suite, is a no-op.
-- **Where it merges**: every global apply path — the Suites page apply, the palette suite apply, and bound-tool re-syncs — applies the merged "effective" suite. `apply_suite` itself takes the already-merged suite; it does not know about the base.
+- **Where it merges**: every global apply path — the Manager Suites scope apply, the palette suite apply, and bound-tool re-syncs — applies the merged "effective" suite. `apply_suite` itself takes the already-merged suite; it does not know about the base.
 - **Re-sync on base change**: setting/unsetting/editing the base re-applies **every** bound tool (each tool's own selected suite re-merged with the new base). Editing a normal suite re-applies only the tools bound to it (still base-merged).
 
 ### Dotfile contract
@@ -182,10 +180,11 @@ Conventions:
 | Component | Responsibility |
 |-----------|----------------|
 | `suite_store` (Rust) | CRUD on `~/.agentic-suites.json`; atomic write; UUID generation; uniqueness check; validation against scan |
-| `SuiteManagerPanel` (React) | List + editor UI; reads scan data for checklist; sends CRUD IPC |
-| `CapabilityManagerPanel` (React, updated) | Suite selector dropdown; "Apply Suite" button; full-reset desired-map computation |
+| `ScopeRail` (React) | Global, suite creation/selection, and workspace navigation; Create from current tool prompt |
+| `CapabilityTable` (React) | Shared toolbar, filters, flat/tree hierarchy, capability/source/usage columns, row actions, and caller state columns |
+| `SuitesPage` (React) | Suite draft fields/actions and Included column wiring; source-aware missing-reference warning/removal |
 | `apply_suite` (Rust command handler) | Orchestrates scan + plan + apply + rule_sync with full-reset map |
-| Tauri event `suite-store-changed` | Notifies main window when Suite Manager mutates the store |
+| Tauri event `suite-store-changed` | Notifies the Manager rail when suite storage changes |
 
 ## Rust API
 
@@ -297,9 +296,9 @@ async fn apply_suite(tool_id: ToolId, suite_id: String) -> Result<ApplySuiteResu
 
 The key insight: `desired` is built for **every** scanned item, not just those in the suite. Items not in the suite get `false`. This produces a full reset through the existing pipeline.
 
-## Cross-window coordination
+## Store and navigation coordination
 
-When Suite Manager creates / edits / deletes a suite, it emits a global Tauri event:
+When Manager Suite scope creates, edits, or deletes a suite, it emits a global Tauri event:
 
 ```rust
 window.emit_all("suite-store-changed", &SuiteStoreChangedEvent {
@@ -308,7 +307,12 @@ window.emit_all("suite-store-changed", &SuiteStoreChangedEvent {
 })?;
 ```
 
-The main window listens for this event and refreshes its suite dropdown. The Suite Manager window does the same to handle the edge case of two Suite Manager windows open at once (unlikely but cheap to handle).
+The Manager rail listens for this event and reloads the suite list. Entering
+Suite scope first ensures the editable global scan is loaded, so a transition
+from Workspace never renders or saves against read-only workspace inventory.
+`#/suites` remains accepted and resolves to the Manager route with
+`scope = suite`; the palette's Open Suites command continues emitting that
+compatibility route.
 
 ## Failure modes
 
@@ -339,19 +343,21 @@ The main window listens for this event and refreshes its suite dropdown. The Sui
 - Full reset: pre-existing enabled items get disabled; suite items get enabled
 - Markdown section sync runs correctly after suite apply
 - Stale references produce correct skip count
-- Cross-window event broadcast verified via Tauri test harness (or per-window subscribe + emit-and-poll)
+- Suite-store event broadcast verified via the Tauri event boundary
 
 ## Implementation roadmap
 
 | Phase | Deliverable |
 |-------|-------------|
 | Phase 1 | Types + `suite_store` (CRUD + validation) with unit tests |
-| Phase 2 | Suite Manager window (list, editor, create/edit/delete) + IPC commands |
-| Phase 3 | Main window integration (selector, apply button, confirmation, full-reset apply flow) |
+| Phase 2 | Manager Suite scope (rail, shared-table editor, create/edit/delete) + IPC commands |
+| Phase 3 | Suite action bar (tool selector, apply button, confirmation, full-reset apply flow) |
 | Phase 4 | Polish: stale warnings, skipped-stale count in result, "Create from current" shortcut |
 
 ## Open questions
 
 - Should suite IDs be UUIDs or slugified names? Decision: UUIDs (stable under rename, matches VS Code extension behavior)
-- Should the Suite Manager share the main window's scan cache or run its own scan? Decision: run its own scan on open; scans are fast enough and isolation is simpler
+- Should Suite scope run a separate scan? Decision: no; it explicitly restores
+  the Manager's global scan before entering Suite scope and reuses that typed
+  inventory.
 - Should we eventually add a "duplicate suite" affordance? Yes, in Phase 4 polish — single button in the editor

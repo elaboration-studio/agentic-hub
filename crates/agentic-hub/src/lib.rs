@@ -12,13 +12,14 @@ mod main_window;
 mod menu;
 mod palette;
 mod paste;
+mod suite_recovery;
 mod telemetry;
 mod usage_attribution;
 mod usage_catalog;
 mod usage_collector;
 mod watcher;
 
-use agentic_core::settings::{default_palette_shortcut, Settings};
+use agentic_core::settings::Settings;
 use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_global_shortcut::ShortcutState;
@@ -67,17 +68,18 @@ pub fn run() {
         // every call is gated on `TelemetryState`, so nothing leaves the machine
         // while disabled.
         .plugin(tauri_plugin_aptabase::Builder::new(telemetry::APTABASE_KEY).build())
-        // Global summon accelerator for the command palette. The handler fires
-        // for any registered shortcut; we only ever register the palette one.
+        // Global palette accelerators share one handler. The registered mapping
+        // decides whether a key toggles the hub or focuses a direct search mode.
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        palette::toggle_palette(app);
+                        palette::handle_shortcut_press(app, shortcut);
                     }
                 })
                 .build(),
         )
+        .manage(palette::PaletteShortcutState::default())
         .manage(WatcherState::default())
         .manage(TelemetryState::default())
         .manage(UsageCollectorState::default())
@@ -135,10 +137,8 @@ pub fn run() {
             // instant, then register the configured global accelerator. A bad
             // saved accelerator falls back to the default so summon never breaks.
             let _ = palette::setup_palette(app.handle());
-            if palette::register_palette_shortcut(app.handle(), &settings.palette_shortcut).is_err()
-            {
-                let _ =
-                    palette::register_palette_shortcut(app.handle(), &default_palette_shortcut());
+            if palette::register_palette_shortcuts(app.handle(), &settings).is_err() {
+                let _ = palette::register_palette_shortcuts(app.handle(), &Settings::default());
             }
             main_window::restore_main_window(app.handle(), &settings);
             Ok(())
@@ -195,6 +195,7 @@ pub fn run() {
             commands::cmd_save_settings,
             commands::cmd_set_watcher_enabled,
             commands::cmd_toggle_palette,
+            commands::cmd_take_palette_launch_mode,
             commands::cmd_show_main,
             commands::cmd_rescan_resync,
             commands::cmd_scan,
@@ -229,6 +230,7 @@ pub fn run() {
             commands::cmd_suite_apply_preview,
             commands::cmd_set_base_suite,
             commands::cmd_suite_ownership,
+            commands::cmd_resync_suite_binding,
             commands::cmd_pick_workspace_dir,
             commands::cmd_list_workspace_targets,
             commands::cmd_remove_workspace_target,

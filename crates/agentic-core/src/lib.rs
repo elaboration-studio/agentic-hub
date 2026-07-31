@@ -29,11 +29,13 @@ pub mod scaffold;
 pub mod scanner;
 pub mod sessions;
 pub mod settings;
+mod settings_shortcuts;
 pub mod shell_env;
 pub mod skill_favorites;
 pub mod skill_lock;
 pub mod skill_source;
 pub mod source_skill_lock;
+pub mod suite_binding_recovery;
 pub mod suite_binding_store;
 pub mod suite_store;
 pub mod usage_store;
@@ -74,8 +76,8 @@ pub use sessions::{
     SessionRole, SessionSummary,
 };
 pub use settings::{
-    ColorScheme, Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings,
-    UsageTracingConfig,
+    ColorScheme, PaletteLaunchMode, PaletteQuickSearchShortcuts, Settings, SkillsConfig,
+    SourceConfig, ToolSettings, ToolsSettings, UsageTracingConfig,
 };
 pub use skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
 pub use skill_lock::{parse_local_lock, read_local_lock, LocalSkillLock, LockedSkillEntry};
@@ -83,6 +85,7 @@ pub use skill_source::{
     provider_for, SkillCliStatus, SkillInstallResult, SkillProvider, SkillSearchHit,
     SkillsShProvider,
 };
+pub use suite_binding_recovery::resync_suite_binding;
 pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 pub use usage_store::{

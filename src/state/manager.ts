@@ -15,6 +15,7 @@ import {
   scan,
   scanInstalledTools,
   scanWorkspace,
+  resyncSuiteBinding,
   setWatcherEnabled,
   suiteOwnership,
   syncHooks,
@@ -45,6 +46,7 @@ import {
 export type Status = "loading" | "ready" | "error";
 
 export interface OwnershipInfo {
+  suiteId: string;
   suiteName: string;
   fromBase: boolean;
 }
@@ -111,6 +113,8 @@ interface ManagerState {
   setWatching: (watching: boolean) => void;
   toggle: (tool: ToolId, itemId: string) => void;
   toggleMany: (tool: ToolId, itemIds: string[], value: boolean) => void;
+  stageStaleRefresh: (tool: ToolId, itemId: string) => void;
+  resyncStaleBinding: (tool: ToolId) => Promise<void>;
   resetDesired: () => void;
   setProgress: (p: { done: number; total: number } | null) => void;
   requestApply: () => void;
@@ -186,7 +190,11 @@ async function loadOwnership(): Promise<Map<string, OwnershipInfo>> {
   const map = new Map<string, OwnershipInfo>();
   try {
     for (const o of await suiteOwnership()) {
-      map.set(key(o.tool, o.itemId), { suiteName: o.suiteName, fromBase: o.fromBase });
+      map.set(key(o.tool, o.itemId), {
+        suiteId: o.suiteId,
+        suiteName: o.suiteName,
+        fromBase: o.fromBase,
+      });
     }
   } catch {
     // Leave empty — cells stay editable.
@@ -409,6 +417,60 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       if (currentMap.has(k) && !ownership.has(k)) next[k] = value;
     }
     set({ desired: next, pendingKeys: computePending(next, currentMap) });
+  },
+
+  stageStaleRefresh: (tool, itemId) => {
+    const { currentMap, desired, ownership, readOnly, readOnlyItemIds } = get();
+    if (readOnly || readOnlyItemIds.has(itemId)) return;
+    const k = key(tool, itemId);
+    if (ownership.has(k) || currentMap.get(k)?.state !== "stale") return;
+    const nextDesired = { ...desired, [k]: true };
+    set({ desired: nextDesired, pendingKeys: computePending(nextDesired, currentMap) });
+  },
+
+  resyncStaleBinding: async (tool) => {
+    const staged = new Map(
+      get().pendingKeys.map((pendingKey) => [pendingKey, get().desired[pendingKey]]),
+    );
+    try {
+      const result = await resyncSuiteBinding(tool);
+      await get().refresh();
+      const refreshed = get();
+      const desired = { ...refreshed.desired };
+      for (const [pendingKey, value] of staged) {
+        if (refreshed.currentMap.has(pendingKey)) desired[pendingKey] = value;
+      }
+      set({ desired, pendingKeys: computePending(desired, refreshed.currentMap) });
+
+      const label = refreshed.tools.find((candidate) => candidate.id === tool)?.label ?? tool;
+      const errorCount =
+        result.applyResult.errors.length +
+        result.ruleSync.errors.length +
+        result.hookSync.errors.length;
+      const changed =
+        result.applyResult.created +
+        result.applyResult.removed +
+        result.applyResult.replaced +
+        result.applyResult.refreshed;
+      if (errorCount > 0 && changed === 0) {
+        toast.error(
+          `Suite binding re-sync failed for ${label} with ${errorCount} ${errorCount === 1 ? "error" : "errors"}.`,
+        );
+      } else if (errorCount > 0) {
+        toast.warning(
+          `Suite binding partially re-synced for ${label} with ${errorCount} ${errorCount === 1 ? "error" : "errors"}.`,
+        );
+      } else if (result.skippedStale + result.skippedAbsentSource > 0) {
+        const skipped = result.skippedStale + result.skippedAbsentSource;
+        toast.warning(
+          `Suite binding re-synced for ${label} with ${skipped} skipped ${skipped === 1 ? "reference" : "references"}.`,
+        );
+      } else {
+        toast.success(`Suite binding re-synced for ${label}.`);
+      }
+    } catch (error) {
+      toast.error(messageOf(error));
+    }
   },
 
   resetDesired: () => {

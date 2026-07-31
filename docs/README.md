@@ -26,6 +26,7 @@ product is, where it's going, and why.
 
 User-facing feature designs aligned with each milestone.
 
+- [v0-16-experience-and-recovery.md](features/v0-16-experience-and-recovery.md) — Essential 0.16.0 brief for guided stale recovery, unified suites, Today-first Statistics, resource polish, and direct palette shortcuts
 - [mvp-unified-agentic-capability-manager.md](features/mvp-unified-agentic-capability-manager.md) — the core MVP feature: scan / inspect / stage / apply
 - [hooks-projection.md](features/hooks-projection.md) — the `hook` capability kind projected into each tool's hooks config via `json_section`
 - [commands.md](features/commands.md) — the `command` capability kind (slash-command prompts) projected into each tool's commands dir; palette copy / open
@@ -86,6 +87,7 @@ Day-to-day development reference.
 
 Time-boxed plans that coordinate multi-doc or multi-module change.
 
+- [2026-07-31-v0-16-experience-and-recovery.md](plans/2026-07-31-v0-16-experience-and-recovery.md) — approved task-by-task implementation and release plan for 0.16.0
 - [vscode-extension-feature-migration_2026-05-31.plan.md](plans/vscode-extension-feature-migration_2026-05-31.plan.md) — port hooks, multi-source roots, and `__archived__` scan exclusion from the VS Code extension (`0.3.0`–`0.5.0`) into the hub
 
 ## How to read this

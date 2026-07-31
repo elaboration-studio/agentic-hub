@@ -4,8 +4,9 @@
 
 import { History, Sparkles, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RESOURCE_PANES, type ResourcePane } from "./resourcePanes";
 
-export type ResourcePane = "tools" | "skills" | "sessions";
+export type { ResourcePane } from "./resourcePanes";
 
 interface ResourcesRailProps {
   pane: ResourcePane;
@@ -20,33 +21,61 @@ export function ResourcesRail(props: ResourcesRailProps) {
         Resources
       </span>
       <ul className="flex flex-col gap-1.5">
-        <RailItem
-          active={props.pane === "tools"}
-          onClick={() => props.onSelect("tools")}
-          icon={<Wrench className="size-4 shrink-0 text-muted-foreground" />}
-          title="Tools"
-          subtitle="CLI preflight"
-        />
-        {props.skillsEnabled && (
-          <RailItem
-            active={props.pane === "skills"}
-            onClick={() => props.onSelect("skills")}
-            icon={<Sparkles className="size-4 shrink-0 text-muted-foreground" />}
-            title="Skills"
-            subtitle="skills.sh"
+        {RESOURCE_PANES.filter(
+          (pane) => pane !== "skills" || props.skillsEnabled,
+        ).map((pane) => (
+          <ResourceRailItem
+            key={pane}
+            pane={pane}
+            active={props.pane === pane}
+            onSelect={props.onSelect}
           />
-        )}
-        <RailItem
-          active={props.pane === "sessions"}
-          onClick={() => props.onSelect("sessions")}
-          icon={<History className="size-4 shrink-0 text-muted-foreground" />}
-          title="Sessions"
-          subtitle="Codex, Claude, Cursor"
-        />
+        ))}
       </ul>
     </aside>
   );
 }
+
+interface ResourceRailItemProps {
+  pane: ResourcePane;
+  active: boolean;
+  onSelect: (pane: ResourcePane) => void;
+}
+
+function ResourceRailItem(props: ResourceRailItemProps) {
+  const item = resourceRailItems[props.pane];
+
+  return (
+    <RailItem
+      active={props.active}
+      onClick={() => props.onSelect(props.pane)}
+      icon={item.icon}
+      title={item.title}
+      subtitle={item.subtitle}
+    />
+  );
+}
+
+const resourceRailItems: Record<
+  ResourcePane,
+  { icon: React.ReactNode; title: string; subtitle: string }
+> = {
+  skills: {
+    icon: <Sparkles className="size-4 shrink-0 text-muted-foreground" />,
+    title: "Skills",
+    subtitle: "skills.sh",
+  },
+  tools: {
+    icon: <Wrench className="size-4 shrink-0 text-muted-foreground" />,
+    title: "Tools",
+    subtitle: "CLI preflight",
+  },
+  sessions: {
+    icon: <History className="size-4 shrink-0 text-muted-foreground" />,
+    title: "Sessions",
+    subtitle: "Codex, Claude, Cursor",
+  },
+};
 
 interface RailItemProps {
   active: boolean;

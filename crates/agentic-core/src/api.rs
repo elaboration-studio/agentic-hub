@@ -380,8 +380,8 @@ pub fn apply_suite(
     // Suite apply is a non-destructive full reset; never take over real files.
     let ops = planner::build_plan(&items, &adapter, &desired, false);
     let apply_result = applier::apply(&ops, |_, _, _, _| {});
-    let _ = sync_rules(&items, settings, tool, &desired);
-    let _ = sync_hooks(&items, settings, tool, &desired);
+    let rule_sync = sync_rules(&items, settings, tool, &desired);
+    let hook_sync = sync_hooks(&items, settings, tool, &desired);
 
     let local = settings.resolve_sources();
     let mut skipped_stale = 0u32;
@@ -406,6 +406,8 @@ pub fn apply_suite(
 
     ApplySuiteResult {
         apply_result,
+        rule_sync,
+        hook_sync,
         skipped_stale,
         skipped_absent_source,
         suite: suite.clone(),
@@ -665,6 +667,68 @@ mod tests {
             .map(|s| s.item_id.as_str())
             .collect();
         assert_eq!(enabled, vec!["skill:keep"]);
+    }
+
+    #[test]
+    fn apply_suite_surfaces_managed_copy_apply_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/blocked/SKILL.md"), "# blocked");
+        let blocker = tools.path().join("not-a-directory");
+        write(&blocker, "file");
+        let mut settings = Settings::sandboxed(root.path(), tools.path());
+        settings.tools.claude.skills_path = blocker.join("skills");
+        let scanned = scan(&settings);
+
+        let result = apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Claude,
+            &suite("blocked", &["skill:blocked"]),
+            &[],
+        );
+
+        assert_eq!(result.apply_result.errors.len(), 1);
+        assert!(result.rule_sync.errors.is_empty());
+        assert!(result.hook_sync.errors.is_empty());
+    }
+
+    #[test]
+    fn apply_suite_surfaces_rule_and_hook_sync_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("rules/team.md"), "# rule");
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{ "id": "fmt", "command": "run", "events": [{"name":"Stop"}] }"#,
+        );
+        let mut settings = Settings::sandboxed(root.path(), tools.path());
+        let instructions = tools.path().join("codex-instructions");
+        fs::create_dir_all(&instructions).unwrap();
+        settings.tools.codex.instructions_path = Some(instructions);
+        settings.tools.cursor.hooks_enabled = true;
+        let hooks_file = tools.path().join("cursor-hooks");
+        fs::create_dir_all(&hooks_file).unwrap();
+        settings.tools.cursor.hooks_file = Some(hooks_file);
+        let scanned = scan(&settings);
+
+        let rule_result = apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Codex,
+            &suite("rule", &["rule:team.md"]),
+            &[],
+        );
+        let hook_result = apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Cursor,
+            &suite("hook", &["hook:fmt"]),
+            &[],
+        );
+
+        assert_eq!(rule_result.rule_sync.errors.len(), 1);
+        assert_eq!(hook_result.hook_sync.errors.len(), 1);
     }
 
     /// Item ids currently `Enabled` for one tool, sorted for stable asserts.

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "palette",
-  "description": "Command palette window. Core defaults plus its own window show/hide/focus/set-size (auto-fits the floating panel to its content) and cross-window event emit/listen for navigation. Custom app commands (cmd_*) are cross-window and need no plugin permission.",
+  "description": "Command palette window. Core defaults plus its own window show/hide/focus/set-size (auto-fits the floating panel to its content), cross-window event emit/listen for navigation, and typed local commands including one-shot launch-mode consumption. Custom app commands (cmd_*) are cross-window and need no plugin permission.",
   "windows": ["palette"],
   "permissions": [
     "core:default",

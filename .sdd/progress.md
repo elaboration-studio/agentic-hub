@@ -1,0 +1,43 @@
+# 0.16.0 SDD progress
+
+- Task 1: complete (commits f64b146..ddf7df5, review clean) — Shared Manager table and Suite scope
+  - Preserved source-qualified missing refs across same-ID source collisions.
+  - Centralized Workspace → Suite entry so global data loads before Suite scope; cancelled workspace picks keep the current scope.
+  - Reused validated capability row actions in Suite scope and restored aggregate/accessibility behavior.
+  - Review verification: focused RED regressions confirmed, then `pnpm test` (21 files, 209 tests), `pnpm build`, and `git diff --check` passed; final review `Spec: PASS`, `Quality: APPROVED`.
+- Task 2: complete (commits e2ccc91..9e19b47, review clean) — Guided stale-copy recovery
+  - Unowned stale projections stage a source refresh through the normal ActionBar Apply path.
+  - Suite-owned stale projections re-sync the live selected suite, current base, and persisted/live manual extras without changing the binding.
+  - Added typed missing-binding/missing-suite errors, preserved frontend `suiteId`, and replaced stale dots with accessible recovery menus plus validated source/target fallbacks.
+  - Review hardening: `ApplySuiteResult` now reports projection, rule-sync, and hook-sync failures; recovery preserves prior bindings/manual extras on partial results; unrelated Manager staging survives re-sync refresh; all suite write paths share one process-wide projection transaction; warning control uses the semantic warning token and project Tooltip.
+  - Recovery completion semantics: every completed locked attempt emits `sources-changed`, including a successful projection followed by binding persistence failure, while preserving the original typed error.
+  - RED evidence: new core result-field tests initially failed to compile, the recovery failure regression dropped `skill:recorded`, Manager regressions lost the staged key / emitted no partial-warning toast, and the persistence-failure refresh regression initially had no command orchestration seam.
+  - GREEN verification: `pnpm gen:types`; focused core recovery/error tests (2), shell recovery/transaction tests (6), and Manager/apply tests (37); `pnpm test` (22 files, 231 tests); `pnpm build`; core + shell tests; Task 2 Rust edits formatted (unrelated repo-wide formatter drift reverted); targeted all-feature Clippy; and `git diff --check`.
+  - Final review: `Spec: PASS`, `Quality: APPROVED`; no remaining findings.
+- Task 3: complete (commits c1d1171..07a8d9b, review clean) — Today-first Statistics
+  - Statistics now opens on Today with a local-calendar-day table independent of the range.
+  - Activity, Top usage, and Unused alone expose the date selector; Usage overview moved above Most used and Inventory remains available with tracing disabled.
+  - Review hardening: `DEFAULT_STATISTICS_TAB` is the typed contract shared by the component and focused navigation test; JSX formatting normalized.
+  - Focused RED/GREEN Vitest coverage, production build, full frontend suite (232 tests), and diff check completed; final review `Spec: PASS`, `Quality: APPROVED`.
+- Task 4: complete (commits bfa89c4..7600afa, review clean) — Resources order and ripgrep catalog
+  - Resources now orders its rail Skills → Tools → Sessions, selects Skills only when skills.sh is enabled, and safely falls back to Tools if Skills is disabled while selected.
+  - Added the data-only `ripgrep` catalog entry with the fixed `rg --version` probe, no authentication check, and the official installation URL.
+  - RED evidence: the pane test could not import its missing behavior module, and the catalog regression failed because ripgrep was absent. GREEN verification: focused Vitest (236 tests), `pnpm build`, `cargo test -p agentic-core` (371 passed, 4 ignored), targeted all-feature Clippy, Rust formatting check, and `git diff --check` passed.
+  - Review hardening: when Resources opens before Manager settings load, the first known skills.sh state now selects the correct default without replacing an explicit user pane selection; disabled Skills still falls back to Tools. Regression coverage (239 frontend tests), build, and diff check pass.
+  - Final review: `Spec: PASS`, `Quality: APPROVED`; no remaining findings.
+- Task 5: complete (commits 0b2d59c..7aaea9b, review clean) — Transactional direct palette shortcuts
+  - Added generated quick-search shortcut and one-shot launch-mode contracts with legacy defaults for all resources, skills, and commands.
+  - All four accelerators are parsed and deduplicated before persistence; partial OS registration or settings-write failure restores the prior complete working set.
+  - Hub shortcut keeps toggle behavior, while direct shortcuts always show/focus and consume their launch mode on palette focus. Latest-load guards prevent a slower mount load from resetting a direct search.
+  - Config exposes four labeled fields with atomic Save and Reset-default-set actions; existing in-palette Ctrl+1…7 mode shortcuts remain unchanged.
+  - RED evidence: generated fields/contracts were absent, rollback helpers did not exist, direct store loads stayed at root, and an older mount load reset a newer direct launch. GREEN verification: 243 frontend tests, production build, 375 core tests (4 ignored), 77 shell tests, targeted Rust format, all-feature Clippy, type generation, and diff check passed.
+  - Review hardening: extracted `PaletteQuickSearchShortcuts`, `PaletteLaunchMode`, `PaletteShortcutValidationError`, and the validation/default helpers out of `settings.rs` into a dedicated `settings_shortcuts.rs` module (settings.rs re-exports them); `validate_palette_shortcuts` now takes explicit `(hub, quick)` params instead of `&Settings`. `cargo test --workspace` (375+77 passed), targeted Clippy, and Rust format check on touched files all clean.
+  - Final review: `Spec: PASS`, `Quality: APPROVED`; no remaining findings. Manual cross-app shortcut smoke remains in Task 6.
+- Task 6: complete — Release integration and verification
+  - Bumped `package.json`, both crate `Cargo.toml`s, and `tauri.conf.json` from 0.15.2 to 0.16.0; regenerated `Cargo.lock` via `cargo check`.
+  - Wrote `CHANGELOG.md` `[0.16.0]` entries and replaced `RELEASE.md`'s current-release section for all five shipped feature areas (stale recovery, suites-in-Manager, Today-first Statistics, resources order + ripgrep, direct palette shortcuts).
+  - Marked `docs/features/v0-16-experience-and-recovery.md` Shipped; added six rows to `docs/product/features.md`'s registry across the Core projection engine, Suites, Command palette, and Platform & distribution tables.
+  - Corrected stale pre-merge `DESIGN.md` passages describing the old standalone two-pane Suites route (nav tabs, scope control, layout grid, breakpoints) to match the shipped Manager scope rail.
+  - Checked `docs/product/backlog.md`: no Now/Next/Later item maps to these six features, so nothing to graduate or remove. `docs/product/roadmap.md` is stale independent of this release (stuck at 0.8.0, missing 0.7.0–0.15.x) — flagged as a pre-existing gap, not touched.
+  - GREEN verification: `pnpm gen:types` (no generated-type drift), `pnpm test` (243 passed), `pnpm build`, `cargo test --workspace` (375 core + 77 shell passed), targeted Rust format check and Clippy on touched files, `git diff --check`.
+  - Manual cross-app OS-level shortcut smoke testing (and other native desktop interaction) was not performed — global shortcuts only register inside the compiled Tauri binary, which this environment cannot drive interactively. Deferred to the user before tagging the release.

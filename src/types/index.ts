@@ -37,6 +37,8 @@ export type { UpdateTarget } from "./generated/UpdateTarget";
 export type { InstalledToolInventory } from "./generated/InstalledToolInventory";
 export type { IpcError } from "./generated/IpcError";
 export type { LinkState } from "./generated/LinkState";
+export type { PaletteLaunchMode } from "./generated/PaletteLaunchMode";
+export type { PaletteQuickSearchShortcuts } from "./generated/PaletteQuickSearchShortcuts";
 export type { ContentTransform } from "./generated/ContentTransform";
 export type { OperationKind } from "./generated/OperationKind";
 export type { PlannedOperation } from "./generated/PlannedOperation";

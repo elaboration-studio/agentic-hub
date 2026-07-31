@@ -44,6 +44,7 @@ Common error codes:
 | `tool_disabled` | A tool is disabled in settings |
 | `tool_unsupported_in_scope` | E.g. OpenClaw in workspace scope |
 | `suite_not_found` | A suite id does not exist in the store |
+| `suite_binding_not_found` | A requested tool has no live suite binding to re-sync |
 | `suite_name_collision` | A suite name is already in use |
 | `workspace_not_found` | A workspace target id does not exist in the store |
 | `rule_sync_malformed_markers` | Instruction file has malformed managed-block markers |
@@ -56,8 +57,8 @@ Common error codes:
 | `open_failed` | The opener plugin could not open the path |
 | `reveal_failed` | The opener plugin could not reveal the path |
 | `session_source_unavailable` | A session's source file was missing or unreadable on a `cmd_get_session` detail read |
-| `invalid_shortcut` | The palette accelerator string in settings is malformed |
-| `shortcut_register_failed` | The global palette shortcut could not be registered with the OS |
+| `invalid_shortcut` | A palette accelerator is malformed or duplicates another configured accelerator |
+| `shortcut_register_failed` | The complete global palette shortcut set could not be registered with the OS |
 | `invalid_skill_ref` | A skill install reference failed `owner/repo` validation |
 | `unknown_provider` | A skill source provider id is not registered |
 | `skill_search` | A skill source search request failed (network / non-200 / malformed) |
@@ -73,7 +74,7 @@ Reads `~/.agentic-hub/config.json` and returns the parsed settings. If the file 
 
 ### `cmd_save_settings(settings: Settings) -> ()`
 
-Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed; `paletteShortcut` passes `is_valid_shortcut` (`invalid_shortcut` otherwise). Re-subscribes the source watcher to the current roots when it is running, then re-registers the global palette accelerator (`shortcut_register_failed` if the OS rejects it).
+Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed; and all four palette accelerators being parseable and unique (`invalid_shortcut` otherwise). The OS registrations are replaced before persistence; any failed registration restores the prior complete set and leaves settings unchanged. A failed settings write likewise restores the prior registrations. After commit, the command re-subscribes the source watcher to the current roots when it is running.
 
 The untrusted WebView does not own every persisted field. The command preserves
 the on-disk CLI-tools override and color-scheme preference, which have dedicated
@@ -94,6 +95,10 @@ Persists `settings.watcherEnabled` and starts or stops the source watcher immedi
 
 Show (and focus) or hide the floating command-palette window. Bound to the global accelerator (handled in Rust) and the View > Command Palette menu item; also callable from the UI.
 
+### `cmd_take_palette_launch_mode() -> PaletteLaunchMode`
+
+Consumes the one-shot destination requested by a direct global shortcut and resets it to `hub`. The palette calls this on focus before reloading, so mount/focus event ordering cannot erase an `allResources`, `skills`, or `commands` request.
+
 ### `cmd_show_main() -> ()`
 
 Show + focus the main window and hide the palette. Used by palette navigation commands that route back into the main window (paired with the `hub-navigate` event).
@@ -113,8 +118,17 @@ type Settings = {
   editor: EditorPref;             // preferred editor for "open original"
   colorScheme: ColorScheme;       // 'system' | 'light' | 'dark'
   paletteShortcut: string;        // global accelerator, e.g. "Cmd+Alt+A"
+  paletteQuickSearchShortcuts: PaletteQuickSearchShortcuts;
   tools: ToolsSettings;
 };
+
+type PaletteQuickSearchShortcuts = {
+  allResources: string;           // default "Cmd+Alt+Ctrl+A"
+  skills: string;                 // default "Cmd+Alt+Ctrl+S"
+  commands: string;               // default "Cmd+Alt+Ctrl+C"
+};
+
+type PaletteLaunchMode = 'hub' | 'allResources' | 'skills' | 'commands';
 
 type ColorScheme = 'system' | 'light' | 'dark';
 
@@ -336,8 +350,9 @@ type SuiteUpdateInput = {
 
 Side effect: after the update, the affected bound tools are re-applied as a
 full reset (base-merged) so projections track the new set, serialized against
-the watcher via the reconcile guard. A **normal** suite re-syncs only its bound
-tools; the **base** suite re-syncs **every** binding. Emits `sources-changed`
+the watcher and other suite writes via the shared projection transaction guard.
+A **normal** suite re-syncs only its bound tools; the **base** suite re-syncs
+**every** binding. Emits `sources-changed`
 when any tool was re-applied. Also opportunistically qualifies unqualified refs
 against the live scan and persists the upgrade (source backfill).
 
@@ -357,16 +372,24 @@ type ApplySuiteInput = {
 
 type ApplySuiteResult = {
   applyResult: ApplyResult;
+  ruleSync: SyncRulesResult;
+  hookSync: SyncHooksResult;
   skippedStale: number;          // present-source/unqualified refs with no match
   skippedAbsentSource: number;   // qualified refs whose source isn't on this machine (preserved)
   suite: { id: string; name: string };
 };
 ```
 
+`pnpm gen:types` remains the only supported way to update these bindings. Its
+final fixed-path hygiene step normalizes trailing whitespace in
+`src/types/generated/*.ts` with Node built-ins, so repeated ts-rs exports stay
+diff-clean without adding a formatter dependency or accepting an untrusted
+path.
+
 Side effect: records a suite<->tool binding (`record(toolId, suiteId, manualItemIds)`,
 upsert per tool) so a later `cmd_update_suite` re-syncs this tool with the stored
 manual set, and backfills unqualified refs against the live scan. Both the
-palette suite-apply flow and the Suites page flow through here. When tracked
+palette suite-apply flow and the Manager Suites scope flow through here. When tracked
 manual extras exist outside the effective suite (base + selected), the UI
 calls `cmd_suite_apply_preview` first and prompts the user to fully override or
 keep manually added items before apply.
@@ -402,6 +425,27 @@ type SuiteOwnership = {
 ```
 
 Bound-suite ownership wins when an item is in both the bound suite and the base.
+
+### `cmd_resync_suite_binding(toolId: ToolId) -> ApplySuiteResult`
+
+Re-applies the tool's actual live binding as `selected suite ∪ current base ∪
+manual extras` through the existing non-force suite pipeline. Persisted manual
+extras are unioned with currently enabled extras, so drift recovery cannot drop
+either set. The command returns projection, rule-sync, and hook-sync failures in
+`ApplySuiteResult`, allowing the Manager to distinguish success, partial
+success, and failure. It refreshes the stored manual set only after all three
+write phases succeed; a partial result leaves the prior binding unchanged. The
+shared projection transaction guard covers binding read through conditional
+record so separate windows cannot interleave recovery with suite apply or
+mutation re-sync. The command emits `sources-changed` after any completed
+locked attempt, including when projection or sync writes succeeded but binding
+persistence then returned a typed error. Emission does not mask that error: the
+original `IpcError` still reaches the caller. Settings-load failures occur
+before a recovery attempt and therefore do not emit.
+
+Errors are typed: `suite_binding_not_found` when the tool has no binding and
+`suite_not_found` when the binding's selected suite no longer exists. Neither
+case changes the binding or any projection.
 
 ## Workspace commands
 

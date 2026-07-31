@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::{CoreError, Result};
 use crate::model::{SourceRef, ToolId};
 use crate::paths::{expand_tilde, home_dir, tildify};
+pub use crate::settings_shortcuts::{
+    default_palette_shortcut, is_valid_shortcut, validate_palette_shortcuts, PaletteLaunchMode,
+    PaletteQuickSearchShortcuts, PaletteShortcutValidationError,
+};
 
 /// A capability source: an ordered, priority-bearing shared root. See
 /// `docs/tech/modules/multi-source-roots.md`.
@@ -370,6 +374,9 @@ pub struct Settings {
     /// `Cmd+Alt+A`.
     #[serde(default = "default_palette_shortcut")]
     pub palette_shortcut: String,
+    /// Direct search accelerators. Legacy settings receive the stable defaults.
+    #[serde(default)]
+    pub palette_quick_search_shortcuts: PaletteQuickSearchShortcuts,
     /// When on, the palette pastes a command body into the focused app (macOS,
     /// needs Accessibility permission) instead of only copying. Defaults off.
     #[serde(default)]
@@ -391,42 +398,6 @@ pub struct Settings {
 
 fn default_true() -> bool {
     true
-}
-
-/// Default global accelerator for the command palette.
-pub fn default_palette_shortcut() -> String {
-    "Cmd+Alt+A".to_string()
-}
-
-/// Lightweight sanity check for a palette accelerator string: it must be a
-/// `+`-joined list of tokens carrying at least one non-modifier key. The
-/// authoritative parse happens in the Tauri shell via the global-shortcut
-/// plugin; this only rejects obviously-bad input before we persist or register.
-pub fn is_valid_shortcut(accelerator: &str) -> bool {
-    const MODIFIERS: [&str; 11] = [
-        "cmd",
-        "command",
-        "ctrl",
-        "control",
-        "alt",
-        "option",
-        "shift",
-        "super",
-        "meta",
-        "cmdorctrl",
-        "commandorcontrol",
-    ];
-    let parts: Vec<&str> = accelerator
-        .split('+')
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .collect();
-    if parts.is_empty() {
-        return false;
-    }
-    parts
-        .iter()
-        .any(|p| !MODIFIERS.contains(&p.to_ascii_lowercase().as_str()))
 }
 
 /// Default slash-command directory per tool. `None` for OpenClaw (no command
@@ -607,6 +578,7 @@ impl Default for Settings {
             editor: EditorPref::default(),
             color_scheme: ColorScheme::System,
             palette_shortcut: default_palette_shortcut(),
+            palette_quick_search_shortcuts: PaletteQuickSearchShortcuts::default(),
             paste_into_focused: false,
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
@@ -881,6 +853,7 @@ impl Settings {
             editor: EditorPref::default(),
             color_scheme: ColorScheme::System,
             palette_shortcut: default_palette_shortcut(),
+            palette_quick_search_shortcuts: PaletteQuickSearchShortcuts::default(),
             paste_into_focused: false,
             skills: SkillsConfig::default(),
             telemetry: TelemetryConfig::default(),
@@ -1401,12 +1374,6 @@ mod tests {
     }
 
     #[test]
-    fn palette_shortcut_defaults_to_cmd_alt_a() {
-        let s = Settings::default();
-        assert_eq!(s.palette_shortcut, "Cmd+Alt+A");
-    }
-
-    #[test]
     fn paste_into_focused_defaults_off_and_roundtrips() {
         let s = Settings::default();
         assert!(!s.paste_into_focused);
@@ -1431,17 +1398,6 @@ mod tests {
         fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
         let loaded = Settings::load_from(&path).unwrap();
         assert!(!loaded.paste_into_focused, "absent field defaults to off");
-    }
-
-    #[test]
-    fn validates_palette_shortcut_shape() {
-        assert!(is_valid_shortcut("Cmd+Alt+A"));
-        assert!(is_valid_shortcut("CmdOrCtrl+Shift+K"));
-        assert!(is_valid_shortcut("Space"));
-        // Only modifiers, no key — rejected.
-        assert!(!is_valid_shortcut("Cmd+Alt"));
-        assert!(!is_valid_shortcut(""));
-        assert!(!is_valid_shortcut("   "));
     }
 
     #[test]

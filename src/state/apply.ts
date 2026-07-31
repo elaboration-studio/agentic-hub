@@ -23,14 +23,15 @@ interface ApplyState {
 
 function toastApplyResult(tool: ToolId, result: ApplySuiteResult) {
   const ar = result.applyResult;
+  const errors = ar.errors.length + result.ruleSync.errors.length + result.hookSync.errors.length;
   const parts = [`${ar.created} added`, `${ar.removed} removed`];
   if (result.skippedStale > 0) parts.push(`${result.skippedStale} stale skipped`);
   if (result.skippedAbsentSource > 0) {
     parts.push(`${result.skippedAbsentSource} from sources not on this machine, preserved`);
   }
-  if (ar.errors.length > 0) parts.push(`${ar.errors.length} error(s)`);
+  if (errors > 0) parts.push(`${errors} error(s)`);
   const msg = `Applied to ${tool} · ${parts.join(", ")}`;
-  if (ar.errors.length > 0) toast.warning(msg);
+  if (errors > 0) toast.warning(msg);
   else toast.success(msg);
 }
 

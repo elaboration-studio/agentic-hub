@@ -97,8 +97,9 @@ describe("workspace store — pick", () => {
       workspaceActiveId: "c",
     });
 
-    await useWorkspaceStore.getState().pick();
+    const picked = await useWorkspaceStore.getState().pick();
 
+    expect(picked).toBe(true);
     expect(useWorkspaceStore.getState().activeId).toBe("c");
     expect(loadWorkspace).toHaveBeenCalledWith("c");
   });
@@ -106,8 +107,9 @@ describe("workspace store — pick", () => {
   it("stays silent when the folder dialog is cancelled", async () => {
     mocked.pickWorkspaceDir.mockRejectedValue(new Error("No folder selected"));
 
-    await useWorkspaceStore.getState().pick();
+    const picked = await useWorkspaceStore.getState().pick();
 
+    expect(picked).toBe(false);
     expect(toast.error).not.toHaveBeenCalled();
     expect(loadWorkspace).not.toHaveBeenCalled();
   });

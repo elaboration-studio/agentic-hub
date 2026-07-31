@@ -2,6 +2,7 @@
 import type { ColorScheme } from "./ColorScheme";
 import type { EditorPref } from "./EditorPref";
 import type { MainWindowState } from "./MainWindowState";
+import type { PaletteQuickSearchShortcuts } from "./PaletteQuickSearchShortcuts";
 import type { SkillsConfig } from "./SkillsConfig";
 import type { SourceConfig } from "./SourceConfig";
 import type { TelemetryConfig } from "./TelemetryConfig";
@@ -11,87 +12,91 @@ import type { UsageTracingConfig } from "./UsageTracingConfig";
 /**
  * Global settings persisted at `~/.agentic-hub/config.json`.
  */
-export type Settings = { 
+export type Settings = {
 /**
  * Ordered source forest. When empty, `shared_root` is the single Default.
  */
-sources: Array<SourceConfig>, 
+sources: Array<SourceConfig>,
 /**
  * Deprecated single-root field; one-release fallback when `sources` empty.
  */
-sharedRoot: string, 
+sharedRoot: string,
 /**
  * Optional custom location for the suite store. `None` keeps the canonical
  * `~/.agentic-suites.json` (migration-parity default).
  */
-suitesPath: string | null, 
+suitesPath: string | null,
 /**
  * Optional user-local CLI-tools catalog JSON, merged over the bundled
  * catalog (override by id, append new). `None` uses only the bundled set.
  */
-cliToolsPath: string | null, 
+cliToolsPath: string | null,
 /**
  * When on, the desktop shell watches the source roots and auto-reconciles
  * projections on change. Defaults to on (the manual Rescan button is gone).
  */
-watcherEnabled: boolean, 
+watcherEnabled: boolean,
 /**
  * One-time migration marker: 0.8.1 force-enables the watcher once (flipping
  * configs that had paused it), then sets this so future user pauses stick.
  */
-watcherForceMigrated: boolean, 
+watcherForceMigrated: boolean,
 /**
  * One-time migration marker: rewrites a stale Codex `agentsPath` of
  * `~/.agents/agents` (the pre-0.5.0 default, shared with OpenStandard) to
  * the self-contained `~/.codex/agents` once, then sets this so a later
  * deliberate choice of the old path sticks.
  */
-codexAgentsPathMigrated: boolean, 
+codexAgentsPathMigrated: boolean,
 /**
  * One-time migration marker: rewrites a stale Antigravity `skillsPath` of
  * `~/.gemini/skills` (the pre-0.10.1 default) to `~/.gemini/config/skills`
  * once, then sets this so a later deliberate choice of the old path sticks.
  */
-antigravitySkillsPathMigrated: boolean, 
+antigravitySkillsPathMigrated: boolean,
 /**
  * One-time migration marker: sets Kiro `instructionsPath` to
  * `~/.kiro/steering/AGENTS.md` when absent so shared rules project into the
  * AGENTS.md managed block instead of per-file steering copies.
  */
-kiroRulesAgentsMdMigrated: boolean, 
+kiroRulesAgentsMdMigrated: boolean,
 /**
  * Preferred editor for opening a capability's original file. Defaults to
  * the OS default app.
  */
-editor: EditorPref, 
+editor: EditorPref,
 /**
  * App-wide appearance preference. Legacy configs stay dark; fresh configs
  * follow the operating system.
  */
-colorScheme: ColorScheme, 
+colorScheme: ColorScheme,
 /**
  * Global accelerator that summons the command palette window. Stored as a
  * human-readable accelerator string (e.g. `"Cmd+Alt+A"`). Defaults to
  * `Cmd+Alt+A`.
  */
-paletteShortcut: string, 
+paletteShortcut: string,
+/**
+ * Direct search accelerators. Legacy settings receive the stable defaults.
+ */
+paletteQuickSearchShortcuts: PaletteQuickSearchShortcuts,
 /**
  * When on, the palette pastes a command body into the focused app (macOS,
  * needs Accessibility permission) instead of only copying. Defaults off.
  */
-pasteIntoFocused: boolean, 
+pasteIntoFocused: boolean,
 /**
  * Opt-in skills.sh public source config. Defaults to disabled.
  */
-skills: SkillsConfig, 
+skills: SkillsConfig,
 /**
  * Anonymous usage telemetry (Aptabase). Defaults to enabled.
  */
-telemetry: TelemetryConfig, 
+telemetry: TelemetryConfig,
 /**
  * Local-only skill/tool usage tracing. Defaults to disabled.
  */
-usageTracing: UsageTracingConfig, 
+usageTracing: UsageTracingConfig,
 /**
  * Last main-window geometry; `None` uses `tauri.conf.json` defaults.
  */

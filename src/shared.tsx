@@ -10,7 +10,7 @@ import type {
   ToolId,
 } from "./types";
 
-export type Scope = "global" | "workspace";
+export type Scope = "global" | "suite" | "workspace";
 export type Route = "manager" | "suites" | "skills" | "statistics" | "config";
 export type View = "flat" | "tree";
 export type KindFilter = "all" | CapabilityKind;

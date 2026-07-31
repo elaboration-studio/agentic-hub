@@ -15,11 +15,13 @@ use agentic_core::model::{
     SuiteBinding, SuiteDefinition, SuiteOwnership, SyncHooksResult, SyncRulesResult, ToolId,
     UsageDashboard, UsageDateRange, UsageStats, WorkspaceTarget, WorkspaceTargetsState,
 };
-use agentic_core::sessions::{SessionMessage, SessionSummary};
 use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
 use agentic_core::scaffold::{self, ScaffoldMode, ScaffoldResult};
-use agentic_core::settings::{ColorScheme, Settings, SourceConfig, ToolsSettings};
+use agentic_core::sessions::{SessionMessage, SessionSummary};
+use agentic_core::settings::{
+    ColorScheme, PaletteLaunchMode, Settings, SourceConfig, ToolsSettings,
+};
 use agentic_core::skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
 use agentic_core::skill_source::{provider_for, SkillCliStatus, SkillSearchHit};
 use agentic_core::suite_binding_store::SuiteBindingStore;
@@ -38,6 +40,7 @@ use crate::appearance;
 use crate::error::IpcError;
 use crate::palette;
 use crate::paste::{self, PasteOutcome};
+use crate::suite_recovery;
 use crate::usage_collector::{
     self, UsageCollectorState, UsageTracerHooksSyncResult, UsageTracingStatus,
 };
@@ -95,26 +98,37 @@ pub async fn cmd_save_settings(
     mut settings: Settings,
 ) -> IpcResult<()> {
     let _settings_guard = settings_save_lock().lock().await;
-    if !agentic_core::settings::is_valid_shortcut(&settings.palette_shortcut) {
-        return Err(IpcError::new(
-            "invalid_shortcut",
-            format!("Invalid palette shortcut: {}", settings.palette_shortcut),
-        ));
-    }
     // Preserve fields that have dedicated trusted mutation paths. The WebView
     // must not set an executable-defining catalog path, and a stale full-form
     // save must not roll back a newer app-wide appearance choice.
     let persisted = Settings::load()?;
-    settings.cli_tools_path = persisted.cli_tools_path;
+    settings
+        .cli_tools_path
+        .clone_from(&persisted.cli_tools_path);
     settings.color_scheme = persisted.color_scheme;
-    settings.save()?;
+    if settings.usage_tracing.enabled && settings.usage_tracing.collector_token.is_empty() {
+        settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
+    }
+    // Parse and register all four accelerators before persistence. Registration
+    // is transactional; an unavailable key restores the prior complete set and
+    // leaves the settings file untouched.
+    palette::register_palette_shortcuts_and_persist(&app, &settings, || {
+        settings.save().map_err(|error| error.to_string())
+    })
+    .map_err(|error| {
+        let code =
+            if error.starts_with("Invalid shortcut:") || error.starts_with("Duplicate shortcut:") {
+                "invalid_shortcut"
+            } else if error.starts_with("Settings save failed:") {
+                "internal"
+            } else {
+                "shortcut_register_failed"
+            };
+        IpcError::new(code, error)
+    })?;
     // Mirror the telemetry consent flag so a mid-session toggle takes effect at
     // once (gates the next tracked event without needing a restart).
     telemetry.set_enabled(settings.telemetry.enabled);
-    if settings.usage_tracing.enabled && settings.usage_tracing.collector_token.is_empty() {
-        settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
-        settings.save()?;
-    }
     usage_collector
         .apply_settings(&settings)
         .map_err(|e| IpcError::new("usage_collector_failed", e))?;
@@ -122,9 +136,6 @@ pub async fn cmd_save_settings(
         .map_err(|e| IpcError::new("usage_hooks_failed", e))?;
     // Source roots may have changed; re-subscribe if the watcher is running.
     watcher.restart_if_running(app.clone());
-    // The summon accelerator may have changed; re-register it now.
-    palette::register_palette_shortcut(&app, &settings.palette_shortcut)
-        .map_err(|e| IpcError::new("shortcut_register_failed", e))?;
     Ok(())
 }
 
@@ -133,6 +144,15 @@ pub async fn cmd_save_settings(
 pub async fn cmd_toggle_palette(app: AppHandle) -> IpcResult<()> {
     palette::toggle_palette(&app);
     Ok(())
+}
+
+/// Consume the launch destination requested by the latest direct shortcut.
+/// Reading resets the next launch to the hub root.
+#[tauri::command]
+pub async fn cmd_take_palette_launch_mode(
+    state: State<'_, palette::PaletteShortcutState>,
+) -> IpcResult<PaletteLaunchMode> {
+    Ok(state.take_launch_mode())
 }
 
 /// Show and focus the main window, then hide the palette. Used by palette
@@ -663,10 +683,7 @@ pub async fn cmd_get_session(input: GetSessionInput) -> IpcResult<Vec<SessionMes
         .into_iter()
         .find(|s| s.session_key == input.session_key)
         .ok_or_else(|| {
-            IpcError::new(
-                "session_source_unavailable",
-                "Session no longer available",
-            )
+            IpcError::new("session_source_unavailable", "Session no longer available")
         })?;
     Ok(agentic_core::read_session_transcript(
         summary.tool,
@@ -742,35 +759,38 @@ fn effective_for_suite_id(
     Ok(api::merge_base_caps(&suite, base))
 }
 
-/// Re-apply each binding as a base-merged full reset, serialized against the
-/// watcher so the two never write the same dirs. Each binding's selected suite
-/// is resolved fresh and unioned with the current base.
-fn resync_bindings(
+/// Re-apply each binding as a base-merged full reset. The caller holds the
+/// shared projection transaction so binding state and tool-directory writes
+/// cannot interleave. Each selected suite is resolved fresh with the base.
+fn resync_bindings_unlocked(
     store: &SuiteStore,
     settings: &Settings,
     scanned: &ScanResult,
     bindings: &[SuiteBinding],
 ) {
-    let base = store.base().ok().flatten();
-    watcher::with_reconcile_guard(|| {
-        for b in bindings {
-            if let Ok(Some(selected)) = store.get(&b.suite_id) {
-                let effective = api::merge_base_caps(&selected, base.as_ref());
-                let enabled = api::enabled_item_ids(&scanned.items, settings, b.tool_id);
-                let manual = api::manual_extras_from_enabled(&enabled, &effective, &scanned.items);
-                let manual_refs: Vec<&str> = manual.iter().map(String::as_str).collect();
-                let result = api::apply_suite(
-                    &scanned.items,
-                    settings,
-                    b.tool_id,
-                    &effective,
-                    &manual_refs,
+    let mut base = store.base().ok().flatten();
+    if let Some(base) = base.as_mut() {
+        SuiteStore::backfill_sources(base, &scanned.items);
+    }
+    for binding in bindings {
+        if let Ok(Some(mut selected)) = store.get(&binding.suite_id) {
+            SuiteStore::backfill_sources(&mut selected, &scanned.items);
+            let result = agentic_core::resync_suite_binding(
+                &scanned.items,
+                settings,
+                binding,
+                &selected,
+                base.as_ref(),
+            );
+            if result.is_full_success() {
+                let _ = SuiteBindingStore::new().record(
+                    binding.tool_id,
+                    &binding.suite_id,
+                    result.manual_item_ids,
                 );
-                let _ =
-                    SuiteBindingStore::new().record(b.tool_id, &b.suite_id, result.manual_item_ids);
             }
         }
-    });
+    }
 }
 
 #[tauri::command]
@@ -778,26 +798,31 @@ pub async fn cmd_update_suite(
     app: AppHandle,
     input: UpdateSuiteInput,
 ) -> IpcResult<SuiteDefinition> {
-    let store = suite_store()?;
-    let suite = store.update(&input.id, input.changes)?;
-    // Dynamic binding sync: a capability edit re-applies (full reset) to the
-    // bound tools so their projections track the new set. When the edited suite
-    // is the base, it merges into every applied suite, so re-sync ALL bindings;
-    // otherwise only the tools bound to this suite.
-    let binding_store = SuiteBindingStore::new();
-    let to_resync: Vec<SuiteBinding> = if suite.is_base {
-        binding_store.read()?
-    } else {
-        binding_store
-            .read()?
-            .into_iter()
-            .filter(|b| b.suite_id == suite.id)
-            .collect()
-    };
-    if !to_resync.is_empty() {
-        let settings = Settings::load()?;
-        let scanned = api::scan(&settings);
-        resync_bindings(&store, &settings, &scanned, &to_resync);
+    let (suite, projections_changed) = watcher::with_projection_transaction(|| {
+        let store = suite_store()?;
+        let suite = store.update(&input.id, input.changes)?;
+        // Dynamic binding sync: a capability edit re-applies (full reset) to the
+        // bound tools so their projections track the new set. When the edited suite
+        // is the base, it merges into every applied suite, so re-sync ALL bindings;
+        // otherwise only the tools bound to this suite.
+        let binding_store = SuiteBindingStore::new();
+        let to_resync: Vec<SuiteBinding> = if suite.is_base {
+            binding_store.read()?
+        } else {
+            binding_store
+                .read()?
+                .into_iter()
+                .filter(|b| b.suite_id == suite.id)
+                .collect()
+        };
+        if !to_resync.is_empty() {
+            let settings = Settings::load()?;
+            let scanned = api::scan(&settings);
+            resync_bindings_unlocked(&store, &settings, &scanned, &to_resync);
+        }
+        Ok::<_, IpcError>((suite, !to_resync.is_empty()))
+    })?;
+    if projections_changed {
         // Tool projections changed — nudge the manager to refresh.
         let _ = app.emit("sources-changed", ());
     }
@@ -807,10 +832,13 @@ pub async fn cmd_update_suite(
 
 #[tauri::command]
 pub async fn cmd_delete_suite(app: AppHandle, id: String) -> IpcResult<()> {
-    suite_store()?.remove(&id)?;
-    // Drop any tool bindings to the gone suite; on-disk projections are left
-    // untouched (deleting a suite is not a destructive tool wipe).
-    let _ = SuiteBindingStore::new().drop_suite(&id);
+    watcher::with_projection_transaction(|| {
+        suite_store()?.remove(&id)?;
+        // Drop any tool bindings to the gone suite; on-disk projections are left
+        // untouched (deleting a suite is not a destructive tool wipe).
+        let _ = SuiteBindingStore::new().drop_suite(&id);
+        Ok::<_, IpcError>(())
+    })?;
     emit_suite_changed(&app, "deleted", Some(id));
     Ok(())
 }
@@ -830,57 +858,62 @@ pub async fn cmd_apply_suite(
     input: ApplySuiteInput,
 ) -> IpcResult<ApplySuiteResult> {
     let settings = Settings::load()?;
-    let store = SuiteStore::with_path(settings.resolved_suites_path());
-    let mut suite = store
-        .get(&input.suite_id)?
-        .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
+    let result = watcher::with_projection_transaction(|| {
+        let store = SuiteStore::with_path(settings.resolved_suites_path());
+        let mut suite = store
+            .get(&input.suite_id)?
+            .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
 
-    let scanned = api::scan(&settings);
-    // Qualify unqualified refs in-memory so apply matching is source-precise.
-    // We deliberately do NOT persist this: rewriting the synced suites file
-    // behind the user's back makes two devices diverge, and a later `git pull`
-    // line-merges the divergent multi-line capability arrays into an empty set.
-    SuiteStore::backfill_sources(&mut suite, &scanned.items);
-    // Union the base suite's capabilities so its rules/skills are always present.
-    let base = store.base()?;
-    let effective = api::merge_base_caps(&suite, base.as_ref());
-    let binding_store = SuiteBindingStore::new();
-    let prior = binding_store.get(input.tool_id)?;
-    let prior_effective = match prior.as_ref() {
-        Some(b) => Some(effective_for_suite_id(
-            &store,
-            &b.suite_id,
-            base.as_ref(),
-            &scanned.items,
-        )?),
-        None => None,
-    };
-    let manual_to_preserve: Vec<String> = if input.preserve_manual {
-        api::suite_apply_manual_extras(
-            prior_effective.as_ref(),
-            &effective,
+        let scanned = api::scan(&settings);
+        // Qualify unqualified refs in-memory so apply matching is source-precise.
+        // We deliberately do NOT persist this: rewriting the synced suites file
+        // behind the user's back makes two devices diverge, and a later `git pull`
+        // line-merges the divergent multi-line capability arrays into an empty set.
+        SuiteStore::backfill_sources(&mut suite, &scanned.items);
+        // Union the base suite's capabilities so its rules/skills are always present.
+        let base = store.base()?;
+        let effective = api::merge_base_caps(&suite, base.as_ref());
+        let binding_store = SuiteBindingStore::new();
+        let prior = binding_store.get(input.tool_id)?;
+        let prior_effective = match prior.as_ref() {
+            Some(b) => Some(effective_for_suite_id(
+                &store,
+                &b.suite_id,
+                base.as_ref(),
+                &scanned.items,
+            )?),
+            None => None,
+        };
+        let manual_to_preserve: Vec<String> = if input.preserve_manual {
+            api::suite_apply_manual_extras(
+                prior_effective.as_ref(),
+                &effective,
+                &scanned.items,
+                &settings,
+                input.tool_id,
+            )
+        } else {
+            vec![]
+        };
+        let manual_refs: Vec<&str> = manual_to_preserve.iter().map(String::as_str).collect();
+        let result = api::apply_suite(
             &scanned.items,
             &settings,
             input.tool_id,
-        )
-    } else {
-        vec![]
-    };
-    let manual_refs: Vec<&str> = manual_to_preserve.iter().map(String::as_str).collect();
-    let result = api::apply_suite(
-        &scanned.items,
-        &settings,
-        input.tool_id,
-        &effective,
-        &manual_refs,
-    );
-    // Bind this tool to the selected suite (not the base) so a later capability
-    // edit re-syncs it.
-    let _ = binding_store.record(
-        input.tool_id,
-        &input.suite_id,
-        result.manual_item_ids.clone(),
-    );
+            &effective,
+            &manual_refs,
+        );
+        // Preserve the existing suite-apply binding semantics: selected suite
+        // identity is recorded even when the partial-tolerant pipeline reports
+        // per-item errors. Recovery re-sync is stricter and leaves a live
+        // binding unchanged on any write failure.
+        let _ = binding_store.record(
+            input.tool_id,
+            &input.suite_id,
+            result.manual_item_ids.clone(),
+        );
+        Ok::<_, IpcError>(result)
+    })?;
     // Tool projections + suite ownership changed — nudge the manager (this window
     // or the main window when applied from the palette) to re-scan and re-lock.
     let _ = app.emit("sources-changed", ());
@@ -919,16 +952,19 @@ pub async fn cmd_suite_apply_preview(input: ApplySuiteInput) -> IpcResult<Vec<St
 
 #[tauri::command]
 pub async fn cmd_set_base_suite(app: AppHandle, id: Option<String>) -> IpcResult<()> {
-    let store = suite_store()?;
-    store.set_base(id.as_deref())?;
-    // The base merges into every applied suite, so re-apply all bound tools so
-    // their projections reflect the new (or cleared) base.
-    let bindings = SuiteBindingStore::new().read()?;
-    if !bindings.is_empty() {
-        let settings = Settings::load()?;
-        let scanned = api::scan(&settings);
-        resync_bindings(&store, &settings, &scanned, &bindings);
-    }
+    watcher::with_projection_transaction(|| {
+        let store = suite_store()?;
+        store.set_base(id.as_deref())?;
+        // The base merges into every applied suite, so re-apply all bound tools so
+        // their projections reflect the new (or cleared) base.
+        let bindings = SuiteBindingStore::new().read()?;
+        if !bindings.is_empty() {
+            let settings = Settings::load()?;
+            let scanned = api::scan(&settings);
+            resync_bindings_unlocked(&store, &settings, &scanned, &bindings);
+        }
+        Ok::<_, IpcError>(())
+    })?;
     // Always refresh the manager: the base set changed, so cell-lock ownership
     // must be recomputed even when no tool was re-applied (no bindings yet).
     let _ = app.emit("sources-changed", ());
@@ -950,6 +986,34 @@ pub async fn cmd_suite_ownership() -> IpcResult<Vec<SuiteOwnership>> {
         &suites,
         base.as_ref(),
     ))
+}
+
+/// Complete one locked recovery attempt, then notify every Manager view even
+/// when a later phase (such as binding persistence) returned a typed error.
+/// Settings/store setup errors happen before this function and do not emit.
+fn resync_suite_binding_and_refresh(
+    settings: &Settings,
+    suites: &SuiteStore,
+    bindings: &SuiteBindingStore,
+    tool_id: ToolId,
+    emit_refresh: impl FnOnce(),
+) -> IpcResult<ApplySuiteResult> {
+    let result = suite_recovery::resync_suite_binding_for_tool(settings, suites, bindings, tool_id);
+    emit_refresh();
+    result
+}
+
+#[tauri::command]
+pub async fn cmd_resync_suite_binding(
+    app: AppHandle,
+    tool_id: ToolId,
+) -> IpcResult<ApplySuiteResult> {
+    let settings = Settings::load()?;
+    let suites = SuiteStore::with_path(settings.resolved_suites_path());
+    let bindings = SuiteBindingStore::new();
+    resync_suite_binding_and_refresh(&settings, &suites, &bindings, tool_id, || {
+        let _ = app.emit("sources-changed", ());
+    })
 }
 
 // ---- Workspace scope ------------------------------------------------------
@@ -1135,3 +1199,62 @@ pub async fn cmd_remove_skill_favorite(input: RemoveFavoriteInput) -> IpcResult<
 
 // Skill install is a streaming, cancellable flow that owns its own window; see
 // `install_window.rs` for `cmd_install_skill_stream` / `cmd_cancel_install`.
+
+#[cfg(test)]
+mod tests {
+    use agentic_core::model::ToolId;
+    use agentic_core::settings::Settings;
+    use agentic_core::suite_binding_store::SuiteBindingStore;
+    use agentic_core::suite_store::{SuiteCreateInput, SuiteStore};
+
+    use super::resync_suite_binding_and_refresh;
+
+    #[test]
+    fn suite_recovery_refreshes_after_projection_success_and_binding_persistence_failure() {
+        let state = tempfile::tempdir().unwrap();
+        let suites = SuiteStore::with_path(state.path().join("suites.json"));
+        let selected = suites
+            .create(SuiteCreateInput {
+                name: "Selected".into(),
+                description: None,
+                capabilities: vec!["skill:selected".into()],
+            })
+            .unwrap();
+        let bindings_path = state.path().join("bindings.json");
+        let bindings = SuiteBindingStore::with_path(&bindings_path);
+        bindings
+            .record(ToolId::Claude, &selected.id, Vec::new())
+            .unwrap();
+        // The store reads its existing binding, but its later atomic temp write
+        // fails after the projection has already completed.
+        std::fs::create_dir(bindings_path.with_extension("json.tmp")).unwrap();
+
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("skills/selected")).unwrap();
+        std::fs::write(root.path().join("skills/selected/SKILL.md"), "selected").unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        let mut settings = Settings::default();
+        settings.sources.clear();
+        settings.shared_root = root.path().to_path_buf();
+        settings.usage_tracing.enabled = false;
+        settings.tools.claude.enabled = true;
+        settings.tools.claude.skills_path = tools.path().join("claude/skills");
+        settings.tools.claude.agents_path = tools.path().join("claude/agents");
+        settings.tools.claude.rules_path = tools.path().join("claude/rules");
+        settings.tools.claude.instructions_path = Some(tools.path().join("claude/CLAUDE.md"));
+        settings.tools.claude.hooks_enabled = false;
+        settings.tools.claude.hooks_file = Some(tools.path().join("claude/hooks.json"));
+        settings.tools.claude.commands_path = Some(tools.path().join("claude/commands"));
+
+        let mut refresh_count = 0;
+        let error =
+            resync_suite_binding_and_refresh(&settings, &suites, &bindings, ToolId::Claude, || {
+                refresh_count += 1
+            })
+            .unwrap_err();
+
+        assert_eq!(error.code, "internal");
+        assert_eq!(refresh_count, 1);
+        assert!(tools.path().join("claude/skills/selected").is_dir());
+    }
+}

@@ -43,6 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AppearancePanel } from "@/components/config/AppearancePanel";
+import { ShortcutPanel } from "@/components/config/ShortcutPanel";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const sectionTitle = "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
@@ -154,68 +155,6 @@ function EditorPanel({ settings, onChanged }: PanelProps) {
               </Button>
             </>
           )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ShortcutPanel({ settings, onChanged }: PanelProps) {
-  const [value, setValue] = useState(settings.paletteShortcut);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    setValue(settings.paletteShortcut);
-  }, [settings.paletteShortcut]);
-
-  const persist = useCallback(
-    async (next: string) => {
-      setBusy(true);
-      try {
-        await saveSettings({ ...settings, paletteShortcut: next });
-        onChanged();
-      } catch (e) {
-        toast.error(messageOf(e));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [settings, onChanged],
-  );
-
-  return (
-    <Card className="p-4">
-      <CardHeader className="p-0">
-        <CardTitle className={sectionTitle}>Command palette</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2 p-0">
-        <p className={hint}>
-          Global shortcut that summons the command palette from anywhere. Combine modifiers
-          (<code className="font-mono">Cmd</code>, <code className="font-mono">Alt</code>,{" "}
-          <code className="font-mono">Ctrl</code>, <code className="font-mono">Shift</code>) with a
-          key using <code className="font-mono">+</code>. Default:{" "}
-          <code className="font-mono">Cmd+Alt+A</code>.
-        </p>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Input
-            className="w-[220px] font-mono"
-            value={value}
-            placeholder="Cmd+Alt+A"
-            onChange={(e) => setValue(e.target.value)}
-          />
-          <Button onClick={() => void persist(value.trim())} disabled={busy || value.trim() === ""}>
-            Save
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setValue("Cmd+Alt+A");
-              void persist("Cmd+Alt+A");
-            }}
-            disabled={busy || value.trim() === "Cmd+Alt+A"}
-          >
-            Reset to default
-          </Button>
         </div>
       </CardContent>
     </Card>

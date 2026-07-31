@@ -4,14 +4,14 @@ import type { SuiteCapabilityRef } from "./SuiteCapabilityRef";
 /**
  * A named, tool-agnostic capability preset. Persisted in `~/.agentic-suites.json`.
  */
-export type SuiteDefinition = { id: string, name: string, description: string | null, 
+export type SuiteDefinition = { id: string, name: string, description: string | null,
 /**
  * Source-qualified capability references. The bare `cap` matches
  * `CapabilityItem.id`; the optional `source` makes the reference portable
  * across devices. Legacy bare-string entries deserialize as `source:
  * None`.
  */
-capabilities: Array<SuiteCapabilityRef>, 
+capabilities: Array<SuiteCapabilityRef>,
 /**
  * When `true`, this suite's capabilities are unioned into every global
  * suite apply, so its rules/skills are always present. At most one suite

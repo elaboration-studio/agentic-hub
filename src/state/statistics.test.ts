@@ -33,8 +33,11 @@ import type {
 } from "@/types";
 import {
   computeResourceInventory,
+  DEFAULT_STATISTICS_TAB,
   DEFAULT_USAGE_RANGE,
   DEFAULT_USAGE_TABLE_SORT,
+  STATISTICS_TABS,
+  showsUsageDateRange,
   useStatisticsStore,
 } from "./statistics";
 
@@ -77,6 +80,11 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     editor: { kind: "default", customApp: null },
     colorScheme: "system",
     paletteShortcut: "Cmd+Alt+A",
+    paletteQuickSearchShortcuts: {
+      allResources: "Cmd+Alt+Ctrl+A",
+      skills: "Cmd+Alt+Ctrl+S",
+      commands: "Cmd+Alt+Ctrl+C",
+    },
     pasteIntoFocused: false,
     skills: { enabled: false, favoritesPath: null },
     usageTracing: {
@@ -370,5 +378,23 @@ describe("useStatisticsStore", () => {
 
     expect(useStatisticsStore.getState().error).toBe("collector offline");
     expect(toast.error).toHaveBeenCalledWith("collector offline");
+  });
+});
+
+describe("statistics dashboard navigation", () => {
+  it("defaults to Today and only exposes the date range for range-based tabs", () => {
+    expect(DEFAULT_STATISTICS_TAB).toBe("today");
+    expect(STATISTICS_TABS).toEqual([
+      { value: "today", label: "Today" },
+      { value: "activity", label: "Activity" },
+      { value: "top-usage", label: "Top usage" },
+      { value: "unused", label: "Unused" },
+      { value: "inventory", label: "Inventory" },
+    ]);
+    expect(showsUsageDateRange("today")).toBe(false);
+    expect(showsUsageDateRange("inventory")).toBe(false);
+    expect(showsUsageDateRange("activity")).toBe(true);
+    expect(showsUsageDateRange("top-usage")).toBe(true);
+    expect(showsUsageDateRange("unused")).toBe(true);
   });
 });

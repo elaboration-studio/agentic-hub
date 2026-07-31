@@ -35,21 +35,21 @@ const WORKSPACE_WATCH_FILES: [&str; 2] = ["AGENTS.md", "CLAUDE.md"];
 /// burst of writes a `git pull` (or bulk edit) produces into a single pass.
 const DEBOUNCE: Duration = Duration::from_millis(400);
 
-/// Process-wide guard serializing reconcile disk writes, so two passes (the
-/// watcher worker and a manual `resync_now`) can never mutate the same target
-/// files at once. Poison-tolerant: a panicked holder must not brick future
-/// reconciles.
-fn reconcile_guard() -> MutexGuard<'static, ()> {
+/// Process-wide guard serializing every projection transaction: watcher
+/// reconciliation, explicit suite apply, binding recovery, and suite mutation
+/// re-sync. Poison-tolerant so a panicked holder cannot brick future writes.
+fn projection_transaction_guard() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|e| e.into_inner())
 }
 
-/// Run `f` while holding the process-wide reconcile guard, so a suite-binding
-/// re-apply never overlaps a watcher reconcile pass on the same tool dirs.
-pub fn with_reconcile_guard<T>(f: impl FnOnce() -> T) -> T {
-    let _guard = reconcile_guard();
+/// Run `f` while holding the process-wide projection transaction guard.
+/// Callers keep state-file read, filesystem apply, and binding record inside
+/// this closure so separate Tauri windows cannot interleave those phases.
+pub fn with_projection_transaction<T>(f: impl FnOnce() -> T) -> T {
+    let _guard = projection_transaction_guard();
     f()
 }
 
@@ -188,9 +188,9 @@ fn worker_loop(rx: mpsc::Receiver<Msg>, app: AppHandle, mut prev: HashSet<String
 /// Emits both `sources-changed` (global matrix) and `workspace-changed`
 /// (read-only inventory) since a single batch can touch either watched tree.
 /// Best-effort — errors never crash the worker. Holds the process-wide
-/// reconcile guard so it never overlaps another pass.
+/// projection transaction so it never overlaps another write pass.
 fn run_once(app: &AppHandle, prev: &mut HashSet<String>) {
-    let _guard = reconcile_guard();
+    let _guard = projection_transaction_guard();
     let Ok(settings) = Settings::load() else {
         return;
     };
@@ -202,10 +202,10 @@ fn run_once(app: &AppHandle, prev: &mut HashSet<String>) {
 
 /// Full rescan + resync with no newcomer auto-enable (the Config fallback /
 /// recovery path). Reconciles every enabled tool against current state, then
-/// notifies the UI. Serialized against the watcher worker via the process-wide
-/// reconcile guard.
+/// notifies the UI. Serialized against the watcher worker and suite writes via
+/// the process-wide projection transaction.
 pub fn resync_now(app: &AppHandle) {
-    let _guard = reconcile_guard();
+    let _guard = projection_transaction_guard();
     let Ok(settings) = Settings::load() else {
         return;
     };
@@ -287,6 +287,9 @@ fn is_relevant(event: &Event) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
@@ -299,5 +302,36 @@ mod tests {
                 "missing workspace inventory root: {expected}"
             );
         }
+    }
+
+    #[test]
+    fn projection_transaction_serializes_separate_window_writes() {
+        let (first_entered_tx, first_entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let first = std::thread::spawn(move || {
+            with_projection_transaction(|| {
+                first_entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            });
+        });
+        first_entered_rx.recv().unwrap();
+
+        let (second_ready_tx, second_ready_rx) = mpsc::channel();
+        let (second_entered_tx, second_entered_rx) = mpsc::channel();
+        let second = std::thread::spawn(move || {
+            second_ready_tx.send(()).unwrap();
+            with_projection_transaction(|| second_entered_tx.send(()).unwrap());
+        });
+
+        second_ready_rx.recv().unwrap();
+        assert!(second_entered_rx
+            .recv_timeout(Duration::from_millis(50))
+            .is_err());
+        release_tx.send(()).unwrap();
+        second_entered_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        first.join().unwrap();
+        second.join().unwrap();
     }
 }
