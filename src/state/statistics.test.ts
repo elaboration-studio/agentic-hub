@@ -33,6 +33,7 @@ import type {
 } from "@/types";
 import {
   computeResourceInventory,
+  DEFAULT_STATISTICS_TAB,
   DEFAULT_USAGE_RANGE,
   DEFAULT_USAGE_TABLE_SORT,
   STATISTICS_TABS,
@@ -377,6 +378,7 @@ describe("useStatisticsStore", () => {
 
 describe("statistics dashboard navigation", () => {
   it("defaults to Today and only exposes the date range for range-based tabs", () => {
+    expect(DEFAULT_STATISTICS_TAB).toBe("today");
     expect(STATISTICS_TABS).toEqual([
       { value: "today", label: "Today" },
       { value: "activity", label: "Activity" },

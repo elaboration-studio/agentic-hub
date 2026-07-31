@@ -17,6 +17,7 @@
 - Task 3: implementation complete, awaiting review — Today-first Statistics
   - Statistics now opens on Today with a local-calendar-day table independent of the range.
   - Activity, Top usage, and Unused alone expose the date selector; Usage overview moved above Most used and Inventory remains available with tracing disabled.
+  - Review hardening: `DEFAULT_STATISTICS_TAB` is the typed contract shared by the component and focused navigation test; JSX formatting normalized.
   - Focused RED/GREEN Vitest coverage, production build, full frontend suite, and diff check completed.
 - Task 4: pending — Resources order and ripgrep catalog
 - Task 5: pending — Transactional direct palette shortcuts

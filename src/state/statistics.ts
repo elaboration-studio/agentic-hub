@@ -21,6 +21,8 @@ export const DEFAULT_USAGE_TABLE_SORT: UsageSort = "lastUsed";
 
 export type StatisticsTab = "today" | "activity" | "top-usage" | "unused" | "inventory";
 
+export const DEFAULT_STATISTICS_TAB: StatisticsTab = "today";
+
 export const STATISTICS_TABS: readonly { value: StatisticsTab; label: string }[] = [
   { value: "today", label: "Today" },
   { value: "activity", label: "Activity" },
