@@ -64,7 +64,7 @@ Behaviors:
 - **Edit**: uses the shared Manager toolbar, flat/tree hierarchy, capability/source/usage columns, row actions, and a tri-state Included column
 - **Delete**: confirmation before removal
 - **Rename**: inline rename on the name field (uniqueness check)
-- **Validation**: missing source-qualified or stale refs are preserved, shown in a warning, skipped on apply, and removed only through **Remove missing references**
+- **Validation**: draft inclusion is source-aware; a live same-ID item from another source stays unchecked while the original ref is missing. Missing refs are preserved, warned, skipped on apply, and removed only through **Remove missing references**
 
 ### Suite actions in Manager
 

@@ -25,7 +25,11 @@ import type {
   SuiteDefinition,
   ToolCapabilityState,
 } from "@/types";
-import { suiteRefMatchesItem, useSuitesStore } from "./suites";
+import {
+  draftIncludesItem,
+  suiteRefMatchesItem,
+  useSuitesStore,
+} from "./suites";
 
 const mocked = {
   listSuites: vi.mocked(listSuites),
@@ -117,6 +121,42 @@ describe("suites store — draft editing", () => {
     ).toBe(false);
   });
 
+  it("does not include a live same-id item from another source until selected", () => {
+    const missingRef = {
+      cap: "skill:a",
+      source: { relHome: "~/team-agentic", folder: "team-agentic" },
+    };
+    const liveItem = makeItem("skill:a", {
+      relHome: "~/personal-agentic",
+      folder: "personal-agentic",
+    });
+    useSuitesStore.setState({
+      suites: [makeSuite({ capabilities: [missingRef] })],
+    });
+
+    useSuitesStore.getState().selectSuite("s1");
+
+    expect(
+      draftIncludesItem(
+        useSuitesStore.getState().draft?.capabilities ?? [],
+        liveItem,
+      ),
+    ).toBe(false);
+
+    useSuitesStore.getState().setCapabilities([liveItem], true);
+
+    expect(
+      draftIncludesItem(
+        useSuitesStore.getState().draft?.capabilities ?? [],
+        liveItem,
+      ),
+    ).toBe(true);
+    expect(useSuitesStore.getState().draft?.capabilities).toEqual([
+      missingRef,
+      { cap: "skill:a", source: liveItem.source },
+    ]);
+  });
+
   it("startCreate opens a blank draft and clears any selection", () => {
     useSuitesStore.setState({ selectedId: "s1" });
 
@@ -150,7 +190,7 @@ describe("suites store — draft editing", () => {
     expect(useSuitesStore.getState().draft).toEqual({
       name: "",
       description: "",
-      capabilities: ["skill:enabled"],
+      capabilities: [{ cap: "skill:enabled", source: SRC }],
     });
   });
 
@@ -161,7 +201,11 @@ describe("suites store — draft editing", () => {
     const s = useSuitesStore.getState();
 
     expect(s.selectedId).toBe("s1");
-    expect(s.draft).toEqual({ name: "Backend", description: "", capabilities: ["skill:a"] });
+    expect(s.draft).toEqual({
+      name: "Backend",
+      description: "",
+      capabilities: [{ cap: "skill:a", source: SRC }],
+    });
   });
 
   it("selectSuite is a no-op for an unknown id", () => {
@@ -172,28 +216,49 @@ describe("suites store — draft editing", () => {
     expect(useSuitesStore.getState().selectedId).toBeUndefined();
   });
 
-  it("setCapabilities adds ids without duplicating, and removes when off", () => {
-    useSuitesStore.setState({ draft: { name: "x", description: "", capabilities: ["skill:a"] } });
+  it("setCapabilities adds source-aware refs without duplicating, and removes when off", () => {
+    const itemA = makeItem("skill:a");
+    const itemB = makeItem("skill:b");
+    useSuitesStore.setState({
+      draft: {
+        name: "x",
+        description: "",
+        capabilities: [{ cap: "skill:a", source: SRC }],
+      },
+    });
 
-    useSuitesStore.getState().setCapabilities(["skill:a", "skill:b"], true);
-    expect(useSuitesStore.getState().draft?.capabilities).toEqual(["skill:a", "skill:b"]);
+    useSuitesStore.getState().setCapabilities([itemA, itemB], true);
+    expect(useSuitesStore.getState().draft?.capabilities).toEqual([
+      { cap: "skill:a", source: SRC },
+      { cap: "skill:b", source: SRC },
+    ]);
 
-    useSuitesStore.getState().setCapabilities(["skill:a"], false);
-    expect(useSuitesStore.getState().draft?.capabilities).toEqual(["skill:b"]);
+    useSuitesStore.getState().setCapabilities([itemA], false);
+    expect(useSuitesStore.getState().draft?.capabilities).toEqual([
+      { cap: "skill:b", source: SRC },
+    ]);
   });
 
   it("removeCapabilities drops only the requested stale references", () => {
+    const liveRef = {
+      cap: "skill:a",
+      source: { relHome: "~/personal-agentic", folder: "personal-agentic" },
+    };
+    const missingRef = {
+      cap: "skill:a",
+      source: { relHome: "~/team-agentic", folder: "team-agentic" },
+    };
     useSuitesStore.setState({
       draft: {
         name: "Backend",
         description: "",
-        capabilities: ["skill:live", "skill:missing"],
+        capabilities: [missingRef, liveRef],
       },
     });
 
-    useSuitesStore.getState().removeCapabilities(["skill:missing"]);
+    useSuitesStore.getState().removeCapabilities([missingRef]);
 
-    expect(useSuitesStore.getState().draft?.capabilities).toEqual(["skill:live"]);
+    expect(useSuitesStore.getState().draft?.capabilities).toEqual([liveRef]);
   });
 
   it("cancelEdit while creating discards the draft", () => {
@@ -218,7 +283,7 @@ describe("suites store — draft editing", () => {
     expect(useSuitesStore.getState().draft).toEqual({
       name: "Backend",
       description: "",
-      capabilities: ["skill:a"],
+      capabilities: [{ cap: "skill:a", source: SRC }],
     });
   });
 });
@@ -233,7 +298,7 @@ describe("suites store — persistence", () => {
       draft: { name: "  Fresh  ", description: "  ", capabilities: [] },
     });
 
-    await useSuitesStore.getState().save([]);
+    await useSuitesStore.getState().save();
     const s = useSuitesStore.getState();
 
     expect(mocked.createSuite).toHaveBeenCalledWith({
@@ -245,16 +310,17 @@ describe("suites store — persistence", () => {
     expect(s.isCreating).toBe(false);
   });
 
-  it("save attaches each capability's source from the live scan", async () => {
+  it("save serializes a newly selected capability with its live source", async () => {
     mocked.updateSuite.mockResolvedValue(makeSuite());
     mocked.listSuites.mockResolvedValue([makeSuite()]);
     useSuitesStore.setState({
       suites: [makeSuite()],
       selectedId: "s1",
-      draft: { name: "Backend", description: "core", capabilities: ["skill:a"] },
+      draft: { name: "Backend", description: "core", capabilities: [] },
     });
+    useSuitesStore.getState().setCapabilities([makeItem("skill:a")], true);
 
-    await useSuitesStore.getState().save([makeItem("skill:a")]);
+    await useSuitesStore.getState().save();
 
     expect(mocked.updateSuite).toHaveBeenCalledWith("s1", {
       name: "Backend",
@@ -269,10 +335,14 @@ describe("suites store — persistence", () => {
     useSuitesStore.setState({
       suites: [makeSuite()],
       selectedId: "s1",
-      draft: { name: "Backend", description: "core", capabilities: ["skill:a"] },
+      draft: {
+        name: "Backend",
+        description: "core",
+        capabilities: [{ cap: "skill:a", source: SRC }],
+      },
     });
 
-    await useSuitesStore.getState().save([]);
+    await useSuitesStore.getState().save();
 
     expect(mocked.updateSuite).toHaveBeenCalledWith("s1", {
       name: "Backend",
@@ -281,7 +351,7 @@ describe("suites store — persistence", () => {
     });
   });
 
-  it("save preserves a qualified missing ref when a live same-id item comes from another source", async () => {
+  it("save persists an explicitly selected same-id item from another source", async () => {
     const missingSource: SourceRef = {
       relHome: "~/team-agentic",
       folder: "team-agentic",
@@ -297,16 +367,20 @@ describe("suites store — persistence", () => {
     mocked.listSuites.mockResolvedValue([suite]);
     useSuitesStore.setState({
       suites: [suite],
-      selectedId: "s1",
-      draft: { name: "Backend", description: "", capabilities: ["skill:a"] },
     });
+    useSuitesStore.getState().selectSuite("s1");
+    const liveItem = makeItem("skill:a", liveSource);
+    useSuitesStore.getState().setCapabilities([liveItem], true);
+    useSuitesStore.getState().removeCapabilities([
+      { cap: "skill:a", source: missingSource },
+    ]);
 
-    await useSuitesStore.getState().save([makeItem("skill:a", liveSource)]);
+    await useSuitesStore.getState().save();
 
     expect(mocked.updateSuite).toHaveBeenCalledWith("s1", {
       name: "Backend",
       description: null,
-      capabilities: [{ cap: "skill:a", source: missingSource }],
+      capabilities: [{ cap: "skill:a", source: liveSource }],
     });
   });
 
@@ -317,10 +391,14 @@ describe("suites store — persistence", () => {
     useSuitesStore.setState({
       suites: [legacy],
       selectedId: "s1",
-      draft: { name: "Backend", description: "", capabilities: ["skill:a"] },
+      draft: {
+        name: "Backend",
+        description: "",
+        capabilities: [{ cap: "skill:a", source: null }],
+      },
     });
 
-    await useSuitesStore.getState().save([]);
+    await useSuitesStore.getState().save();
 
     expect(mocked.updateSuite).toHaveBeenCalledWith("s1", {
       name: "Backend",
@@ -335,7 +413,7 @@ describe("suites store — persistence", () => {
       draft: { name: "   ", description: "", capabilities: [] },
     });
 
-    await useSuitesStore.getState().save([]);
+    await useSuitesStore.getState().save();
 
     expect(mocked.createSuite).not.toHaveBeenCalled();
   });

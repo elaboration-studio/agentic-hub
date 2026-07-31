@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CapabilityItem, ToolId } from "@/types";
 import { useApplyStore } from "@/state/apply";
 import { useManagerStore } from "@/state/manager";
-import { suiteRefMatchesItem, useSuitesStore } from "@/state/suites";
+import {
+  draftIncludesItem,
+  suiteRefMatchesItem,
+  useSuitesStore,
+} from "@/state/suites";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -85,18 +89,23 @@ export function SuitesPage() {
   }, [availableTools]);
 
   const selectedSuite = suites.find((suite) => suite.id === selectedId);
-  const included = useMemo(() => new Set(draft?.capabilities ?? []), [draft]);
-  const liveIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
-  const missingIds = useMemo(
-    () => {
-      const selectedRefs = selectedSuite?.capabilities ?? [];
-      return (draft?.capabilities ?? []).filter((capability) => {
-        const original = selectedRefs.find((ref) => ref.cap === capability);
-        if (!original) return !liveIds.has(capability);
-        return !items.some((item) => suiteRefMatchesItem(original, item));
-      });
-    },
-    [draft, selectedSuite, items, liveIds],
+  const included = useMemo(
+    () =>
+      new Set(
+        items
+          .filter((item) =>
+            draftIncludesItem(draft?.capabilities ?? [], item),
+          )
+          .map((item) => item.id),
+      ),
+    [draft, items],
+  );
+  const missingRefs = useMemo(
+    () =>
+      (draft?.capabilities ?? []).filter(
+        (ref) => !items.some((item) => suiteRefMatchesItem(ref, item)),
+      ),
+    [draft, items],
   );
 
   const onApply = useCallback(() => {
@@ -141,7 +150,7 @@ export function SuitesPage() {
           <Input id="suite-description" value={draft.description} placeholder="Optional description" onChange={(event) => setDraft({ description: event.target.value })} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => void save(items)} disabled={busy || !draft.name.trim()}>Save</Button>
+          <Button onClick={() => void save()} disabled={busy || !draft.name.trim()}>Save</Button>
           <Button variant="outline" onClick={cancelEdit} disabled={busy}>Cancel</Button>
           {!isCreating && (
             <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={onDelete} disabled={busy}>Delete</Button>
@@ -171,12 +180,12 @@ export function SuitesPage() {
         </div>
       )}
 
-      {missingIds.length > 0 && (
+      {missingRefs.length > 0 && (
         <Alert className="border-warning/40 bg-warning/10">
-          <AlertTitle className="text-warning">{missingIds.length} missing suite reference{missingIds.length === 1 ? "" : "s"}</AlertTitle>
+          <AlertTitle className="text-warning">{missingRefs.length} missing suite reference{missingRefs.length === 1 ? "" : "s"}</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
             <span>These resources are no longer available from the current sources and will be skipped on apply.</span>
-            <Button variant="outline" size="sm" onClick={() => removeCapabilities(missingIds)}>Remove missing references</Button>
+            <Button variant="outline" size="sm" onClick={() => removeCapabilities(missingRefs)}>Remove missing references</Button>
           </AlertDescription>
         </Alert>
       )}
@@ -205,7 +214,7 @@ export function SuitesPage() {
           <TableCell className="text-center">
             <Checkbox
               checked={included.has(item.id)}
-              onCheckedChange={(value) => setCapabilities([item.id], value === true)}
+              onCheckedChange={(value) => setCapabilities([item], value === true)}
               aria-label={`${included.has(item.id) ? "Exclude" : "Include"} ${item.name}`}
             />
           </TableCell>
@@ -218,7 +227,7 @@ export function SuitesPage() {
             <TableCell className="text-center">
               <Checkbox
                 checked={state}
-                onCheckedChange={(value) => setCapabilities(rows.map((item) => item.id), value === true)}
+                onCheckedChange={(value) => setCapabilities(rows, value === true)}
                 aria-label={`${includedCount}/${rows.length} included`}
               />
             </TableCell>
