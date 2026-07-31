@@ -25,6 +25,7 @@ rules, hooks) across tools from one place.
 | Foreign-file conflict resolution (explicit takeover) | ✅ | `0.1.1` | D3 in [decisions](decisions.md) |
 | Demo scaffold (first-run bootstrap) | ✅ | `0.1.1` | [agentic-demo-scaffold](../features/agentic-demo-scaffold.md) |
 | Open files (preferred editor / reveal / tool target) | ✅ | `0.1.1` | [open-files](../features/open-files.md) |
+| Guided stale-copy recovery (refresh from source / re-sync suite binding) | ✅ | `0.16.0` | [v0-16-experience-and-recovery](../features/v0-16-experience-and-recovery.md) |
 
 ## Suites
 
@@ -34,6 +35,7 @@ rules, hooks) across tools from one place.
 | Suite↔tool bindings (auto re-sync on edit) | ✅ | `0.4.0` | [suite-bindings](../tech/modules/suite-bindings.md) |
 | Base suite (global merge) + suite-lock | ✅ | `0.4.0` | [suite-bindings](../tech/modules/suite-bindings.md) |
 | Source-qualified suite refs (cross-device portability) | ✅ | `0.4.0` | D10 in [decisions](decisions.md) |
+| Suites unified into the Manager rail (shared table, tri-state Included) | ✅ | `0.16.0` | [v0-16-experience-and-recovery](../features/v0-16-experience-and-recovery.md) |
 
 ## Workspace
 
@@ -51,6 +53,7 @@ rules, hooks) across tools from one place.
 | Command-provider registry (resource + nav) | ✅ | `0.3.0` | [command-palette](../features/command-palette.md) |
 | Palette suite apply (two-level) | ✅ | `0.4.0` | [command-palette](../features/command-palette.md) |
 | Palette workspace search + locate | ✅ | `0.5.0` | [command-palette](../features/command-palette.md) |
+| Direct search shortcuts (all resources / skills / commands) | ✅ | `0.16.0` | [v0-16-experience-and-recovery](../features/v0-16-experience-and-recovery.md) |
 
 ## Resource sources
 
@@ -71,6 +74,8 @@ rules, hooks) across tools from one place.
 | App-wide color scheme (light, dark, follow system) | ✅ | `0.13.0` | [color-scheme](../features/color-scheme.md) |
 | Local usage tracing collector health checks and recovery | ✅ | `0.13.1` | [local usage tracing](../features/local-skill-usage-tracing.md) |
 | Statistics sub-tabs, today's-usage table, tracing enabled by default | ✅ | `0.14.0` | [local usage tracing](../features/local-skill-usage-tracing.md) |
+| Statistics Today-first (default tab, range selector scoped to other tabs) | ✅ | `0.16.0` | [v0-16-experience-and-recovery](../features/v0-16-experience-and-recovery.md) |
+| Resources rail order (Skills → Tools → Sessions) + ripgrep CLI catalog entry | ✅ | `0.16.0` | [v0-16-experience-and-recovery](../features/v0-16-experience-and-recovery.md) |
 | macOS signed + notarized DMG pipeline | ✅ | `0.1.2` | [DEPLOYMENT.md](../../DEPLOYMENT.md) |
 | Linux `.deb` / `.AppImage` artifacts | 🔭 | M6 | backlog X4 |
 | Auto-update (`tauri-plugin-updater`) | 🔭 | M6 | backlog X5 |

@@ -8,6 +8,49 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-07-31
+
+### Added
+
+- **Guided stale-copy recovery.** Stale managed copies show an accessible
+  warning control instead of a plain dot. Unowned stale projections offer
+  **Refresh from source**, staging the projection for the normal ActionBar
+  Apply step. Suite-owned stale projections offer **Re-sync current suite
+  binding**, which reapplies the tool's live selected suite, base suite, and
+  manual extras without changing the binding. Open source and Reveal target
+  remain as manual fallbacks; broken and foreign states keep their existing
+  explicit conflict handling.
+- **ripgrep in the bundled CLI-tools catalog.** Resources' Tools pane now
+  lists `rg`, checked with a plain `rg --version` probe (no authentication
+  check) and linked to the official ripgrep installation docs.
+- **Direct palette search shortcuts.** Three new global accelerators (default
+  `Cmd+Alt+Ctrl+A` / `Cmd+Alt+Ctrl+S` / `Cmd+Alt+Ctrl+C`) jump straight into
+  All resources, Skills, or Commands search, always showing and focusing the
+  palette even if it's already open. The existing hub shortcut
+  (`Cmd+Alt+A` by default) keeps its show/hide toggle behavior, and in-palette
+  `Ctrl+1`–`7` mode shortcuts are unchanged. Config exposes all four
+  shortcuts with validation against malformed or duplicate accelerators and
+  an atomic reset-to-defaults action; a failed OS registration or settings
+  write rolls back to the prior complete working set.
+
+### Changed
+
+- **Suites merged into the Manager rail.** The standalone Suites tab is gone;
+  Global, Suites, and Workspaces now share one Manager table with the same
+  filters, hierarchy, and row actions. Selecting a suite adds a tri-state
+  **Included** column, and Save, Cancel, Delete, Set base, and Apply Suite
+  behave as before. `#/suites` and the palette's Open Suites command still
+  work as aliases into Manager's Suites mode.
+- **Statistics opens on Today.** A new **Today** tab is the default view and
+  shows the local-calendar-day usage table independent of the date range.
+  **Usage overview** moved above **Most used** inside the renamed **Top
+  usage** tab, and **Resource inventory** moved into its own **Inventory**
+  tab so it stays reachable with tracing disabled. The date-range selector
+  now appears only on Activity, Top usage, and Unused.
+- **Resources rail reorders to Skills → Tools → Sessions.** Resources
+  defaults to Skills when skills.sh is enabled and falls back to Tools
+  otherwise, including when Skills becomes disabled while it was selected.
+
 ## [0.15.2] — 2026-07-22
 
 ### Added

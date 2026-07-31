@@ -1,6 +1,6 @@
 # Agentic Hub 0.16.0 — Experience and Recovery
 
-Status: In Progress
+Status: Shipped
 Mode: Essential
 Owner: Agentic Hub
 Last Updated: 2026-07-31
