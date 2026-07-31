@@ -12,3 +12,15 @@ export function resolveResourcePane(
 ): ResourcePane {
   return pane === "skills" && !skillsEnabled ? "tools" : pane;
 }
+
+export function resolveInitialLoadedResourcePane(
+  pane: ResourcePane,
+  skillsEnabled: boolean,
+  hasUserSelectedPane: boolean,
+): ResourcePane {
+  if (!hasUserSelectedPane) {
+    return getDefaultResourcePane(skillsEnabled);
+  }
+
+  return resolveResourcePane(pane, skillsEnabled);
+}

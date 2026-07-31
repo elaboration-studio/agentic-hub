@@ -23,5 +23,6 @@
   - Resources now orders its rail Skills → Tools → Sessions, selects Skills only when skills.sh is enabled, and safely falls back to Tools if Skills is disabled while selected.
   - Added the data-only `ripgrep` catalog entry with the fixed `rg --version` probe, no authentication check, and the official installation URL.
   - RED evidence: the pane test could not import its missing behavior module, and the catalog regression failed because ripgrep was absent. GREEN verification: focused Vitest (236 tests), `pnpm build`, `cargo test -p agentic-core` (371 passed, 4 ignored), targeted all-feature Clippy, Rust formatting check, and `git diff --check` passed.
+  - Review hardening: when Resources opens before Manager settings load, the first known skills.sh state now selects the correct default without replacing an explicit user pane selection; disabled Skills still falls back to Tools. Regression coverage (239 frontend tests), build, and diff check pass.
 - Task 5: pending — Transactional direct palette shortcuts
 - Task 6: pending — Release integration and verification
