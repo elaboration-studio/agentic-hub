@@ -5,7 +5,12 @@
 
 import { useState } from "react";
 import { useManagerStore } from "@/state/manager";
-import { ResourcesRail, type ResourcePane } from "./ResourcesRail";
+import { ResourcesRail } from "./ResourcesRail";
+import {
+  getDefaultResourcePane,
+  resolveResourcePane,
+  type ResourcePane,
+} from "./resourcePanes";
 import { ToolsPage } from "./ToolsPage";
 import { SessionsPage } from "./SessionsPage";
 import { SkillsPage } from "@/components/skills/SkillsPage";
@@ -14,11 +19,13 @@ export function ResourcesPage() {
   const skillsEnabled = useManagerStore(
     (s) => s.data?.settings.skills.enabled ?? false,
   );
-  const [pane, setPane] = useState<ResourcePane>("tools");
+  const [pane, setPane] = useState<ResourcePane>(() =>
+    getDefaultResourcePane(skillsEnabled),
+  );
 
   // Skills can be disabled while it is the selected pane; fall back to Tools so
   // the panel never shows an unavailable view.
-  const active: ResourcePane = pane === "skills" && !skillsEnabled ? "tools" : pane;
+  const active = resolveResourcePane(pane, skillsEnabled);
 
   return (
     <div className="flex flex-1 gap-5">

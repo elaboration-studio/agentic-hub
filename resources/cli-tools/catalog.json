@@ -28,6 +28,13 @@
     "check": { "program": "git", "args": ["--version"] }
   },
   {
+    "id": "ripgrep",
+    "name": "ripgrep",
+    "category": "Developer utility",
+    "installUrl": "https://github.com/BurntSushi/ripgrep#installation",
+    "check": { "program": "rg", "args": ["--version"] }
+  },
+  {
     "id": "gh",
     "name": "GitHub CLI",
     "category": "Version control",

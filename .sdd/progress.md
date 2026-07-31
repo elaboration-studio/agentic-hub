@@ -19,6 +19,9 @@
   - Activity, Top usage, and Unused alone expose the date selector; Usage overview moved above Most used and Inventory remains available with tracing disabled.
   - Review hardening: `DEFAULT_STATISTICS_TAB` is the typed contract shared by the component and focused navigation test; JSX formatting normalized.
   - Focused RED/GREEN Vitest coverage, production build, full frontend suite (232 tests), and diff check completed; final review `Spec: PASS`, `Quality: APPROVED`.
-- Task 4: pending — Resources order and ripgrep catalog
+- Task 4: implementation awaiting review — Resources order and ripgrep catalog
+  - Resources now orders its rail Skills → Tools → Sessions, selects Skills only when skills.sh is enabled, and safely falls back to Tools if Skills is disabled while selected.
+  - Added the data-only `ripgrep` catalog entry with the fixed `rg --version` probe, no authentication check, and the official installation URL.
+  - RED evidence: the pane test could not import its missing behavior module, and the catalog regression failed because ripgrep was absent. GREEN verification: focused Vitest (236 tests), `pnpm build`, `cargo test -p agentic-core` (371 passed, 4 ignored), targeted all-feature Clippy, Rust formatting check, and `git diff --check` passed.
 - Task 5: pending — Transactional direct palette shortcuts
 - Task 6: pending — Release integration and verification
