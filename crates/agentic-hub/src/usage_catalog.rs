@@ -9,7 +9,7 @@ use agentic_core::paths::expand_tilde;
 use agentic_core::paths::tildify;
 use agentic_core::settings::Settings;
 use agentic_core::{
-    api, hash_usage_correlation, scan_installed_tools, UsageEventInput, UsageStore,
+    api, hash_usage_correlation, managed_copy, scan_installed_tools, UsageEventInput, UsageStore,
 };
 
 use crate::usage_attribution::{path_is_capability_file, NormalizedBatch, NormalizedOccurrence};
@@ -150,6 +150,12 @@ pub fn reconcile_existing_usage(store: &UsageStore, settings: &Settings) -> Resu
 fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> Vec<CatalogEntry> {
     let mut entries = Vec::new();
     let scan = api::scan(settings);
+    let configured_ids: HashSet<String> = scan
+        .items
+        .iter()
+        .filter(|item| is_skill_or_agent(item))
+        .map(|item| item.id.clone())
+        .collect();
     for item in scan.items.into_iter().filter(is_skill_or_agent) {
         if let Some(entry) = global_entry(item) {
             entries.push(entry);
@@ -161,6 +167,9 @@ fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> V
         .items
         .into_iter()
         .filter(|item| item.id.starts_with(&installed_prefix) && is_skill_or_agent(item))
+        .filter(|item| {
+            !is_managed_projection_of_configured_item(item, settings, source_tool, &configured_ids)
+        })
     {
         if let Some(entry) = global_entry(item) {
             entries.push(entry);
@@ -172,6 +181,25 @@ fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> V
         collect_repository_entries(source_tool, &repository_root, &active_root, &mut entries);
     }
     dedupe_entries(entries)
+}
+
+fn is_managed_projection_of_configured_item(
+    item: &CapabilityItem,
+    settings: &Settings,
+    source_tool: &str,
+    configured_ids: &HashSet<String>,
+) -> bool {
+    let Some(tool) = tool_id(source_tool) else {
+        return false;
+    };
+    let tool_settings = settings.tools.for_tool(tool);
+    let target_root = match item.kind {
+        CapabilityKind::Skill => &tool_settings.skills_path,
+        CapabilityKind::Agent => &tool_settings.agents_path,
+        _ => return false,
+    };
+    managed_copy::read_entry(target_root, &item.source_path)
+        .is_some_and(|entry| configured_ids.contains(&entry.item_id))
 }
 
 fn global_entry(item: CapabilityItem) -> Option<CatalogEntry> {

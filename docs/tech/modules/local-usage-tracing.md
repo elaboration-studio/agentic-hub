@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-07-19
+Last Updated: 2026-07-31
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [docs/features/local-skill-usage-tracing.md](../../features/local-skill-usage-tracing.md)
 Related Docs: [docs/tech/modules/hook-projection-sync.md](./hook-projection-sync.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
@@ -85,6 +85,8 @@ The capability catalog combines:
 1. managed global source scans;
 2. tool-global installed skills and agents;
 3. skills and agents discovered under the active repository roots.
+
+Tool-global inventory is filtered against managed-copy ownership metadata before attribution. When a manifest entry points to a currently configured global source, its target is the installed representation of that source, not a second catalog candidate. This is required for Claude skills, which use managed hard copies whose canonical paths differ from their source; Codex and Cursor symlink projections naturally canonicalize to the source. Truly unmanaged resources and orphaned copies whose source is no longer configured remain catalog entries under their `installed::<tool>::` identities.
 
 Resolution compares canonical exact paths first, documented tool scope and
 precedence second, and unique names last. Codex and Cursor prefer a unique

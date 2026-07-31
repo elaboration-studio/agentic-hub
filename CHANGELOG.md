@@ -8,6 +8,13 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude managed-copy usage attribution.** Skill invocations now collapse a
+  Hub-managed hard copy to its configured source identity instead of treating
+  the source and copy as ambiguous global candidates; genuinely unmanaged
+  Claude skills retain their installed identities.
+
 ## [0.15.2] — 2026-07-22
 
 ### Added

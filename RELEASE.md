@@ -29,6 +29,9 @@ file verbatim as the GitHub Release body. For the full version history see
 
 ### Fixed
 
+- **Claude managed-copy usage attribution** resolves Skill-tool events to their
+  configured Hub source while preserving distinct identities for genuinely
+  unmanaged Claude skills.
 - **Statistics chart tooltips** are readable on the dark chart theme (label,
   item, and hover cursor colors).
 - **Cursor `/skill` usage tracing** from prompt-submit hooks — slash skills,

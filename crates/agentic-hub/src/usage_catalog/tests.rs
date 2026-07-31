@@ -29,6 +29,118 @@ fn local_skill(root: &Path, tool_dir: &str, name: &str) -> PathBuf {
     dir.join("SKILL.md")
 }
 
+fn claude_only_settings(shared_root: &Path, tools_root: &Path) -> Settings {
+    let mut settings = Settings {
+        shared_root: shared_root.to_path_buf(),
+        sources: Vec::new(),
+        ..Settings::default()
+    };
+    settings.tools.codex.enabled = false;
+    settings.tools.cursor.enabled = false;
+    settings.tools.openclaw.enabled = false;
+    settings.tools.openstandard.enabled = false;
+    settings.tools.kiro.enabled = false;
+    settings.tools.copilot.enabled = false;
+    settings.tools.antigravity.enabled = false;
+
+    let claude_root = tools_root.join("claude");
+    settings.tools.claude.skills_path = claude_root.join("skills");
+    settings.tools.claude.agents_path = claude_root.join("agents");
+    settings.tools.claude.rules_path = claude_root.join("rules");
+    settings.tools.claude.instructions_path = Some(claude_root.join("CLAUDE.md"));
+    settings.tools.claude.hooks_file = Some(claude_root.join("settings.json"));
+    settings.tools.claude.commands_path = Some(claude_root.join("commands"));
+    settings
+}
+
+#[test]
+fn claude_managed_copy_resolves_to_configured_source_identity() {
+    let source = TestRepo::new();
+    let tools = TestRepo::new();
+    let settings = claude_only_settings(source.path(), tools.path());
+    let source_file = local_skill(source.path(), "skills", "managed-global-skill");
+    let source_dir = source_file.parent().unwrap();
+    let target_root = &settings.tools.claude.skills_path;
+    let target_dir = target_root.join("managed-global-skill");
+    agentic_core::managed_copy::write_managed_copy(
+        source_dir,
+        &target_dir,
+        target_root,
+        "skill:managed-global-skill",
+        false,
+    )
+    .unwrap();
+    let raw = json!({
+        "hook_event_name": "PostToolUse",
+        "session_id": "session-managed-copy",
+        "tool_name": "Skill",
+        "tool_input": { "skill": "managed-global-skill" }
+    });
+    let batch = AttributionState::default().normalize(&raw, "claude");
+
+    let attributed = attribute_batch(batch, &settings, "claude");
+
+    assert_eq!(
+        attributed.events[0].capability_id.as_deref(),
+        Some("skill:managed-global-skill")
+    );
+}
+
+#[test]
+fn claude_unmanaged_skill_keeps_installed_identity() {
+    let source = TestRepo::new();
+    let tools = TestRepo::new();
+    let settings = claude_only_settings(source.path(), tools.path());
+    local_skill(tools.path(), "claude/skills", "unmanaged-global-skill");
+    let raw = json!({
+        "hook_event_name": "PostToolUse",
+        "session_id": "session-unmanaged",
+        "tool_name": "Skill",
+        "tool_input": { "skill": "unmanaged-global-skill" }
+    });
+    let batch = AttributionState::default().normalize(&raw, "claude");
+
+    let attributed = attribute_batch(batch, &settings, "claude");
+
+    assert_eq!(
+        attributed.events[0].capability_id.as_deref(),
+        Some("installed::claude::skill:unmanaged-global-skill")
+    );
+}
+
+#[test]
+fn reconciliation_repairs_claude_managed_copy_history() {
+    let source = TestRepo::new();
+    let tools = TestRepo::new();
+    let workspace = TestRepo::new();
+    let settings = claude_only_settings(source.path(), tools.path());
+    let source_file = local_skill(source.path(), "skills", "managed-history-skill");
+    let source_dir = source_file.parent().unwrap();
+    let target_root = &settings.tools.claude.skills_path;
+    agentic_core::managed_copy::write_managed_copy(
+        source_dir,
+        &target_root.join("managed-history-skill"),
+        target_root,
+        "skill:managed-history-skill",
+        false,
+    )
+    .unwrap();
+    let store = UsageStore::with_path(tools.path().join("trace.db"));
+    let unresolved = UsageEventInput {
+        source_tool: "claude".to_string(),
+        event_type: "PostToolUse".to_string(),
+        skill_name: Some("managed-history-skill".to_string()),
+        workspace: Some(workspace.path().to_string_lossy().into_owned()),
+        dedupe_hash: Some("claude-managed-history".to_string()),
+        ..UsageEventInput::default()
+    };
+    store.insert_event(&unresolved, &[]).unwrap();
+
+    let updated = reconcile_existing_usage(&store, &settings).unwrap();
+
+    assert_eq!((updated, store.resolved_event_count().unwrap()), (1, 1));
+}
+
 #[test]
 fn attribute_batch_resolves_slash_repository_skill_for_cursor_claude_and_codex() {
     for (tool, skill_dir) in [

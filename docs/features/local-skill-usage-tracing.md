@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-07-19
+Last Updated: 2026-07-31
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [DESIGN.md](../../DESIGN.md)
 Related Docs: [docs/tech/modules/local-usage-tracing.md](../tech/modules/local-usage-tracing.md), [docs/features/hooks-projection.md](./hooks-projection.md)
 
@@ -114,6 +114,7 @@ charts and tables. Date range filters default to the last 30 days.
 - [ ] Repeated references to the same skill within one turn increment it once.
 - [ ] Repository-local skills resolve for active Cursor, Claude Code, and Codex repositories without requiring a saved workspace.
 - [ ] Same-named global and repository-local skills retain separate identities and counts.
+- [ ] A Hub-managed hard-copy projection resolves to its configured source identity rather than appearing as a second global candidate; genuinely unmanaged tool-global resources keep their installed identities.
 - [ ] Overlapping prompt and terminal hook signals upgrade one occurrence instead of double-counting it.
 - [ ] Legacy duplicate events with the same dedupe hash remain ignored.
 - [ ] Events with missing or ambiguous skill names are stored without incrementing any skill row.
