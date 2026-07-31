@@ -57,8 +57,8 @@ Common error codes:
 | `open_failed` | The opener plugin could not open the path |
 | `reveal_failed` | The opener plugin could not reveal the path |
 | `session_source_unavailable` | A session's source file was missing or unreadable on a `cmd_get_session` detail read |
-| `invalid_shortcut` | The palette accelerator string in settings is malformed |
-| `shortcut_register_failed` | The global palette shortcut could not be registered with the OS |
+| `invalid_shortcut` | A palette accelerator is malformed or duplicates another configured accelerator |
+| `shortcut_register_failed` | The complete global palette shortcut set could not be registered with the OS |
 | `invalid_skill_ref` | A skill install reference failed `owner/repo` validation |
 | `unknown_provider` | A skill source provider id is not registered |
 | `skill_search` | A skill source search request failed (network / non-200 / malformed) |
@@ -74,7 +74,7 @@ Reads `~/.agentic-hub/config.json` and returns the parsed settings. If the file 
 
 ### `cmd_save_settings(settings: Settings) -> ()`
 
-Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed; `paletteShortcut` passes `is_valid_shortcut` (`invalid_shortcut` otherwise). Re-subscribes the source watcher to the current roots when it is running, then re-registers the global palette accelerator (`shortcut_register_failed` if the OS rejects it).
+Validates and atomically writes settings. Validation includes: non-empty `shared_root`; per-tool paths well-formed; and all four palette accelerators being parseable and unique (`invalid_shortcut` otherwise). The OS registrations are replaced before persistence; any failed registration restores the prior complete set and leaves settings unchanged. A failed settings write likewise restores the prior registrations. After commit, the command re-subscribes the source watcher to the current roots when it is running.
 
 The untrusted WebView does not own every persisted field. The command preserves
 the on-disk CLI-tools override and color-scheme preference, which have dedicated
@@ -95,6 +95,10 @@ Persists `settings.watcherEnabled` and starts or stops the source watcher immedi
 
 Show (and focus) or hide the floating command-palette window. Bound to the global accelerator (handled in Rust) and the View > Command Palette menu item; also callable from the UI.
 
+### `cmd_take_palette_launch_mode() -> PaletteLaunchMode`
+
+Consumes the one-shot destination requested by a direct global shortcut and resets it to `hub`. The palette calls this on focus before reloading, so mount/focus event ordering cannot erase an `allResources`, `skills`, or `commands` request.
+
 ### `cmd_show_main() -> ()`
 
 Show + focus the main window and hide the palette. Used by palette navigation commands that route back into the main window (paired with the `hub-navigate` event).
@@ -114,8 +118,17 @@ type Settings = {
   editor: EditorPref;             // preferred editor for "open original"
   colorScheme: ColorScheme;       // 'system' | 'light' | 'dark'
   paletteShortcut: string;        // global accelerator, e.g. "Cmd+Alt+A"
+  paletteQuickSearchShortcuts: PaletteQuickSearchShortcuts;
   tools: ToolsSettings;
 };
+
+type PaletteQuickSearchShortcuts = {
+  allResources: string;           // default "Cmd+Alt+Ctrl+A"
+  skills: string;                 // default "Cmd+Alt+Ctrl+S"
+  commands: string;               // default "Cmd+Alt+Ctrl+C"
+};
+
+type PaletteLaunchMode = 'hub' | 'allResources' | 'skills' | 'commands';
 
 type ColorScheme = 'system' | 'light' | 'dark';
 

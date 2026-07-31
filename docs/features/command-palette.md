@@ -88,7 +88,8 @@ slice of resources I mean instead of getting one global mixed result list.
   `sources-changed` so the main window's matrix refreshes.
 - Native top menus: App (About, Settings `Cmd+,`, Hide, Quit), Edit, View
   (Command Palette), Window. `Cmd+,` routes the main window to Config.
-- A Config panel to edit the shortcut (validated, re-registered on save).
+- A Config panel with four labeled shortcuts: hub toggle plus direct all-resource,
+  skill, and command searches. The set is validated and replaced atomically.
 
 ### Out of scope (registry extension points)
 
@@ -103,8 +104,10 @@ slice of resources I mean instead of getting one global mixed result list.
 
 ```mermaid
 flowchart TD
-  shortcut["Global shortcut"] --> handler["Rust shortcut handler"]
-  handler --> toggle["toggle_palette: show/focus or hide"]
+  shortcut["Four global shortcuts"] --> handler["Rust shortcut handler"]
+  handler --> toggle["Hub: toggle palette"]
+  handler --> direct["Direct: set one-shot mode + show/focus"]
+  direct --> searchMode
   toggle --> hub["Root hub: computeHubResults (sections)"]
   hub --> searchMode["Search mode -> computeSearchResults(kind)"]
   hub --> gotoMode["Go-to mode -> locate rows"]
@@ -120,24 +123,26 @@ flowchart TD
 ```
 
 - **Panel + shortcut (Rust).** `palette.rs` creates the hidden window at launch
-  and owns `setup_palette` / `toggle_palette` / `hide_palette` /
-  `register_palette_shortcut`. On macOS `setup_palette` subclasses the window to a
+  and owns panel visibility plus the parsed shortcut set, dispatch state, and
+  transactional registration. On macOS `setup_palette` subclasses the window to a
   non-activating `NSPanel` (via `tauri-nspanel`) with `FullScreenAuxiliary |
   CanJoinAllSpaces` collection behavior so it overlays full-screen apps without
   switching Spaces — standard `NSWindow` cannot ([tauri#11488](https://github.com/tauri-apps/tauri/issues/11488)).
   Panel objc ops run on the main thread (`run_on_main_thread`); non-macOS falls
   back to an always-on-top, all-workspaces window. The
-  `tauri-plugin-global-shortcut` handler toggles the palette on key press; it
-  hides on `WindowEvent::Focused(false)`. `macOSPrivateApi` is enabled so the
-  window can be transparent.
+  `tauri-plugin-global-shortcut` handler keeps hub-toggle behavior, while direct
+  shortcuts store a one-shot launch mode and always show/focus the panel—even if
+  it is already visible. It hides on `WindowEvent::Focused(false)`.
 - **Menu (Rust).** `menu.rs` builds the app menu and routes events: Settings ->
   show main + emit `menu-open-config`; Command Palette -> `toggle_palette`.
   `PredefinedMenuItem::quit` preserves Cmd+Q as the hard exit that bypasses the
   close-to-hide handler.
-- **Settings.** `Settings.paletteShortcut` (default `Cmd+Alt+A`) persists in
-  `~/.agentic-hub/config.json`. `cmd_save_settings` validates it via
-  `is_valid_shortcut` and re-registers the accelerator; a bad saved value at
-  launch falls back to the default so summon never breaks.
+- **Settings.** `Settings.paletteShortcut` stays the configurable hub toggle
+  (`Cmd+Alt+A`). `paletteQuickSearchShortcuts` defaults to
+  `Cmd+Alt+Ctrl+A/S/C` for all resources, skills, and commands. Legacy files
+  receive these defaults. `cmd_save_settings` rejects malformed and duplicate
+  accelerators, replaces all OS registrations transactionally, and persists only
+  after success. Registration or persistence failure restores the prior set.
 - **UI.** One bundle, two windows: `main.tsx` renders `<CommandPalette/>` when the
   window label is `palette`, else `<App/>`. `usePaletteStore` loads settings +
   scans + lists suites + scans every remembered workspace inventory on summon
@@ -151,7 +156,9 @@ flowchart TD
   the capability-tools view reads; toggle actions `await` that inspect before
   building the desired map. Hub rows carry a `section` label rendered as muted
   group headers; search-mode rows also show `⌃1`…`⌃7` shortcut hints and accept
-  Ctrl+1…Ctrl+7 from any palette view to jump between modes. Drill-in rows set
+  Ctrl+1…Ctrl+7 from any palette view to jump between modes. On focus the panel
+  consumes `cmd_take_palette_launch_mode`; only then does the store reload into
+  the requested direct search, so initial mount cannot reset it. Drill-in rows set
   `dismissOnRun: false` and call `enterMode` /
   `enterSuite`; every non-root view shows a `‹ <view name>` breadcrumb and
   Backspace-on-empty steps back (suite-tools entered from suite search returns
@@ -181,7 +188,9 @@ flowchart TD
 
 ## Acceptance criteria
 
-- [ ] The configured shortcut (default `Cmd+Alt+A`) toggles the palette from any app.
+- [ ] The configured hub shortcut (default `Cmd+Alt+A`) toggles the palette from any app.
+- [ ] The default all-resource, skill, and command shortcuts always show/focus
+      their search mode, including while the panel is already visible.
 - [ ] Summoning lands on the categorized hub (Search / Go to / Navigate / Actions);
       typing at the root filters hub rows only — no resource results.
 - [ ] Entering a search mode scopes results to that kind; for skills/agents/rules/
@@ -204,15 +213,18 @@ flowchart TD
       rules, hooks, commands, suites) from any palette view.
 - [ ] Navigation commands surface and focus the main window on the chosen route.
 - [ ] `Cmd+,` opens Config; the app menu exposes Quit (hard exit) and Command Palette.
-- [ ] Editing the shortcut in Config re-registers it; a malformed value is rejected
-      with `invalid_shortcut`.
+- [ ] Config edits and resets all four labeled shortcuts as one set; malformed or
+      duplicate values return `invalid_shortcut`, and an OS failure keeps the prior
+      settings and registrations working.
 
 ## Dependencies
 
 - `tauri-plugin-global-shortcut` (Rust plugin + handler); `tauri` `macos-private-api`
   feature + `macOSPrivateApi: true` for transparency.
-- New `Settings.paletteShortcut` + `agentic_core::settings::is_valid_shortcut`.
-- New IPC commands `cmd_toggle_palette` / `cmd_show_main`; events `menu-open-config`
+- `Settings.paletteShortcut` plus generated `PaletteQuickSearchShortcuts` and
+  `PaletteLaunchMode` contracts.
+- IPC commands `cmd_toggle_palette` / `cmd_take_palette_launch_mode` /
+  `cmd_show_main`; events `menu-open-config`
   / `hub-navigate` / `hub-locate` (scoped) / `hub-watcher-changed` / `sources-changed`
   (emitted from the frontend via `emitSourcesChanged` after an inline toggle).
 - The capability-tools toggle reuses the manager's pipeline IPC — `cmd_inspect`,

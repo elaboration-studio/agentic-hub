@@ -20,6 +20,7 @@ import type {
   InstallScope,
   InstalledToolInventory,
   PlannedOperation,
+  PaletteLaunchMode,
   ScaffoldMode,
   ScaffoldResult,
   ScanResult,
@@ -80,6 +81,10 @@ export type NavRoute = "manager" | "suites" | "config";
 /// Show / hide the floating command-palette window (also bound to the View menu
 /// and the global shortcut).
 export const togglePalette = (): Promise<void> => invoke("cmd_toggle_palette");
+
+/// Consume the one-shot destination requested by a direct global shortcut.
+export const takePaletteLaunchMode = (): Promise<PaletteLaunchMode> =>
+  invoke("cmd_take_palette_launch_mode");
 
 /// Show + focus the main window and hide the palette. Used by palette nav.
 export const showMain = (): Promise<void> => invoke("cmd_show_main");

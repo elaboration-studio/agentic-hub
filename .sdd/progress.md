@@ -25,5 +25,10 @@
   - RED evidence: the pane test could not import its missing behavior module, and the catalog regression failed because ripgrep was absent. GREEN verification: focused Vitest (236 tests), `pnpm build`, `cargo test -p agentic-core` (371 passed, 4 ignored), targeted all-feature Clippy, Rust formatting check, and `git diff --check` passed.
   - Review hardening: when Resources opens before Manager settings load, the first known skills.sh state now selects the correct default without replacing an explicit user pane selection; disabled Skills still falls back to Tools. Regression coverage (239 frontend tests), build, and diff check pass.
   - Final review: `Spec: PASS`, `Quality: APPROVED`; no remaining findings.
-- Task 5: pending — Transactional direct palette shortcuts
+- Task 5: complete — Transactional direct palette shortcuts
+  - Added generated quick-search shortcut and one-shot launch-mode contracts with legacy defaults for all resources, skills, and commands.
+  - All four accelerators are parsed and deduplicated before persistence; partial OS registration or settings-write failure restores the prior complete working set.
+  - Hub shortcut keeps toggle behavior, while direct shortcuts always show/focus and consume their launch mode on palette focus. Latest-load guards prevent a slower mount load from resetting a direct search.
+  - Config exposes four labeled fields with atomic Save and Reset-default-set actions; existing in-palette Ctrl+1…7 mode shortcuts remain unchanged.
+  - RED evidence: generated fields/contracts were absent, rollback helpers did not exist, direct store loads stayed at root, and an older mount load reset a newer direct launch. GREEN verification: 243 frontend tests, production build, 375 core tests (4 ignored), 77 shell tests, targeted Rust format, all-feature Clippy, type generation, and diff check passed. Manual cross-app shortcut smoke remains in Task 6.
 - Task 6: pending — Release integration and verification

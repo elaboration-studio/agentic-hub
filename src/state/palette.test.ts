@@ -130,6 +130,11 @@ function makeSettings(): Settings {
     editor: { kind: "default", customApp: null },
     colorScheme: "system",
     paletteShortcut: "Cmd+Alt+A",
+    paletteQuickSearchShortcuts: {
+      allResources: "Cmd+Alt+Ctrl+A",
+      skills: "Cmd+Alt+Ctrl+S",
+      commands: "Cmd+Alt+Ctrl+C",
+    },
     pasteIntoFocused: false,
     skills: { enabled: false, favoritesPath: null },
     usageTracing: {
@@ -236,6 +241,41 @@ describe("palette store — loading", () => {
     await usePaletteStore.getState().load();
     expect(usePaletteStore.getState().status).toBe("error");
     expect(usePaletteStore.getState().error).toBe("disk gone");
+  });
+
+  it.each([
+    ["allResources", "all"],
+    ["skills", "skill"],
+    ["commands", "command"],
+  ] as const)("load enters the %s direct launch mode", async (launchMode, searchMode) => {
+    mocked.loadSettings.mockResolvedValue(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [], errors: [], lockedSkills: [] });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
+
+    await usePaletteStore.getState().load(launchMode);
+
+    expect(usePaletteStore.getState().view).toEqual({ kind: "search", mode: searchMode });
+  });
+
+  it("an older mount load cannot reset a newer direct focus launch", async () => {
+    let finishMountLoad: ((settings: Settings) => void) | undefined;
+    const mountSettings = new Promise<Settings>((resolve) => {
+      finishMountLoad = resolve;
+    });
+    mocked.loadSettings
+      .mockImplementationOnce(() => mountSettings)
+      .mockResolvedValueOnce(makeSettings());
+    mocked.scan.mockResolvedValue({ items: [], errors: [], lockedSkills: [] });
+    mocked.listSuites.mockResolvedValue([]);
+    mocked.listWorkspaceTargets.mockResolvedValue({ workspaceTargets: [], workspaceActiveId: null });
+
+    const mountLoad = usePaletteStore.getState().load();
+    await usePaletteStore.getState().load("skills");
+    finishMountLoad?.(makeSettings());
+    await mountLoad;
+
+    expect(usePaletteStore.getState().view).toEqual({ kind: "search", mode: "skill" });
   });
 });
 

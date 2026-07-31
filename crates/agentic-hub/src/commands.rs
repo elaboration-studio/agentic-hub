@@ -15,11 +15,13 @@ use agentic_core::model::{
     SuiteBinding, SuiteDefinition, SuiteOwnership, SyncHooksResult, SyncRulesResult, ToolId,
     UsageDashboard, UsageDateRange, UsageStats, WorkspaceTarget, WorkspaceTargetsState,
 };
-use agentic_core::sessions::{SessionMessage, SessionSummary};
 use agentic_core::open_targets;
 use agentic_core::paths::expand_tilde;
 use agentic_core::scaffold::{self, ScaffoldMode, ScaffoldResult};
-use agentic_core::settings::{ColorScheme, Settings, SourceConfig, ToolsSettings};
+use agentic_core::sessions::{SessionMessage, SessionSummary};
+use agentic_core::settings::{
+    ColorScheme, PaletteLaunchMode, Settings, SourceConfig, ToolsSettings,
+};
 use agentic_core::skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
 use agentic_core::skill_source::{provider_for, SkillCliStatus, SkillSearchHit};
 use agentic_core::suite_binding_store::SuiteBindingStore;
@@ -96,26 +98,37 @@ pub async fn cmd_save_settings(
     mut settings: Settings,
 ) -> IpcResult<()> {
     let _settings_guard = settings_save_lock().lock().await;
-    if !agentic_core::settings::is_valid_shortcut(&settings.palette_shortcut) {
-        return Err(IpcError::new(
-            "invalid_shortcut",
-            format!("Invalid palette shortcut: {}", settings.palette_shortcut),
-        ));
-    }
     // Preserve fields that have dedicated trusted mutation paths. The WebView
     // must not set an executable-defining catalog path, and a stale full-form
     // save must not roll back a newer app-wide appearance choice.
     let persisted = Settings::load()?;
-    settings.cli_tools_path = persisted.cli_tools_path;
+    settings
+        .cli_tools_path
+        .clone_from(&persisted.cli_tools_path);
     settings.color_scheme = persisted.color_scheme;
-    settings.save()?;
+    if settings.usage_tracing.enabled && settings.usage_tracing.collector_token.is_empty() {
+        settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
+    }
+    // Parse and register all four accelerators before persistence. Registration
+    // is transactional; an unavailable key restores the prior complete set and
+    // leaves the settings file untouched.
+    palette::register_palette_shortcuts_and_persist(&app, &settings, || {
+        settings.save().map_err(|error| error.to_string())
+    })
+    .map_err(|error| {
+        let code =
+            if error.starts_with("Invalid shortcut:") || error.starts_with("Duplicate shortcut:") {
+                "invalid_shortcut"
+            } else if error.starts_with("Settings save failed:") {
+                "internal"
+            } else {
+                "shortcut_register_failed"
+            };
+        IpcError::new(code, error)
+    })?;
     // Mirror the telemetry consent flag so a mid-session toggle takes effect at
     // once (gates the next tracked event without needing a restart).
     telemetry.set_enabled(settings.telemetry.enabled);
-    if settings.usage_tracing.enabled && settings.usage_tracing.collector_token.is_empty() {
-        settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
-        settings.save()?;
-    }
     usage_collector
         .apply_settings(&settings)
         .map_err(|e| IpcError::new("usage_collector_failed", e))?;
@@ -123,9 +136,6 @@ pub async fn cmd_save_settings(
         .map_err(|e| IpcError::new("usage_hooks_failed", e))?;
     // Source roots may have changed; re-subscribe if the watcher is running.
     watcher.restart_if_running(app.clone());
-    // The summon accelerator may have changed; re-register it now.
-    palette::register_palette_shortcut(&app, &settings.palette_shortcut)
-        .map_err(|e| IpcError::new("shortcut_register_failed", e))?;
     Ok(())
 }
 
@@ -134,6 +144,15 @@ pub async fn cmd_save_settings(
 pub async fn cmd_toggle_palette(app: AppHandle) -> IpcResult<()> {
     palette::toggle_palette(&app);
     Ok(())
+}
+
+/// Consume the launch destination requested by the latest direct shortcut.
+/// Reading resets the next launch to the hub root.
+#[tauri::command]
+pub async fn cmd_take_palette_launch_mode(
+    state: State<'_, palette::PaletteShortcutState>,
+) -> IpcResult<PaletteLaunchMode> {
+    Ok(state.take_launch_mode())
 }
 
 /// Show and focus the main window, then hide the palette. Used by palette
@@ -664,10 +683,7 @@ pub async fn cmd_get_session(input: GetSessionInput) -> IpcResult<Vec<SessionMes
         .into_iter()
         .find(|s| s.session_key == input.session_key)
         .ok_or_else(|| {
-            IpcError::new(
-                "session_source_unavailable",
-                "Session no longer available",
-            )
+            IpcError::new("session_source_unavailable", "Session no longer available")
         })?;
     Ok(agentic_core::read_session_transcript(
         summary.tool,

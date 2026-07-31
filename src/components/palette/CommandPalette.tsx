@@ -9,6 +9,7 @@ import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { Check, ChevronLeft, Circle, Lock, Search } from "lucide-react";
 import { usePaletteStore, type PaletteView } from "@/state/palette";
 import { useApplyStore } from "@/state/apply";
+import { takePaletteLaunchMode } from "@/ipc";
 import { ApplySuiteConfirmDialog } from "@/components/suites/ApplySuiteConfirmDialog";
 import { MODE_DEFS, searchModeFromShortcut, shouldDismissPaletteAfterRun, type PaletteItem } from "./commands";
 import { Badge } from "@/components/ui/badge";
@@ -97,18 +98,34 @@ export function CommandPalette() {
     };
   }, [pending]);
 
-  // Load on mount, and re-load + reset on every re-summon (window regains
-  // focus) so resource edits are picked up and each summon starts clean.
+  // Mount while hidden at app startup. On each later focus, consume the
+  // one-shot launch request before loading so a direct shortcut cannot be
+  // overwritten by the mount ordering.
   useEffect(() => {
+    let disposed = false;
     void load();
     inputRef.current?.focus();
     const unlisten = getCurrentWindow().listen("tauri://focus", () => {
-      reset();
-      void load();
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      if (disposed) return;
+      void (async () => {
+        let launchMode: Awaited<ReturnType<typeof takePaletteLaunchMode>> = "hub";
+        try {
+          launchMode = await takePaletteLaunchMode();
+        } catch {
+          // The hub root is the safe fallback if the one-shot IPC is unavailable.
+        }
+        if (disposed) return;
+        reset();
+        await load(launchMode);
+        if (disposed) return;
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      })();
     });
-    return () => void unlisten.then((fn) => fn());
+    return () => {
+      disposed = true;
+      void unlisten.then((fn) => fn());
+    };
   }, [load, reset]);
 
   const hide = () => void getCurrentWindow().hide();

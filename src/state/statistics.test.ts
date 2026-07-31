@@ -80,6 +80,11 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
     editor: { kind: "default", customApp: null },
     colorScheme: "system",
     paletteShortcut: "Cmd+Alt+A",
+    paletteQuickSearchShortcuts: {
+      allResources: "Cmd+Alt+Ctrl+A",
+      skills: "Cmd+Alt+Ctrl+S",
+      commands: "Cmd+Alt+Ctrl+C",
+    },
     pasteIntoFocused: false,
     skills: { enabled: false, favoritesPath: null },
     usageTracing: {

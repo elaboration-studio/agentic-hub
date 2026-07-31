@@ -30,6 +30,7 @@ import {
 } from "../ipc";
 import type {
   CapabilityItem,
+  PaletteLaunchMode,
   Settings,
   SuiteDefinition,
   ToolCapabilityState,
@@ -65,6 +66,13 @@ export type PaletteView =
 
 const ROOT_VIEW: PaletteView = { kind: "root" };
 
+function viewForLaunchMode(mode: PaletteLaunchMode): PaletteView {
+  if (mode === "allResources") return { kind: "search", mode: "all" };
+  if (mode === "skills") return { kind: "search", mode: "skill" };
+  if (mode === "commands") return { kind: "search", mode: "command" };
+  return ROOT_VIEW;
+}
+
 interface PaletteState {
   status: Status;
   error: string;
@@ -84,7 +92,7 @@ interface PaletteState {
   selectedIndex: number;
   results: PaletteItem[];
 
-  load: () => Promise<void>;
+  load: (launchMode?: PaletteLaunchMode) => Promise<void>;
   setQuery: (query: string) => void;
   move: (delta: number) => void;
   setSelected: (index: number) => void;
@@ -217,6 +225,7 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
   // build the full desired map from accurate state (a partial map would wipe
   // every rule/hook not marked enabled — see syncRules/syncHooks).
   let pendingInspect: Promise<void> | null = null;
+  let loadGeneration = 0;
 
   const deps: RecomputeDeps = {
     enterMode: (mode) => enterMode(mode),
@@ -303,7 +312,8 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
   return {
     ...getInitialState(),
 
-    load: async () => {
+    load: async (launchMode = "hub") => {
+      const generation = ++loadGeneration;
       set({ status: "loading", error: "", inspected: false });
       pendingInspect = null;
       try {
@@ -313,11 +323,21 @@ export const usePaletteStore = create<PaletteState>((set, get) => {
           listSuites(),
           loadWorkspaces(),
         ]);
-        refreshResults({ settings, items, suites, workspaces, status: "ready" });
+        if (generation !== loadGeneration) return;
+        refreshResults({
+          settings,
+          items,
+          suites,
+          workspaces,
+          status: "ready",
+          view: viewForLaunchMode(launchMode),
+          query: "",
+        });
         // Inspect in the background — the palette is already usable for search.
         pendingInspect = runInspect();
         void pendingInspect;
       } catch (e) {
+        if (generation !== loadGeneration) return;
         set({ error: messageOf(e), status: "error" });
       }
     },

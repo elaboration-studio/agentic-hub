@@ -2,6 +2,7 @@
 import type { ColorScheme } from "./ColorScheme";
 import type { EditorPref } from "./EditorPref";
 import type { MainWindowState } from "./MainWindowState";
+import type { PaletteQuickSearchShortcuts } from "./PaletteQuickSearchShortcuts";
 import type { SkillsConfig } from "./SkillsConfig";
 import type { SourceConfig } from "./SourceConfig";
 import type { TelemetryConfig } from "./TelemetryConfig";
@@ -75,6 +76,10 @@ colorScheme: ColorScheme,
  * `Cmd+Alt+A`.
  */
 paletteShortcut: string,
+/**
+ * Direct search accelerators. Legacy settings receive the stable defaults.
+ */
+paletteQuickSearchShortcuts: PaletteQuickSearchShortcuts,
 /**
  * When on, the palette pastes a command body into the focused app (macOS,
  * needs Accessibility permission) instead of only copying. Defaults off.

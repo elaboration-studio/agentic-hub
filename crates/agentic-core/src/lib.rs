@@ -75,8 +75,8 @@ pub use sessions::{
     SessionRole, SessionSummary,
 };
 pub use settings::{
-    ColorScheme, Settings, SkillsConfig, SourceConfig, ToolSettings, ToolsSettings,
-    UsageTracingConfig,
+    ColorScheme, PaletteLaunchMode, PaletteQuickSearchShortcuts, Settings, SkillsConfig,
+    SourceConfig, ToolSettings, ToolsSettings, UsageTracingConfig,
 };
 pub use skill_favorites::{SkillFavorite, SkillFavoritesState, SkillFavoritesStore};
 pub use skill_lock::{parse_local_lock, read_local_lock, LocalSkillLock, LockedSkillEntry};
