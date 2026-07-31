@@ -14,6 +14,7 @@ import { Matrix } from "@/components/manager/Matrix";
 import { EmptyState } from "@/components/manager/EmptyState";
 import { ScopeRail } from "@/components/workspace/ScopeRail";
 import { InstallFab } from "@/components/install/InstallFab";
+import { SuitesPage } from "@/components/suites/SuitesPage";
 
 export function ManagerView() {
   const scope = useManagerStore((s) => s.scope);
@@ -48,7 +49,9 @@ export function ManagerView() {
             </ul>
           </details>
         )}
-        {scope === "global" ? (
+        {scope === "suite" ? (
+          <SuitesPage />
+        ) : scope === "global" ? (
           !data ? null : data.items.length === 0 ? (
             <EmptyState />
           ) : (
@@ -66,7 +69,7 @@ export function ManagerView() {
           </Alert>
         )}
       </div>
-      {skillsEnabled &&
+      {skillsEnabled && scope !== "suite" &&
         (scope === "workspace" ? activeId && <InstallFab workspaceId={activeId} /> : <InstallFab />)}
     </div>
   );

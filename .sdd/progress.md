@@ -1,6 +1,6 @@
 # 0.16.0 SDD progress
 
-- Task 1: pending — Shared Manager table and Suite scope
+- Task 1: implementation complete, awaiting review — Shared Manager table and Suite scope
 - Task 2: pending — Guided stale-copy recovery
 - Task 3: pending — Today-first Statistics
 - Task 4: pending — Resources order and ripgrep catalog

@@ -11,11 +11,29 @@ import {
   setBaseSuite,
   updateSuite,
 } from "../ipc";
-import type { CapabilityItem, SuiteCapabilityRef, SuiteDefinition } from "../types";
+import type {
+  CapabilityItem,
+  SuiteCapabilityRef,
+  SuiteDefinition,
+  ToolCapabilityState,
+  ToolId,
+} from "../types";
 import { messageOf } from "../shared";
 
 function isSuiteSelectableItem(item: CapabilityItem | undefined): boolean {
   return item?.sourceId !== "agentic-hub";
+}
+
+export function suiteRefMatchesItem(
+  ref: SuiteCapabilityRef,
+  item: CapabilityItem,
+): boolean {
+  return (
+    ref.cap === item.id &&
+    (!ref.source ||
+      ref.source.relHome === item.source.relHome ||
+      ref.source.folder === item.source.folder)
+  );
 }
 
 export interface Draft {
@@ -35,10 +53,17 @@ interface SuitesState {
 
   reload: () => Promise<void>;
   startCreate: () => void;
+  startCreateFromCurrent: (
+    tool: ToolId,
+    items: CapabilityItem[],
+    states: ToolCapabilityState[],
+    readOnlyItemIds: ReadonlySet<string>,
+  ) => void;
   selectSuite: (id: string) => void;
   cancelEdit: () => void;
   setDraft: (patch: Partial<Draft>) => void;
   setCapabilities: (ids: string[], on: boolean) => void;
+  removeCapabilities: (ids: string[]) => void;
   save: (items: CapabilityItem[]) => Promise<void>;
   remove: () => Promise<void>;
   setBase: (id: string | null) => Promise<void>;
@@ -66,6 +91,27 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
       selectedId: undefined,
       draft: { name: "", description: "", capabilities: [] },
     }),
+
+  startCreateFromCurrent: (tool, items, states, readOnlyItemIds) => {
+    const enabledIds = new Set(
+      states
+        .filter((state) => state.tool === tool && state.state === "enabled")
+        .map((state) => state.itemId),
+    );
+    const capabilities = items
+      .filter(
+        (item) =>
+          enabledIds.has(item.id) &&
+          !readOnlyItemIds.has(item.id) &&
+          item.sourceId !== "agentic-hub",
+      )
+      .map((item) => item.id);
+    set({
+      isCreating: true,
+      selectedId: undefined,
+      draft: { name: "", description: "", capabilities },
+    });
+  },
 
   selectSuite: (id) => {
     const suite = get().suites.find((s) => s.id === id);
@@ -109,19 +155,36 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
     set({ draft: { ...draft, capabilities: [...next] } });
   },
 
+  removeCapabilities: (ids) => {
+    const draft = get().draft;
+    if (!draft) return;
+    const removed = new Set(ids);
+    set({
+      draft: {
+        ...draft,
+        capabilities: draft.capabilities.filter((capability) => !removed.has(capability)),
+      },
+    });
+  },
+
   save: async (items) => {
-    const { draft, isCreating, selectedId, reload, selectSuite } = get();
+    const { draft, isCreating, selectedId, reload, selectSuite, suites } = get();
     if (!draft || !draft.name.trim()) return;
     set({ busy: true });
     try {
-      // Attach each selected id's source from the live scan so the saved suite
-      // is portable. Ids absent from the scan stay unqualified (source: null).
+      // Attach each selected id's live source. A missing reference keeps its
+      // original portable source identity until the user explicitly removes it.
       const itemById = new Map(items.map((it) => [it.id, it]));
+      const originalById = new Map(
+        suites
+          .find((suite) => suite.id === selectedId)
+          ?.capabilities.map((ref) => [ref.cap, ref]) ?? [],
+      );
       const capabilities: SuiteCapabilityRef[] = draft.capabilities
         .filter((cap) => isSuiteSelectableItem(itemById.get(cap)))
         .map((cap) => ({
           cap,
-          source: itemById.get(cap)?.source ?? null,
+          source: itemById.get(cap)?.source ?? originalById.get(cap)?.source ?? null,
         }));
       const payload = {
         name: draft.name.trim(),

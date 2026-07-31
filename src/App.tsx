@@ -30,21 +30,15 @@ import { ManagerView } from "./components/manager/ManagerView";
 import { ConflictDialog } from "./components/manager/ConflictDialog";
 import { ApplySuiteConfirmDialog } from "./components/suites/ApplySuiteConfirmDialog";
 import { ConfigPage } from "./components/config/ConfigPage";
-import { SuitesPage } from "./components/suites/SuitesPage";
 import { ResourcesPage } from "./components/resources/ResourcesPage";
 import { StatisticsPage } from "./components/statistics/StatisticsPage";
 import { Alert, AlertDescription } from "./components/ui/alert";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
-
-const ROUTES: Route[] = ["manager", "suites", "skills", "statistics", "config"];
-
-function routeFromHash(): Route {
-  const hash = window.location.hash.replace(/^#\/?/, "") as Route;
-  return ROUTES.includes(hash) ? hash : "manager";
-}
+import { resolveAppRoute } from "./navigation";
 
 function navigate(route: Route) {
+  if (route === "suites") useManagerStore.getState().setScope("suite");
   window.location.hash = route === "manager" ? "" : `#/${route}`;
 }
 
@@ -72,7 +66,7 @@ export function App() {
   const updatePhase = useUpdateStore((s) => s.phase);
   const availableUpdate = useUpdateStore((s) => s.available);
 
-  const [route, setRoute] = useState<Route>(routeFromHash);
+  const [route, setRoute] = useState<Route>(() => resolveAppRoute(window.location.hash).route);
 
   // Background update scan: throttled in the store to once per weekly window.
   // Evaluated on launch, on each app re-open (Dock click), and on a long-session
@@ -129,7 +123,12 @@ export function App() {
   }, [scope, refresh]);
 
   useEffect(() => {
-    const onHash = () => setRoute(routeFromHash());
+    const onHash = () => {
+      const resolved = resolveAppRoute(window.location.hash);
+      setRoute(resolved.route);
+      if (resolved.managerScope) useManagerStore.getState().setScope(resolved.managerScope);
+    };
+    onHash();
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -190,7 +189,7 @@ export function App() {
   useEffect(() => {
     const unlisten = onSourcesChanged(() => {
       const s = useManagerStore.getState();
-      if (s.scope === "global") {
+      if (s.scope === "global" || s.scope === "suite") {
         if (s.pendingKeys.length === 0) void refresh();
         return;
       }
@@ -229,7 +228,6 @@ export function App() {
           )}
           {data && route === "config" && <ConfigPage />}
           {data && route === "statistics" && <StatisticsPage />}
-          {data && route === "suites" && <SuitesPage />}
           {route === "skills" && <ResourcesPage />}
           {route === "manager" && <ManagerView />}
         </main>

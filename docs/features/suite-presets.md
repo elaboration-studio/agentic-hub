@@ -1,9 +1,9 @@
 # Feature: Suite Presets
 
-Status: Draft
+Status: Implemented
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-05-20
+Last Updated: 2026-07-31
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [docs/features/mvp-unified-agentic-capability-manager.md](./mvp-unified-agentic-capability-manager.md)
 Related Docs: [docs/tech/modules/suite-presets.md](../tech/modules/suite-presets.md), [docs/features/workspace-inventory.md](./workspace-inventory.md)
 
@@ -23,9 +23,9 @@ As a power user managing multiple AI tools, I want to save a named capability co
 
 - Suite data model: named, tool-agnostic list of capability IDs (all five kinds: skills, agents, rules, hooks, commands)
 - Suite storage: `~/.agentic-suites.json` (single portable dotfile, parity path with VS Code extension)
-- Suite Manager window: standalone Tauri window for creating, editing, renaming, and deleting suites
-- "Create from current" shortcut: capture the currently enabled capabilities for the focused tool as a new suite
-- Main window integration: suite selector in header, "Apply Suite" action
+- Manager Suite scope for creating, editing, renaming, deleting, and applying suites through the shared capability table
+- "Create from current" shortcut: ask for a tool and capture only its enabled Hub-managed capabilities
+- Compatibility aliases: `#/suites` and the palette's Open Suites command enter Manager Suite scope
 - Apply semantics: full reset — disable everything for the focused tool, then enable only the suite's capabilities, then run projection sync
 - Post-apply free editing: after a suite apply, the user can toggle individual items normally
 - Validation: surface warnings when a suite references capabilities that no longer exist in the shared root
@@ -42,35 +42,29 @@ As a power user managing multiple AI tools, I want to save a named capability co
 
 ## Experience
 
-### Suite Manager window
+### Manager Suite scope
 
-Opened via a top-bar button in the main window ("Manage Suites…") or via the suite selector dropdown's "Manage Suites…" option. Lives in a separate Tauri window so the user can have both open side-by-side.
+Suites live between Global and Workspaces in the Manager rail. The selected suite id and draft remain owned by the suite store; the Manager table receives the draft inclusion state as one caller-provided tri-state **Included** column. Global and Workspace keep their existing projection and read-only behavior.
 
 ```
-+----------------------------------+-------------------------------------+
-| Suite List                       | Suite Editor                        |
-|                                  |                                     |
-| + New Suite                      | Name: [________________]            |
-|                                  | Description: [________________]     |
-| > coding-workflow      12 items  |                                     |
-|   research-mode         8 items  | Capabilities                        |
-|   writing-focus         5 items  | [ ] skill:dev/repo-research         |
-|                                  | [x] skill:tdd                       |
-|                                  | [x] agent:coding/coding-agent       |
-|                                  | [!] rule:legacy/old-rule (stale)    |
-|                                  | [ ] rule:general/precise            |
-|                                  |                                     |
-|                                  | [Save] [Delete] [Rename] [Duplicate]|
-+----------------------------------+-------------------------------------+
++------------------------+---------------------------------------------+
+| Manager rail           | Shared capability table                     |
+| Global                 | Name / description / Save / Cancel / Delete |
+| Suites                 | Capability | Source | Usage | Included      |
+|   + New                | Skills / Agents / Rules / Hooks / Commands  |
+|   Create from current  | Missing references: [Remove missing]        |
+|   coding-workflow      | Apply tool / Apply Suite / Set as base      |
+| Workspaces             |                                             |
++------------------------+---------------------------------------------+
 ```
 
 Behaviors:
-- **New Suite**: empty suite, or "Create from current" pre-fills with the currently enabled set for a selected tool
-- **Edit**: searchable checklist of all capabilities from the latest shared-root scan
+- **New Suite**: starts an empty draft in Manager Suite scope
+- **Create from current**: asks for a tool and includes only enabled scanned resources owned by the Hub; tool-installed audit rows and Agentic Hub internal entries are excluded
+- **Edit**: uses the shared Manager toolbar, flat/tree hierarchy, capability/source/usage columns, row actions, and a tri-state Included column
 - **Delete**: confirmation before removal
 - **Rename**: inline rename on the name field (uniqueness check)
-- **Duplicate**: copy an existing suite as a new draft
-- **Validation**: items that exist in the suite but not in the latest scan show a warning badge
+- **Validation**: missing source-qualified or stale refs are preserved, shown in a warning, skipped on apply, and removed only through **Remove missing references**
 
 ### Main window integration
 
@@ -111,18 +105,19 @@ Behaviors:
 
 ### Handling stale references
 
-When a suite references a capability ID that no longer exists in the shared root:
-- The Suite Manager editor shows a warning icon next to the stale entry.
+When a suite references a capability ID that no longer exists in the shared root or belongs to a source absent on this device:
+- Manager Suite scope shows a warning with an explicit **Remove missing references** action.
+- Saving without removal preserves the original source qualification.
 - During apply, stale references are silently skipped (they cannot be projected).
 - The apply result summary notes how many suite items were skipped due to missing capabilities.
 
 ## Acceptance criteria
 
-- [ ] A "Manage Suites…" affordance opens the Suite Manager window
+- [x] Suites are selectable from the Manager rail
 - [ ] Suite Manager lists all suites from `~/.agentic-suites.json`
 - [ ] Creating a new suite writes it to the dotfile and shows it in the list
-- [ ] "Create from current" captures all enabled capabilities for the focused tool
-- [ ] Editing a suite updates the capability checklist and saves on explicit Save
+- [x] "Create from current" asks for a tool and captures enabled Hub-managed capabilities only
+- [x] Editing uses the shared Manager table and saves on explicit Save
 - [ ] Deleting a suite removes it from the dotfile after confirmation
 - [ ] The main window header shows a suite selector dropdown listing all suites
 - [ ] Selecting a suite and clicking "Apply Suite" triggers a confirmation dialog
@@ -130,12 +125,12 @@ When a suite references a capability ID that no longer exists in the shared root
 - [ ] Only capabilities in the suite are enabled after apply
 - [ ] Projection sync runs correctly for all kinds (symlinks, managed copies, markdown sections, hook json sections)
 - [ ] The apply result summary shows applied, skipped, and error counts
-- [ ] Stale suite references are skipped with a summary note
+- [x] Missing references are warned, preserved by default, removable explicitly, and skipped with a summary note
 - [ ] After suite apply, user can toggle individual items normally
 - [ ] Suite data persists across app restarts
 - [ ] Suite name uniqueness enforced at create / rename time
 - [ ] Atomic dotfile writes via `.tmp` + rename
-- [ ] Cross-window event broadcast refreshes the main window's suite dropdown when Suite Manager creates / edits / deletes a suite
+- [x] `#/suites` and Open Suites remain compatibility aliases into Manager Suite scope
 
 ## Dependencies
 
