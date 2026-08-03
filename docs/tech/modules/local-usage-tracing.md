@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-07-19
+Last Updated: 2026-08-03
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [docs/features/local-skill-usage-tracing.md](../../features/local-skill-usage-tracing.md)
 Related Docs: [docs/tech/modules/hook-projection-sync.md](./hook-projection-sync.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
@@ -98,12 +98,33 @@ discovered under `.cursor/agents` / `.agents/agents` (Cursor), ancestor
 (Codex). Repository roots come from the hook payload, not Agentic Hub's
 saved-workspace list.
 
+A tool-global installed item is what that tool actually executes for a name, so
+when a configured source exposes the same kind and name the installed item is
+that source's **projection**, never a rival candidate. This holds regardless of
+projection form — Cursor and Codex symlink, Claude hard-copies, and any tool can
+also hold an unmanaged copy — which is what keeps the three tools in sync. An
+installed item with no same-named configured source is a genuine tool-only
+resource and keeps its `installed::<tool>::` identity.
+
+Each projection also records the canonical source file it points at, which
+breaks ties when several configured sources expose the same leaf name. The origin
+is established in order: symlink canonicalization, then the managed-copy
+manifest's `source_path`, then its recorded `source_hash` matched against
+candidate content. Matching never relies on the manifest's `item_id`, which goes
+stale whenever a skill moves between source folders.
+
+Ambiguity is not silently discarded. A catalog-required reference whose name is
+unknown (`/health`, stray paths) is still dropped as noise, but a name the
+catalog *does* know and cannot resolve uniquely is stored as an unresolved event
+so the invocation is counted and later reconciliation can repair it.
+
 One request fans out to one occurrence per distinct resolved skill. Unresolved
 high-confidence dollar references may be retained for diagnostics, but
 catalog-required slash/path candidates that do not resolve are dropped.
-Existing unresolved rows are reconciled only when their recorded workspace
-still exists and exactly one catalog candidate matches; uncertain history is
-preserved unchanged.
+Existing unresolved rows are reconciled when exactly one catalog candidate
+matches: workspace-scoped rows re-resolve against their recorded repository and
+are skipped if it no longer exists, while global rows re-resolve against the
+global catalog alone. Uncertain history is preserved unchanged.
 
 ## Turn identity and deduplication
 

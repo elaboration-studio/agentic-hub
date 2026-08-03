@@ -1,6 +1,6 @@
 //! Tool-aware global and repository skill catalog used by usage attribution.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -9,7 +9,7 @@ use agentic_core::paths::expand_tilde;
 use agentic_core::paths::tildify;
 use agentic_core::settings::Settings;
 use agentic_core::{
-    api, hash_usage_correlation, scan_installed_tools, UsageEventInput, UsageStore,
+    api, hash_usage_correlation, managed_copy, scan_installed_tools, UsageEventInput, UsageStore,
 };
 
 use crate::usage_attribution::{path_is_capability_file, NormalizedBatch, NormalizedOccurrence};
@@ -24,6 +24,27 @@ struct CatalogEntry {
     canonical_skill_file: PathBuf,
 }
 
+/// Catalog candidates plus the tool-specific facts needed to resolve a name
+/// deterministically instead of failing closed on ambiguity.
+#[derive(Debug, Default)]
+struct Catalog {
+    entries: Vec<CatalogEntry>,
+    /// Capability name -> canonical source file this tool actually projects.
+    /// Breaks ties when several configured sources expose the same name.
+    /// `None` marks a name whose projection is itself ambiguous.
+    projections: HashMap<String, Option<PathBuf>>,
+    /// Every capability name the catalog knows, including aliased projections.
+    /// A known-but-unresolvable name is kept as an unresolved event rather than
+    /// discarded, so no invocation is ever silently lost.
+    known_names: HashSet<String>,
+}
+
+impl Catalog {
+    fn projected(&self, name: &str) -> Option<&PathBuf> {
+        self.projections.get(name)?.as_ref()
+    }
+}
+
 pub struct AttributedBatch {
     pub events: Vec<UsageEventInput>,
     pub catalog_items: Vec<CapabilityItem>,
@@ -35,13 +56,20 @@ pub fn attribute_batch(
     source_tool: &str,
 ) -> AttributedBatch {
     let default_workspace = unique_workspace_root(&batch.workspace_roots);
-    let entries = build_catalog(settings, source_tool, &batch.workspace_roots);
-    let catalog_items = entries.iter().map(|entry| entry.item.clone()).collect();
+    let catalog = build_catalog(settings, source_tool, &batch.workspace_roots);
+    let catalog_items = catalog
+        .entries
+        .iter()
+        .map(|entry| entry.item.clone())
+        .collect();
     let mut attributed: BTreeMap<String, UsageEventInput> = BTreeMap::new();
 
     for occurrence in batch.occurrences {
-        let resolved = resolve_occurrence(&entries, source_tool, &occurrence);
-        if resolved.is_none() && occurrence.requires_catalog_match {
+        let resolved = resolve_occurrence(&catalog, source_tool, &occurrence);
+        if resolved.is_none()
+            && occurrence.requires_catalog_match
+            && !known_name(&catalog, &occurrence)
+        {
             continue;
         }
         let mut event = occurrence.event;
@@ -103,13 +131,18 @@ pub fn reconcile_existing_usage(store: &UsageStore, settings: &Settings) -> Resu
         .map_err(|error| error.to_string())?;
     let mut updated = 0_u32;
     for reference in references {
-        let Some(workspace_root) = reference.workspace_root.as_deref() else {
-            continue;
+        // Workspace-scoped rows re-resolve against their repository; global rows
+        // (no workspace_root) re-resolve against the global catalog alone.
+        let workspace_roots = match reference.workspace_root.as_deref() {
+            Some(workspace_root) => {
+                let root = expand_tilde(workspace_root);
+                if !root.is_dir() {
+                    continue;
+                }
+                vec![root]
+            }
+            None => Vec::new(),
         };
-        let root = expand_tilde(workspace_root);
-        if !root.is_dir() {
-            continue;
-        }
         let batch = NormalizedBatch {
             occurrences: vec![NormalizedOccurrence {
                 event: UsageEventInput {
@@ -122,7 +155,7 @@ pub fn reconcile_existing_usage(store: &UsageStore, settings: &Settings) -> Resu
                 requires_catalog_match: false,
                 correlation_hash: String::new(),
             }],
-            workspace_roots: vec![root],
+            workspace_roots,
         };
         let attributed = attribute_batch(batch, settings, &reference.source_tool);
         let Some(event) = attributed.events.first() else {
@@ -147,12 +180,19 @@ pub fn reconcile_existing_usage(store: &UsageStore, settings: &Settings) -> Resu
     Ok(updated)
 }
 
-fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> Vec<CatalogEntry> {
-    let mut entries = Vec::new();
+fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> Catalog {
+    let mut catalog = Catalog::default();
     let scan = api::scan(settings);
+    let configured: HashSet<(CapabilityKind, String)> = scan
+        .items
+        .iter()
+        .filter(|item| is_skill_or_agent(item))
+        .map(|item| (item.kind, item.name.clone()))
+        .collect();
     for item in scan.items.into_iter().filter(is_skill_or_agent) {
+        catalog.known_names.insert(item.name.clone());
         if let Some(entry) = global_entry(item) {
-            entries.push(entry);
+            catalog.entries.push(entry);
         }
     }
     let installed = scan_installed_tools(settings);
@@ -162,16 +202,122 @@ fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> V
         .into_iter()
         .filter(|item| item.id.starts_with(&installed_prefix) && is_skill_or_agent(item))
     {
+        catalog.known_names.insert(item.name.clone());
+        // An installed item is what the tool actually executes for this name, so
+        // when a configured source exposes the same capability the installed
+        // copy is that source's projection — never a rival candidate. Recording
+        // where it points also disambiguates sources that share a leaf name.
+        if configured.contains(&(item.kind, item.name.clone())) {
+            let target = projected_source_file(&item, settings, source_tool)
+                .or_else(|| projected_by_content(&item, settings, source_tool, &catalog.entries));
+            match catalog.projections.entry(item.name.clone()) {
+                std::collections::hash_map::Entry::Occupied(mut slot) => {
+                    if slot.get() != &target {
+                        slot.insert(None);
+                    }
+                }
+                std::collections::hash_map::Entry::Vacant(slot) => {
+                    slot.insert(target);
+                }
+            }
+            continue;
+        }
         if let Some(entry) = global_entry(item) {
-            entries.push(entry);
+            catalog.entries.push(entry);
         }
     }
     for active_root in canonical_active_roots(roots) {
         let repository_root =
             find_repository_root(&active_root).unwrap_or_else(|| active_root.clone());
-        collect_repository_entries(source_tool, &repository_root, &active_root, &mut entries);
+        collect_repository_entries(
+            source_tool,
+            &repository_root,
+            &active_root,
+            &mut catalog.entries,
+        );
     }
-    dedupe_entries(entries)
+    for entry in &catalog.entries {
+        catalog.known_names.insert(entry.item.name.clone());
+    }
+    catalog.entries = dedupe_entries(std::mem::take(&mut catalog.entries));
+    catalog
+}
+
+/// Canonical source capability file that an installed projection points at.
+///
+/// Symlinked projections (Cursor, Codex) canonicalize straight onto the source.
+/// Hard copies (Claude, and unmanaged copies in any tool) canonicalize to
+/// themselves, so the managed-copy manifest supplies the origin instead. A copy
+/// with no manifest, or a manifest whose recorded source has since moved, yields
+/// `None` — the caller then falls back to name matching.
+fn projected_source_file(
+    item: &CapabilityItem,
+    settings: &Settings,
+    source_tool: &str,
+) -> Option<PathBuf> {
+    let tool = tool_id(source_tool)?;
+    let tool_settings = settings.tools.for_tool(tool);
+    let target_root = match item.kind {
+        CapabilityKind::Skill => &tool_settings.skills_path,
+        CapabilityKind::Agent => &tool_settings.agents_path,
+        _ => return None,
+    };
+    let canonical = marker_path(item).canonicalize().ok()?;
+    let canonical_root = target_root
+        .canonicalize()
+        .unwrap_or_else(|_| target_root.clone());
+    if !canonical.starts_with(&canonical_root) {
+        return Some(canonical);
+    }
+    let entry = managed_copy::read_entry(target_root, &item.source_path)?;
+    let origin = CapabilityItem {
+        source_path: entry.source_path,
+        ..item.clone()
+    };
+    marker_path(&origin).canonicalize().ok()
+}
+
+/// Last-resort tie-break for a hard copy whose manifest source has moved away:
+/// the manifest still records the content hash of whatever it was copied from,
+/// so the candidate whose content hashes the same is the origin.
+fn projected_by_content(
+    item: &CapabilityItem,
+    settings: &Settings,
+    source_tool: &str,
+    entries: &[CatalogEntry],
+) -> Option<PathBuf> {
+    let tool = tool_id(source_tool)?;
+    let tool_settings = settings.tools.for_tool(tool);
+    let target_root = match item.kind {
+        CapabilityKind::Skill => &tool_settings.skills_path,
+        CapabilityKind::Agent => &tool_settings.agents_path,
+        _ => return None,
+    };
+    let recorded = managed_copy::read_entry(target_root, &item.source_path)?.source_hash;
+    if recorded.is_empty() {
+        return None;
+    }
+    let matches = entries.iter().filter(|entry| {
+        entry.scope == CapabilityScope::Global
+            && entry.item.kind == item.kind
+            && entry.item.name == item.name
+            && managed_copy::content_hash(&entry.item.source_path).as_deref() == Some(&*recorded)
+    });
+    unique(matches).map(|entry| entry.canonical_skill_file.clone())
+}
+
+/// Catalog-required references are dropped when the name is unknown (`/health`,
+/// stray paths). A name the catalog *does* know is kept as an unresolved event
+/// so the invocation still counts and later reconciliation can repair it.
+fn known_name(catalog: &Catalog, occurrence: &NormalizedOccurrence) -> bool {
+    if occurrence.exact_skill_path.is_some() {
+        return false;
+    }
+    occurrence
+        .event
+        .skill_name
+        .as_deref()
+        .is_some_and(|name| catalog.known_names.contains(name))
 }
 
 fn global_entry(item: CapabilityItem) -> Option<CatalogEntry> {
@@ -417,10 +563,11 @@ fn repository_agent_item(
 }
 
 fn resolve_occurrence<'a>(
-    entries: &'a [CatalogEntry],
+    catalog: &'a Catalog,
     source_tool: &str,
     occurrence: &NormalizedOccurrence,
 ) -> Option<&'a CatalogEntry> {
+    let entries = &catalog.entries;
     if let Some(path) = occurrence.exact_skill_path.as_deref() {
         if !path.is_absolute() || !path_is_capability_file(path) {
             return None;
@@ -441,11 +588,30 @@ fn resolve_occurrence<'a>(
         .iter()
         .filter(|entry| entry.scope == CapabilityScope::Global && entry.item.name == name)
         .collect();
+    let global = || resolve_scope(&globals, catalog, name);
+    let local = || resolve_scope(&locals, catalog, name);
     match source_tool {
-        "claude" => unique(globals.into_iter()).or_else(|| unique(locals.into_iter())),
+        "claude" => global().or_else(local),
         // Cursor and Codex: workspace-unique first, then global-unique.
-        _ => unique(locals.into_iter()).or_else(|| unique(globals.into_iter())),
+        _ => local().or_else(global),
     }
+}
+
+/// Unique match, else the one candidate this tool's projection points at.
+fn resolve_scope<'a>(
+    candidates: &[&'a CatalogEntry],
+    catalog: &Catalog,
+    name: &str,
+) -> Option<&'a CatalogEntry> {
+    unique(candidates.iter().copied()).or_else(|| {
+        let target = catalog.projected(name)?;
+        unique(
+            candidates
+                .iter()
+                .copied()
+                .filter(|entry| &entry.canonical_skill_file == target),
+        )
+    })
 }
 
 fn unique<'a>(matches: impl Iterator<Item = &'a CatalogEntry>) -> Option<&'a CatalogEntry> {

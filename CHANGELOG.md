@@ -8,6 +8,30 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex, Claude, and Cursor now attribute skill usage identically.** Any name a
+  tool held both as a configured source and as an installed projection produced
+  two same-name catalog candidates, and attribution discarded the invocation as
+  ambiguous — no `capability_id`, no dashboard row, no trace that the skill ran
+  at all. It hit every tool through a different door: Claude's managed hard
+  copies, unmanaged copies under a tool's skills root, stale manifest paths after
+  a skill moved between source folders, and two configured sources sharing a leaf
+  name. An installed item is now treated as its source's projection rather than a
+  rival, and the projection's real origin (symlink target, manifest source path,
+  or recorded content hash) breaks ties between sources. A sweep of 244 shared
+  capability names across the three tools now resolves with no losses and no
+  disagreements.
+- **Ambiguous invocations are no longer thrown away.** A catalog-required
+  reference whose name the catalog knows but cannot resolve uniquely is kept as
+  an unresolved event instead of being dropped, so the usage is still counted and
+  reconciliation can repair it later. Unknown names (`/health`, stray paths) are
+  still ignored as noise.
+- **Global-scope usage history is reconciled.** `reconcile_existing_usage`
+  skipped every unresolved row without a `workspace_root`, so global skill
+  invocations could never be repaired after a catalog fix. They now re-resolve
+  against the global catalog.
+
 ## [0.16.0] — 2026-07-31
 
 ### Added
