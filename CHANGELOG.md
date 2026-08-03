@@ -8,6 +8,8 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.16.1] — 2026-08-03
+
 ### Fixed
 
 - **Codex, Claude, and Cursor now attribute skill usage identically.** Any name a

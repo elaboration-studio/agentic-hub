@@ -120,6 +120,23 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type application/json --cache-control "max-age=60"
 
+      # Trigger e-studio-hubs to sync its landing-page download pin and redeploy.
+      # Requires repo secret EHUB_SYNC_TOKEN (PAT with contents:write on e-studio-hubs).
+      - name: Sync eHub download version
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.EHUB_SYNC_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "EHUB_SYNC_TOKEN not configured — skipping e-studio-hubs sync"
+            exit 0
+          fi
+          gh api repos/SurfaceW/e-studio-hubs/dispatches \
+            -f event_type=agentic-hub-release \
+            -f "client_payload[version]=${VERSION#v}"
+
       - name: Publish GitHub Release (draft)
         uses: softprops/action-gh-release@v2
         with:
