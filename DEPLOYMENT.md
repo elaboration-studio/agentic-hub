@@ -128,6 +128,12 @@ S3-compatible endpoint. No manual upload step — tag and the feed updates.
    - secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the key's password
    - secret `R2_ACCESS_KEY_ID`, secret `R2_SECRET_ACCESS_KEY`
    - variable `R2_BUCKET` = `estudio-ehub`
+5. **eHub landing page sync (optional but recommended):** secret
+   `EHUB_SYNC_TOKEN` — a GitHub PAT with `contents:write` on
+   `SurfaceW/e-studio-hubs`. After each release upload to R2,
+   `release.yml` dispatches `agentic-hub-release` so the marketing site commits
+   the new download version and Vercel redeploys. Without it, the site still
+   picks up the version on its next `prebuild` (fetches R2 `latest.json`).
 
 ## Health check
 
