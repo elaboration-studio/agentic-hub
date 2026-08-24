@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::*;
 
 pub fn sync_tracer_hooks(settings: &Settings) -> Result<(), String> {
@@ -19,16 +21,24 @@ pub fn synced_tracer_tools(settings: &Settings) -> Vec<ToolId> {
 
 pub(super) fn tracer_hook_installed(settings: &Settings, tool: ToolId) -> bool {
     let adapter = adapter_registry::resolve(settings, tool);
+    let hook_id = usage_tracer_hook_id(tool);
+    if let Some(dir) = adapter.hooks_dir.as_ref() {
+        return file_contains_hook_marker(&dir.join(format!("{hook_id}.json")), &hook_id);
+    }
     let Some(path) = adapter.hooks_file else {
         return false;
     };
+    file_contains_hook_marker(&path, &hook_id)
+}
+
+fn file_contains_hook_marker(path: &Path, hook_id: &str) -> bool {
     let Ok(content) = fs::read_to_string(path) else {
         return false;
     };
     let Ok(value) = serde_json::from_str::<Value>(&content) else {
         return false;
     };
-    contains_hook_marker(&value, &usage_tracer_hook_id(tool))
+    contains_hook_marker(&value, hook_id)
 }
 
 fn contains_hook_marker(value: &Value, hook_id: &str) -> bool {
@@ -64,6 +74,13 @@ fn sync_tracer_hook_for_tool(
     write_tracer_manifest(&hook_dir, &manifest)?;
     let item = usage_tracer_item(tool, &hook_dir);
     let adapter = adapter_registry::resolve(settings, tool);
+    if tool == ToolId::Kiro {
+        return agentic_core::kiro_hook_sync::sync_single_kiro_hook(
+            &adapter, &item, &manifest, enabled,
+        )
+        .map(|_| ())
+        .map_err(|e| e.message);
+    }
     hook_sync::sync_single_json_hook(&adapter, &item, &manifest, enabled)
         .map(|_| ())
         .map_err(|e| e.message)

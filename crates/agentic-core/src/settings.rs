@@ -203,7 +203,7 @@ fn default_usage_tracing_enabled() -> bool {
 }
 
 fn default_usage_capture_tools() -> Vec<ToolId> {
-    vec![ToolId::Codex, ToolId::Claude, ToolId::Cursor]
+    vec![ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro]
 }
 
 fn default_usage_retention_days() -> u32 {
@@ -1297,6 +1297,7 @@ mod tests {
     fn usage_tracing_defaults_on_and_roundtrips() {
         let s = Settings::default();
         assert!(s.usage_tracing.enabled, "usage tracing is on by default");
+        assert!(s.usage_tracing.capture_tools.contains(&ToolId::Kiro));
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");

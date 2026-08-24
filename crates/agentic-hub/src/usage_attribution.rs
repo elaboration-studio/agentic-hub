@@ -24,7 +24,7 @@ pub struct NormalizedBatch {
 
 #[derive(Default)]
 pub struct AttributionState {
-    claude_turns: Mutex<HashMap<String, u64>>,
+    session_turns: Mutex<HashMap<String, u64>>,
 }
 
 #[derive(Debug, Clone)]
@@ -104,23 +104,25 @@ impl AttributionState {
             "cursor" => string_at(raw, &["generation_id", "generationId"]),
             "codex" => string_at(raw, &["turn_id", "turnId"]),
             "claude" => string_at(raw, &["prompt_id", "promptId"]),
+            "kiro" => string_at(raw, &["turn_id", "turnId"]),
             _ => None,
         };
         if let Some(value) = direct {
             return hash_usage_correlation(&format!("{source_tool}\0{value}"));
         }
-        if source_tool == "claude" {
+        if matches!(source_tool, "claude" | "kiro") {
             if let Some(session) = string_at(raw, &["session_id", "sessionId"]) {
-                let mut turns = match self.claude_turns.lock() {
+                let mut turns = match self.session_turns.lock() {
                     Ok(turns) => turns,
                     Err(poisoned) => poisoned.into_inner(),
                 };
                 let session_hash = hash_usage_correlation(&session);
-                let turn = turns.entry(session_hash.clone()).or_default();
+                let key = format!("{source_tool}\0{session_hash}");
+                let turn = turns.entry(key).or_default();
                 if event_type == "UserPromptSubmit" {
                     *turn = turn.saturating_add(1);
                 }
-                return hash_usage_correlation(&format!("claude\0{session_hash}\0{turn}"));
+                return hash_usage_correlation(&format!("{source_tool}\0{session_hash}\0{turn}"));
             }
         }
         let fallback = string_at(raw, &["event_id", "eventId", "call_id", "tool_call_id"])
@@ -147,8 +149,7 @@ fn extract_references(raw: &Value, source_tool: &str, event_type: &str) -> Vec<S
     }
     if source_tool == "claude"
         && event_type == "UserPromptExpansion"
-        && string_at(raw, &["expansion_type", "expansionType"]).as_deref()
-            == Some("slash_command")
+        && string_at(raw, &["expansion_type", "expansionType"]).as_deref() == Some("slash_command")
     {
         if let Some(name) = string_at(raw, &["command_name", "commandName"]) {
             push_name_ref(&mut refs, &name, "prompt_expansion", 90, false);
@@ -185,22 +186,72 @@ fn collect_prompt_refs(text: &str, refs: &mut Vec<SkillReference>) {
         let Some(path_end) = after_link.find(')') else {
             break;
         };
-        push_path_ref(refs, &after_link[..path_end], "skill_link", "agent_link", 70);
+        push_path_ref(
+            refs,
+            &after_link[..path_end],
+            "skill_link",
+            "agent_link",
+            70,
+        );
         rest = &after_link[path_end + 1..];
     }
-    for token in text.split_whitespace() {
-        if let Some(name) = clean_token(token.strip_prefix('$')) {
-            push_name_ref(refs, name, "dollar_reference", 50, false);
-        }
-        if let Some(name) = clean_token(token.strip_prefix('/')) {
-            push_name_ref(refs, name, "slash_reference", 60, true);
-        }
-        if let Some(rest) = token.strip_prefix('@') {
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    for (index, token) in tokens.iter().copied().enumerate() {
+        if let Some(name) = token.strip_prefix('$') {
+            push_joined_name_refs(
+                refs,
+                name,
+                &tokens[index + 1..],
+                "dollar_reference",
+                50,
+                false,
+            );
+        } else if let Some(name) = token.strip_prefix('/') {
+            push_joined_name_refs(
+                refs,
+                name,
+                &tokens[index + 1..],
+                "slash_reference",
+                60,
+                true,
+            );
+        } else if let Some(rest) = token.strip_prefix('@') {
             let name = rest.strip_prefix("agent-").unwrap_or(rest);
             if let Some(name) = clean_token(Some(name)) {
                 push_name_ref(refs, name, "agent_mention", 60, true);
             }
         }
+    }
+}
+
+fn push_joined_name_refs(
+    refs: &mut Vec<SkillReference>,
+    first: &str,
+    following: &[&str],
+    source: &'static str,
+    rank: u8,
+    requires_catalog_match: bool,
+) {
+    let Some(first) = clean_token(Some(first)) else {
+        return;
+    };
+    let mut parts = vec![first.to_string()];
+    push_name_ref(refs, &parts.join("-"), source, rank, requires_catalog_match);
+    if first.contains('-') || first.contains('_') {
+        return;
+    }
+    for extra in following.iter().copied().take(1) {
+        if extra.starts_with('/') || extra.starts_with('$') || extra.starts_with('@') {
+            break;
+        }
+        let Some(next) = clean_token(Some(extra)) else {
+            break;
+        };
+        if is_join_stopword(next) {
+            break;
+        }
+        parts.push(next.to_string());
+        push_name_ref(refs, &parts.join("-"), source, rank, requires_catalog_match);
     }
 }
 
@@ -318,6 +369,27 @@ fn clean_token(value: Option<&str>) -> Option<&str> {
         .then_some(token.rsplit('/').next().unwrap_or(token))
 }
 
+fn is_join_stopword(name: &str) -> bool {
+    matches!(
+        name,
+        "and"
+            | "or"
+            | "the"
+            | "a"
+            | "an"
+            | "to"
+            | "for"
+            | "of"
+            | "in"
+            | "on"
+            | "with"
+            | "as"
+            | "at"
+            | "by"
+            | "from"
+    )
+}
+
 fn valid_skill_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
@@ -327,7 +399,11 @@ fn valid_skill_name(name: &str) -> bool {
 }
 
 fn supports_prompt_attribution(tool: &str) -> bool {
-    matches!(tool, "cursor" | "claude" | "codex")
+    is_traced_source_tool(tool)
+}
+
+pub fn is_traced_source_tool(tool: &str) -> bool {
+    matches!(tool, "cursor" | "claude" | "codex" | "kiro")
 }
 
 fn prompt_event(event_type: &str) -> bool {
@@ -339,7 +415,7 @@ fn canonical_event_type(event_type: &str) -> String {
         "postToolUse" => "PostToolUse",
         "postToolUseFailure" => "PostToolUseFailure",
         "preToolUse" => "PreToolUse",
-        "beforeSubmitPrompt" => "UserPromptSubmit",
+        "beforeSubmitPrompt" | "userPromptSubmit" | "promptSubmit" => "UserPromptSubmit",
         other => other,
     }
     .to_string()
@@ -475,7 +551,10 @@ mod tests {
             }),
             "cursor",
         );
-        assert_eq!(slash.occurrences[0].event.skill_name.as_deref(), Some("cto"));
+        assert_eq!(
+            slash.occurrences[0].event.skill_name.as_deref(),
+            Some("cto")
+        );
         assert_eq!(
             slash.occurrences[0].event.attribution_source.as_deref(),
             Some("slash_reference")
@@ -511,7 +590,10 @@ mod tests {
 
         let batch = state.normalize(&raw, "cursor");
 
-        assert_eq!(batch.occurrences[0].event.skill_name.as_deref(), Some("cto"));
+        assert_eq!(
+            batch.occurrences[0].event.skill_name.as_deref(),
+            Some("cto")
+        );
         assert_eq!(
             batch.occurrences[0].event.attribution_source.as_deref(),
             Some("agent_read")
@@ -530,7 +612,10 @@ mod tests {
         let batch = state.normalize(&raw, "cursor");
 
         assert_eq!(batch.occurrences.len(), 1);
-        assert_eq!(batch.occurrences[0].event.skill_name.as_deref(), Some("health"));
+        assert_eq!(
+            batch.occurrences[0].event.skill_name.as_deref(),
+            Some("health")
+        );
         assert!(batch.occurrences[0].requires_catalog_match);
     }
 

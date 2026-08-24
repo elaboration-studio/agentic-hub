@@ -61,9 +61,12 @@ pub fn item_enabled_for_tool(settings: &Settings, item: &CapabilityItem, tool: T
 }
 
 pub fn usage_tracer_enabled(settings: &Settings, tool: ToolId) -> bool {
-    settings.usage_tracing.enabled
-        && settings.tools.for_tool(tool).enabled
-        && settings.usage_tracing.capture_tools.contains(&tool)
+    if !settings.usage_tracing.enabled || !settings.tools.for_tool(tool).enabled {
+        return false;
+    }
+    // Kiro joined after capture_tools shipped as [codex, claude, cursor].
+    // Existing configs omit it; an enabled Kiro tool is still captured.
+    settings.usage_tracing.capture_tools.contains(&tool) || tool == ToolId::Kiro
 }
 
 pub fn usage_tracer_item_id(tool: ToolId) -> String {

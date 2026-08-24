@@ -670,7 +670,7 @@ function UsageTracingPanel({ settings, onChanged }: PanelProps) {
             {syncBusy ? "Syncing hooks…" : "Reload tracer hooks"}
           </Button>
           {syncDone && !syncBusy && settings.usageTracing.enabled && (
-            <span className={hint}>Hooks synced — restart Codex, Claude, or Cursor to apply.</span>
+            <span className={hint}>Hooks synced — restart Codex, Claude, Cursor, or Kiro to apply.</span>
           )}
         </div>
         {!settings.usageTracing.enabled && (
