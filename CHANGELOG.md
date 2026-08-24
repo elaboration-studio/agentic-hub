@@ -8,6 +8,16 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.16.2] — 2026-08-24
+
+### Fixed
+
+- **Codex (and Claude/Cursor) now track spaced slash skills and SKILL.md name aliases.** `/grill me` and `/Repo Research` were split on whitespace, so only `grill` / `Repo` reached the catalog and were dropped. Codex has no `UserPromptExpansion` or attachment fallback, so `grill-me` vanished on multi-skill turns. Hyphen-joined slash tokens and frontmatter `name` aliases (`grilling` → `grill-me`) now resolve to the folder skill.
+
+### Added
+
+- **Kiro usage tracing.** When Kiro is enabled, Agentic Hub installs a managed tracer hook under `~/.kiro/hooks/`, accepts `userPromptSubmit` payloads, and attributes global plus `.kiro/skills` repository skills.
+
 ## [0.16.1] — 2026-08-03
 
 ### Fixed
