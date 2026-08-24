@@ -330,6 +330,56 @@ pub fn sync_kiro_hooks(
     Ok((outcome, notes))
 }
 
+/// Write or remove one Kiro hook file without touching sibling managed hooks.
+pub fn sync_single_kiro_hook(
+    adapter: &ResolvedAdapter,
+    item: &CapabilityItem,
+    manifest: &HookManifest,
+    enabled: bool,
+) -> Result<(HookSyncOutcome, Vec<String>), HookSyncError> {
+    if adapter.tool_id != ToolId::Kiro {
+        return Ok((HookSyncOutcome::NoOp, vec![]));
+    }
+    let Some(dir) = adapter.hooks_dir.as_ref().filter(|_| adapter.hooks_enabled) else {
+        return Ok((HookSyncOutcome::NoOp, vec![]));
+    };
+    let target = dir.join(format!("{}.json", manifest.id));
+    if !enabled {
+        return remove_managed_kiro_file(&target, &manifest.id);
+    }
+    refuse_unmanaged_target(&target, read_managed_entries(&target, &manifest.id))?;
+    let hash = hook_sync::projection_source_hash(item, manifest);
+    let mut notes = Vec::new();
+    let entries = build_hooks_array(item, manifest, &hash, &mut notes);
+    if entries.is_empty() {
+        let (outcome, _) = remove_managed_kiro_file(&target, &manifest.id)?;
+        return Ok((outcome, notes));
+    }
+    atomic_write_json(&target, &json!({ "version": "v1", "hooks": entries }))
+        .map_err(|e| io_err(&target, &e))?;
+    Ok((HookSyncOutcome::Wrote, notes))
+}
+
+fn remove_managed_kiro_file(
+    target: &Path,
+    hook_id: &str,
+) -> Result<(HookSyncOutcome, Vec<String>), HookSyncError> {
+    match read_managed_entries(target, hook_id) {
+        FileRead::Ok(entries) if !entries.is_empty() => {
+            fs::remove_file(target).map_err(|e| io_err(target, &e))?;
+            Ok((HookSyncOutcome::Removed, vec![]))
+        }
+        FileRead::Missing | FileRead::Ok(_) => Ok((HookSyncOutcome::NoOp, vec![])),
+        FileRead::Foreign | FileRead::ForeignContent => Ok((HookSyncOutcome::NoOp, vec![])),
+        FileRead::Broken => Err(HookSyncError {
+            path: target.to_path_buf(),
+            code: "hook_target_broken_json".to_string(),
+            message: "Hook config file is not valid Kiro hook JSON; refusing to overwrite"
+                .to_string(),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -565,5 +615,32 @@ mod tests {
             targets: None,
         };
         assert!(!m.effective_targets().contains(&ToolId::Kiro));
+    }
+
+    #[test]
+    fn single_hook_sync_does_not_remove_sibling_managed_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let hooks_dir = dir.path().join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+        let sibling = hooks_dir.join("other.json");
+        fs::write(
+            &sibling,
+            r#"{"version":"v1","hooks":[{"_agenticHub":{"hookId":"other","sourceHash":"x","version":1}}]}"#,
+        )
+        .unwrap();
+        let item = hook_item("tracer", dir.path().join("src/tracer"));
+        let m = manifest(
+            "tracer",
+            vec![ev(HookCanonicalEvent::UserPromptSubmit, None)],
+        );
+        let adapter = kiro_adapter(&hooks_dir);
+
+        sync_single_kiro_hook(&adapter, &item, &m, true).unwrap();
+        assert!(hooks_dir.join("tracer.json").exists());
+        assert!(sibling.exists());
+
+        sync_single_kiro_hook(&adapter, &item, &m, false).unwrap();
+        assert!(!hooks_dir.join("tracer.json").exists());
+        assert!(sibling.exists());
     }
 }

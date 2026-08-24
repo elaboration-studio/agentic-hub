@@ -5,26 +5,28 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.16.1] — 2026-08-03
+## [0.16.2] — 2026-08-24
 
 ### Highlights
 
-- **Skill usage attribution is consistent across Codex, Claude, and Cursor**
-  — installed projections no longer collide with their source names, and
-  ambiguous invocations are kept for reconciliation instead of being dropped.
+- **Spaced slash skills and SKILL.md name aliases are tracked** — `/grill me`,
+  `/Repo Research`, and frontmatter names like `grilling` now resolve to the
+  folder skill on Codex, Claude, and Cursor.
+- **Kiro usage tracing** — when Kiro is enabled, Agentic Hub installs a managed
+  tracer hook and attributes Kiro skill usage the same way as the other tools.
 
 ### Fixed
 
-- **Cross-tool skill attribution.** When a tool held the same name as both a
-  configured source and an installed projection, attribution discarded the
-  invocation as ambiguous. Installed items are now treated as projections of
-  their source, with symlink target, manifest path, or content hash breaking
-  ties between sources.
-- **Ambiguous invocations preserved.** Catalog-known names that cannot resolve
-  uniquely are kept as unresolved events so usage is still counted and
-  reconciliation can repair them later.
-- **Global-scope reconciliation.** Usage rows without a `workspace_root` now
-  re-resolve against the global catalog after catalog fixes.
+- **Spaced slash commands.** Prompt tokens were split on whitespace, so
+  `/grill me` became `grill` and was dropped. Hyphen-joined slash tokens now
+  resolve to the folder skill.
+- **SKILL.md name aliases.** A frontmatter `name` that differs from the folder
+  (`grilling` → `grill-me`) now maps to the installed skill.
+
+### Added
+
+- **Kiro tracer hook.** Managed install under `~/.kiro/hooks/`, camelCase
+  `userPromptSubmit` payloads, and `.kiro/skills` repository catalog roots.
 
 ### Known Issues
 

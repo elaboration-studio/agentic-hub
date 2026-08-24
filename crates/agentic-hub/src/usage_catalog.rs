@@ -37,6 +37,9 @@ struct Catalog {
     /// A known-but-unresolvable name is kept as an unresolved event rather than
     /// discarded, so no invocation is ever silently lost.
     known_names: HashSet<String>,
+    /// Slug (`grill me` / `grilling` / `Grill-Me`) → canonical folder name.
+    /// `None` means the slug is ambiguous across two capabilities.
+    aliases: HashMap<String, Option<String>>,
 }
 
 impl Catalog {
@@ -190,7 +193,7 @@ fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> C
         .map(|item| (item.kind, item.name.clone()))
         .collect();
     for item in scan.items.into_iter().filter(is_skill_or_agent) {
-        catalog.known_names.insert(item.name.clone());
+        index_item_names(&mut catalog, &item);
         if let Some(entry) = global_entry(item) {
             catalog.entries.push(entry);
         }
@@ -202,7 +205,7 @@ fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> C
         .into_iter()
         .filter(|item| item.id.starts_with(&installed_prefix) && is_skill_or_agent(item))
     {
-        catalog.known_names.insert(item.name.clone());
+        index_item_names(&mut catalog, &item);
         // An installed item is what the tool actually executes for this name, so
         // when a configured source exposes the same capability the installed
         // copy is that source's projection — never a rival candidate. Recording
@@ -236,8 +239,13 @@ fn build_catalog(settings: &Settings, source_tool: &str, roots: &[PathBuf]) -> C
             &mut catalog.entries,
         );
     }
-    for entry in &catalog.entries {
-        catalog.known_names.insert(entry.item.name.clone());
+    let indexed: Vec<CapabilityItem> = catalog
+        .entries
+        .iter()
+        .map(|entry| entry.item.clone())
+        .collect();
+    for item in &indexed {
+        index_item_names(&mut catalog, item);
     }
     catalog.entries = dedupe_entries(std::mem::take(&mut catalog.entries));
     catalog
@@ -313,11 +321,71 @@ fn known_name(catalog: &Catalog, occurrence: &NormalizedOccurrence) -> bool {
     if occurrence.exact_skill_path.is_some() {
         return false;
     }
-    occurrence
-        .event
-        .skill_name
-        .as_deref()
-        .is_some_and(|name| catalog.known_names.contains(name))
+    occurrence.event.skill_name.as_deref().is_some_and(|name| {
+        catalog.known_names.contains(name) || catalog.known_names.contains(&slug(name))
+    })
+}
+
+fn index_item_names(catalog: &mut Catalog, item: &CapabilityItem) {
+    register_lookup(catalog, &item.name, &item.name);
+    if let Some(alias) = skill_frontmatter_name(item) {
+        register_lookup(catalog, &alias, &item.name);
+    }
+}
+
+fn register_lookup(catalog: &mut Catalog, lookup: &str, canonical: &str) {
+    catalog.known_names.insert(lookup.to_string());
+    let key = slug(lookup);
+    if key.is_empty() {
+        return;
+    }
+    catalog.known_names.insert(key.clone());
+    match catalog.aliases.entry(key) {
+        std::collections::hash_map::Entry::Occupied(mut slot) => {
+            if slot.get().as_deref() != Some(canonical) {
+                slot.insert(None);
+            }
+        }
+        std::collections::hash_map::Entry::Vacant(slot) => {
+            slot.insert(Some(canonical.to_string()));
+        }
+    }
+}
+
+fn skill_frontmatter_name(item: &CapabilityItem) -> Option<String> {
+    if item.kind != CapabilityKind::Skill {
+        return None;
+    }
+    let text = fs::read_to_string(item.source_path.join("SKILL.md")).ok()?;
+    let front = text.strip_prefix("---\n")?.split_once("\n---")?.0;
+    for line in front.lines() {
+        let Some(rest) = line.strip_prefix("name:") else {
+            continue;
+        };
+        let name = rest.trim().trim_matches(|ch| ch == '"' || ch == '\'');
+        if !name.is_empty() && name != item.name {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
+fn slug(name: &str) -> String {
+    let mut out = String::new();
+    let mut dash = false;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            dash = false;
+        } else if !dash && !out.is_empty() {
+            out.push('-');
+            dash = true;
+        }
+    }
+    if out.ends_with('-') {
+        out.pop();
+    }
+    out
 }
 
 fn global_entry(item: CapabilityItem) -> Option<CatalogEntry> {
@@ -375,6 +443,10 @@ fn documented_skill_roots(
             .into_iter()
             .map(|ancestor| ancestor.join(".agents/skills"))
             .collect(),
+        ToolId::Kiro => ancestors
+            .into_iter()
+            .map(|ancestor| ancestor.join(".kiro/skills"))
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -405,6 +477,10 @@ fn documented_agent_roots(
                     ancestor.join(".agents/agents"),
                 ]
             })
+            .collect(),
+        ToolId::Kiro => ancestors
+            .into_iter()
+            .map(|ancestor| ancestor.join(".kiro/agents"))
             .collect(),
         _ => Vec::new(),
     }
@@ -579,7 +655,12 @@ fn resolve_occurrence<'a>(
                 .filter(|entry| entry.canonical_skill_file == canonical),
         );
     }
-    let name = occurrence.event.skill_name.as_deref()?;
+    let raw_name = occurrence.event.skill_name.as_deref()?;
+    let name = catalog
+        .aliases
+        .get(&slug(raw_name))
+        .and_then(Option::as_deref)
+        .unwrap_or(raw_name);
     let locals: Vec<&CatalogEntry> = entries
         .iter()
         .filter(|entry| entry.scope == CapabilityScope::Workspace && entry.item.name == name)
@@ -592,7 +673,7 @@ fn resolve_occurrence<'a>(
     let local = || resolve_scope(&locals, catalog, name);
     match source_tool {
         "claude" => global().or_else(local),
-        // Cursor and Codex: workspace-unique first, then global-unique.
+        // Cursor, Codex, and Kiro: workspace-unique first, then global-unique.
         _ => local().or_else(global),
     }
 }
@@ -673,6 +754,7 @@ fn tool_id(value: &str) -> Option<ToolId> {
         "cursor" => Some(ToolId::Cursor),
         "claude" => Some(ToolId::Claude),
         "codex" => Some(ToolId::Codex),
+        "kiro" => Some(ToolId::Kiro),
         _ => None,
     }
 }

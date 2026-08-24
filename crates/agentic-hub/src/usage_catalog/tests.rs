@@ -739,3 +739,84 @@ fn reconcile_existing_usage_resolves_unique_repository_history() {
 
     assert_eq!((updated, store.resolved_event_count().unwrap()), (1, 1));
 }
+
+fn skill_with_frontmatter(root: &Path, folder: &str, name: &str) -> PathBuf {
+    let dir = root.join("skills").join(folder);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("SKILL.md"),
+        format!("---\nname: {name}\ndescription: test\n---\n# {name}\n"),
+    )
+    .unwrap();
+    dir.join("SKILL.md")
+}
+
+#[test]
+fn codex_resolves_frontmatter_alias_and_spaced_slash_to_folder_skill() {
+    let source = TestRepo::new();
+    let tools = TestRepo::new();
+    let settings = isolated_settings(&[ToolId::Codex], source.path(), tools.path());
+    skill_with_frontmatter(source.path(), "grill-me", "grilling");
+    let batch = AttributionState::default().normalize(
+        &slash_prompt_event(
+            "/root-cause-investigation /grill me about this plan",
+            "s-grill",
+        ),
+        "codex",
+    );
+    let alias =
+        AttributionState::default().normalize(&skill_tool_event("grilling", "s-alias"), "codex");
+
+    let spaced = attribute_batch(batch, &settings, "codex");
+    let named = attribute_batch(alias, &settings, "codex");
+
+    assert_eq!(
+        spaced
+            .events
+            .iter()
+            .filter_map(|event| event.capability_id.as_deref())
+            .collect::<Vec<_>>(),
+        vec!["skill:grill-me"]
+    );
+    assert_eq!(
+        named.events[0].capability_id.as_deref(),
+        Some("skill:grill-me")
+    );
+}
+
+#[test]
+fn kiro_resolves_repository_and_global_skills() {
+    let source = TestRepo::new();
+    let tools = TestRepo::new();
+    let repo = TestRepo::new();
+    fs::create_dir(repo.path().join(".git")).unwrap();
+    let mut settings = isolated_settings(&[ToolId::Kiro], source.path(), tools.path());
+    settings.tools.kiro.hooks_dir = Some(tools.path().join("kiro/hooks"));
+    local_skill(source.path(), "skills/cto", "repo-research");
+    local_skill(repo.path(), ".kiro/skills", "local-kiro-skill");
+    let global = AttributionState::default().normalize(
+        &slash_prompt_event("/repo-research what is this?", "s-kiro"),
+        "kiro",
+    );
+    let local = AttributionState::default().normalize(
+        &json!({
+            "hook_event_name": "userPromptSubmit",
+            "session_id": "s-kiro-local",
+            "cwd": repo.path(),
+            "prompt": "/local-kiro-skill help"
+        }),
+        "kiro",
+    );
+
+    let global_attr = attribute_batch(global, &settings, "kiro");
+    let local_attr = attribute_batch(local, &settings, "kiro");
+
+    assert_eq!(
+        global_attr.events[0].capability_id.as_deref(),
+        Some("skill:cto/repo-research")
+    );
+    assert_eq!(
+        local_attr.events[0].capability_id.as_deref(),
+        Some("skill:local-kiro-skill")
+    );
+}

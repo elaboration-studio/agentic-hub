@@ -209,8 +209,10 @@ fn normalize_event_extracts_multiple_slash_refs() {
         .filter_map(|item| item.event.skill_name.clone())
         .collect();
     names.sort();
+    names.dedup();
 
-    assert_eq!(names, vec!["ceo", "cto"]);
+    assert!(names.contains(&"ceo".to_string()), "{names:?}");
+    assert!(names.contains(&"cto".to_string()), "{names:?}");
     assert!(batch
         .occurrences
         .iter()
@@ -410,8 +412,68 @@ fn normalize_event_extracts_multiple_attached_skills() {
         .collect();
     names.sort();
 
-    assert_eq!(
-        names,
-        vec!["helper-gitlab", "root-cause-investigation"]
+    assert_eq!(names, vec!["helper-gitlab", "root-cause-investigation"]);
+}
+
+#[test]
+fn normalize_extracts_spaced_slash_skill_from_codex_multi_skill_prompt() {
+    let raw = json!({
+        "hook_event_name": "UserPromptSubmit",
+        "turn_id": "turn-grill",
+        "prompt": "/root-cause-investigation /feature-dev /grill me about this plan"
+    });
+
+    let batch = AttributionState::default().normalize(&raw, "codex");
+    let mut names: Vec<_> = batch
+        .occurrences
+        .iter()
+        .filter_map(|item| item.event.skill_name.clone())
+        .collect();
+    names.sort();
+
+    assert!(
+        names.iter().any(|name| name == "grill-me"),
+        "Codex must keep /grill me as grill-me, got {names:?}"
     );
+    assert!(names.iter().any(|name| name == "root-cause-investigation"));
+    assert!(names.iter().any(|name| name == "feature-dev"));
+}
+
+#[test]
+fn normalize_extracts_spaced_slash_skill_from_claude_and_cursor() {
+    let prompt = "/Repo Research what is this repo for?";
+    for tool in ["claude", "cursor"] {
+        let raw = json!({
+            "hook_event_name": "UserPromptSubmit",
+            "event_type": "beforeSubmitPrompt",
+            "prompt": prompt
+        });
+        let batch = AttributionState::default().normalize(&raw, tool);
+        let names: Vec<_> = batch
+            .occurrences
+            .iter()
+            .filter_map(|item| item.event.skill_name.as_deref())
+            .collect();
+        assert!(
+            names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case("repo-research")),
+            "tool={tool} names={names:?}"
+        );
+    }
+}
+
+#[test]
+fn normalize_reads_kiro_camel_case_prompt_submit() {
+    let raw = json!({
+        "hook_event_name": "userPromptSubmit",
+        "session_id": "kiro-session",
+        "prompt": "/repo-research what is this repo for?"
+    });
+
+    let input = first_event(raw, "kiro");
+
+    assert_eq!(input.event_type, "PostSkillUse");
+    assert_eq!(input.skill_name.as_deref(), Some("repo-research"));
+    assert_eq!(input.source_tool, "kiro");
 }

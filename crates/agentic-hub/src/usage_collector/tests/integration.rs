@@ -301,6 +301,49 @@ fn synced_tracer_tools_lists_enabled_capture_tools_only() {
     );
 }
 
+#[test]
+fn synced_tracer_tools_includes_enabled_kiro_for_legacy_capture_lists() {
+    let mut settings = Settings::default();
+    settings.usage_tracing.enabled = true;
+    settings.usage_tracing.capture_tools = vec![ToolId::Codex, ToolId::Claude, ToolId::Cursor];
+    settings.tools.kiro.enabled = true;
+    settings.tools.codex.enabled = false;
+    settings.tools.claude.enabled = false;
+    settings.tools.cursor.enabled = false;
+
+    assert_eq!(synced_tracer_tools(&settings), vec![ToolId::Kiro]);
+}
+
+#[test]
+fn collector_accepts_kiro_source_tool() {
+    let request = test_request(
+        "secret",
+        json!({
+            "hook_event_name": "userPromptSubmit",
+            "prompt": "/repo-research what is this repo for?"
+        }),
+    );
+    let mut request = request;
+    request
+        .headers
+        .insert(SOURCE_TOOL_HEADER.to_string(), "kiro".to_string());
+    let attribution = AttributionState::default();
+    let mut persisted: Option<NormalizedBatch> = None;
+    let (status, body) =
+        handle_request_with_persist(request, "secret", &attribution, |batch, _| {
+            persisted = Some(batch);
+            Ok(())
+        });
+
+    assert_eq!((status, body), (202, "accepted"));
+    let batch = persisted.expect("kiro events must persist");
+    assert_eq!(batch.occurrences[0].event.source_tool, "kiro");
+    assert_eq!(
+        batch.occurrences[0].event.skill_name.as_deref(),
+        Some("repo-research")
+    );
+}
+
 fn test_request(token: &str, body: Value) -> HttpRequest {
     HttpRequest {
         method: "POST".to_string(),

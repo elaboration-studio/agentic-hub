@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-08-03
+Last Updated: 2026-08-24
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [docs/features/local-skill-usage-tracing.md](../../features/local-skill-usage-tracing.md)
 Related Docs: [docs/tech/modules/hook-projection-sync.md](./hook-projection-sync.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
@@ -47,7 +47,7 @@ Schema v2 keeps all v1 fields and adds:
 | --- | --- |
 | `event_id` | UUID-like id from payload or generated locally |
 | `timestamp` | ISO 8601 timestamp |
-| `source_tool` | Agentic tool id such as `codex`, `claude`, or `cursor` |
+| `source_tool` | Agentic tool id such as `codex`, `claude`, `cursor`, or `kiro` |
 | `event_type` | Terminal events count: `PostToolUse`, `PostToolUseFailure`, `PostSkillUse`, `CommandPaletteUse`, and MCP wrapper completions |
 | `tool_name` | Tool or MCP tool name when available |
 | `skill_name` | Explicit skill name when available |
@@ -74,11 +74,13 @@ arguments, session ids, turn ids, and skill contents are never stored.
 Normalization emits a typed batch of explicit references. Each reference keeps
 the normalized skill or agent name and, when supplied, an exact capability path.
 Accepted signals are Skill tool calls, Claude `UserPromptExpansion`, `$skill`,
-catalog-validated `/skill` or `/agent` tokens, `@agent-*` mentions, validated
-skill links or attachments, reads of validated `SKILL.md` paths, and reads of
-agent markdown files under an `/agents/` path. Generic slash commands that do
-not resolve in the catalog, ordinary files, images, arbitrary paths, and
-free-form semantic inference are ignored.
+catalog-validated `/skill` or `/agent` tokens (including spaced names such as
+`/grill me`, joined with hyphens), `@agent-*` mentions, validated skill links
+or attachments, reads of validated `SKILL.md` paths, and reads of agent
+markdown files under an `/agents/` path. SKILL.md frontmatter `name` is an
+alias for the folder name (`grilling` → `grill-me`). Generic slash commands
+that do not resolve in the catalog, ordinary files, images, arbitrary paths,
+and free-form semantic inference are ignored.
 
 The capability catalog combines:
 
@@ -87,16 +89,18 @@ The capability catalog combines:
 3. skills and agents discovered under the active repository roots.
 
 Resolution compares canonical exact paths first, documented tool scope and
-precedence second, and unique names last. Codex and Cursor prefer a unique
-workspace match, then a unique global match. Claude prefers unique global, then
-unique workspace. Codex discovers ancestor `.agents/skills` roots from `cwd` to
-repository root. Claude discovers ancestor and nested `.claude/skills` roots.
-Cursor uses all `workspace_roots` and discovers `.agents/skills`,
-`.cursor/skills`, `.claude/skills`, and `.codex/skills`. Repository agents are
-discovered under `.cursor/agents` / `.agents/agents` (Cursor), ancestor
-`.claude/agents` (Claude), and ancestor `.codex/agents` / `.agents/agents`
-(Codex). Repository roots come from the hook payload, not Agentic Hub's
-saved-workspace list.
+precedence second, and unique names last. Names are slugged (`Repo Research` →
+`repo-research`) and matched against folder names plus SKILL.md `name` aliases.
+Codex, Cursor, and Kiro prefer a unique workspace match, then a unique global
+match. Claude prefers unique global, then unique workspace. Codex discovers
+ancestor `.agents/skills` roots from `cwd` to repository root. Claude discovers
+ancestor and nested `.claude/skills` roots. Kiro discovers ancestor
+`.kiro/skills` roots. Cursor uses all `workspace_roots` and discovers
+`.agents/skills`, `.cursor/skills`, `.claude/skills`, and `.codex/skills`.
+Repository agents are discovered under `.cursor/agents` / `.agents/agents`
+(Cursor), ancestor `.claude/agents` (Claude), ancestor `.codex/agents` /
+`.agents/agents` (Codex), and ancestor `.kiro/agents` (Kiro). Repository roots
+come from the hook payload, not Agentic Hub's saved-workspace list.
 
 A tool-global installed item is what that tool actually executes for a name, so
 when a configured source exposes the same kind and name the installed item is
@@ -133,6 +137,9 @@ global catalog alone. Uncertain history is preserved unchanged.
 - Claude uses `prompt_id` when present. For installed versions without it, an
   in-memory per-session tracker advances on prompt submission and associates
   expansion/tool signals with that turn.
+- Kiro uses `turn_id` when present, otherwise the same in-memory session
+  tracker as Claude. CLI payloads send `userPromptSubmit`; that name is
+  canonicalized to `UserPromptSubmit` before attribution.
 
 The collector hashes correlation material in memory and combines it with tool,
 workspace scope, and capability identity to create `invocation_key`. A skill is
@@ -241,8 +248,9 @@ capability. Generic tool calls without a skill signal are no longer stored.
 - Recovery retries a stopped collector three times, clears the outage after a
   successful probe, and emits only one failure event per continuous outage.
 - Cursor lower-camel hook event names are canonicalized before storage.
-- Cursor, Codex, and Claude fixtures extract every distinct explicit skill in a
-  turn and never persist raw prompt or tool input.
+- Cursor, Codex, Claude, and Kiro fixtures extract every distinct explicit skill in a
+  turn and never persist raw prompt or tool input. Spaced slash names and
+  SKILL.md `name` aliases resolve to the folder skill.
 - `/health`, images, pasted files, arbitrary paths, traversal, missing paths,
   and out-of-root paths produce no occurrence.
 - Attribution covers repository-only, nested, symlinked, global-only,

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -25,7 +25,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
-use crate::usage_attribution::{AttributionState, NormalizedBatch};
+use crate::usage_attribution::{is_traced_source_tool, AttributionState, NormalizedBatch};
 use crate::usage_catalog::{attribute_batch, reconcile_existing_usage};
 
 const HEADER_END: &[u8] = b"\r\n\r\n";
@@ -461,7 +461,7 @@ fn handle_request_with_persist(
         .get(SOURCE_TOOL_HEADER)
         .map(String::as_str)
         .unwrap_or("unknown");
-    if !matches!(source_tool, "cursor" | "claude" | "codex") {
+    if !is_traced_source_tool(source_tool) {
         return (400, "unknown source tool");
     }
     let batch = attribution.normalize(&raw, source_tool);
