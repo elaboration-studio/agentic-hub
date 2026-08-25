@@ -448,6 +448,7 @@ mod tests {
         settings.tools.kiro.enabled = false;
         settings.tools.copilot.enabled = false;
         settings.tools.antigravity.enabled = false;
+        settings.tools.grok.enabled = false;
 
         let scanned = api::scan(&settings);
         let known: HashSet<String> = scanned.items.iter().map(|i| i.id.clone()).collect();
@@ -456,6 +457,7 @@ mod tests {
         assert!(!outcomes.iter().any(|o| o.tool == ToolId::Kiro));
         assert!(!outcomes.iter().any(|o| o.tool == ToolId::Copilot));
         assert!(!outcomes.iter().any(|o| o.tool == ToolId::Antigravity));
+        assert!(!outcomes.iter().any(|o| o.tool == ToolId::Grok));
         assert_eq!(outcomes.len(), 4, "codex + claude + cursor + openstandard");
     }
 }

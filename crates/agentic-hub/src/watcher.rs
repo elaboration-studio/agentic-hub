@@ -26,8 +26,8 @@ use crate::commands::SuiteStoreChangedEvent;
 
 /// The per-tool directories and instruction files inside a workspace that the
 /// inventory scan reads; watched (when present) so edits live-refresh the view.
-const WORKSPACE_WATCH_DIRS: [&str; 7] = [
-    ".agents", ".agent", ".claude", ".cursor", ".codex", ".kiro", ".github",
+const WORKSPACE_WATCH_DIRS: [&str; 8] = [
+    ".agents", ".agent", ".claude", ".cursor", ".codex", ".kiro", ".github", ".grok",
 ];
 const WORKSPACE_WATCH_FILES: [&str; 2] = ["AGENTS.md", "CLAUDE.md"];
 
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn workspace_watch_dirs_cover_all_inventory_roots() {
         for expected in [
-            ".agents", ".agent", ".claude", ".cursor", ".codex", ".kiro", ".github",
+            ".agents", ".agent", ".claude", ".cursor", ".codex", ".kiro", ".github", ".grok",
         ] {
             assert!(
                 WORKSPACE_WATCH_DIRS.contains(&expected),

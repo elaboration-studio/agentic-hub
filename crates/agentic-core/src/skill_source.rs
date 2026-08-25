@@ -170,6 +170,7 @@ fn skills_agent_id(tool: ToolId) -> &'static str {
         ToolId::Kiro => "kiro",
         ToolId::Copilot => "copilot",
         ToolId::Antigravity => "antigravity",
+        ToolId::Grok => "grok",
     }
 }
 

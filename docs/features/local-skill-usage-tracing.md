@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-08-24
+Last Updated: 2026-08-25
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [DESIGN.md](../../DESIGN.md)
 Related Docs: [docs/tech/modules/local-usage-tracing.md](../tech/modules/local-usage-tracing.md), [docs/features/hooks-projection.md](./hooks-projection.md)
 
@@ -12,7 +12,7 @@ Related Docs: [docs/tech/modules/local-usage-tracing.md](../tech/modules/local-u
 Agentic Hub can show which skills are installed and where they are projected,
 but it cannot answer whether a skill is actually used. As local skill libraries
 grow, users need a local, privacy-preserving way to see which skills are active
-across Codex, Claude Code, Cursor, Kiro, and other enabled tools.
+across Codex, Claude Code, Cursor, Kiro, Grok Build, and other enabled tools.
 
 ## User story
 
@@ -28,8 +28,8 @@ which capabilities are worth maintaining.
 - Local SQLite persistence under `~/.agentic-hub/usage/trace.db`.
 - Loopback-only event collection from managed tracer hooks.
 - Skill usage counts joined onto global and repository-local Manager rows.
-- Repository skill discovery for active Cursor, Claude Code, Codex, and Kiro
-  workspaces, including repositories that are not saved in Agentic Hub.
+- Repository skill discovery for active Cursor, Claude Code, Codex, Kiro, and
+  Grok Build workspaces, including repositories that are not saved in Agentic Hub.
 - Multi-skill attribution: every distinct skill explicitly invoked in one user
   turn is counted once.
 - Agent spec usage counts joined onto existing Manager matrix rows when invoked
@@ -44,7 +44,7 @@ which capabilities are worth maintaining.
 
 - Remote sync or cloud analytics.
 - Inferring skill usage from free-form prompts, transcripts, or raw source code.
-  Cursor, Claude, Codex, and Kiro count explicit `$skill`, catalog-validated `/skill`
+  Cursor, Claude, Codex, Kiro, and Grok count explicit `$skill`, catalog-validated `/skill`
   (and `/agent` / `@agent-*`), Skill tool calls, `SKILL.md` links/attachments/reads,
   and agent markdown reads under an `/agents/` path from hook input. Multi-word
   slash names (`/grill me`, `/Repo Research`) hyphenate against the catalog, and
@@ -116,6 +116,7 @@ defaults to the last 30 days.
 - [ ] Repository-local skills resolve for active Cursor, Claude Code, Codex, and Kiro repositories without requiring a saved workspace.
 - [ ] Multi-word slash names and SKILL.md frontmatter aliases resolve to the folder skill (Codex `$grilling` / `/grill me` → `grill-me`).
 - [ ] Enabling tracing installs a managed Kiro tracer hook under `~/.kiro/hooks/` when Kiro is enabled.
+- [ ] Enabling tracing installs a managed Grok tracer hook under `~/.grok/hooks/` when Grok is enabled.
 - [ ] Same-named global and repository-local skills retain separate identities and counts.
 - [ ] Overlapping prompt and terminal hook signals upgrade one occurrence instead of double-counting it.
 - [ ] Legacy duplicate events with the same dedupe hash remain ignored.

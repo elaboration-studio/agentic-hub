@@ -35,6 +35,7 @@ export const TOOL_LABELS: Record<ToolId, string> = {
   kiro: "Kiro",
   copilot: "Copilot",
   antigravity: "Antigravity",
+  grok: "Grok",
 };
 
 export const ALL_TOOLS: ToolDef[] = (Object.keys(TOOL_LABELS) as ToolId[]).map(
@@ -48,6 +49,7 @@ export const WORKSPACE_TOOL_IDS: ReadonlySet<ToolId> = new Set<ToolId>([
   "kiro",
   "copilot",
   "antigravity",
+  "grok",
 ]);
 
 /// The fixed tool columns shown in workspace scope, in canonical order. Unlike

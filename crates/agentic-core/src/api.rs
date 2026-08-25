@@ -58,10 +58,8 @@ pub fn scan(settings: &Settings) -> ScanResult {
     let mut result = scanner::scan_all(&sources);
     hook_sync::annotate_validation(&mut result.items);
     internal_hooks::append_items(&mut result.items, settings);
-    result.locked_skills = crate::source_skill_lock::mark_locked_library_skills(
-        &sources,
-        &result.items,
-    );
+    result.locked_skills =
+        crate::source_skill_lock::mark_locked_library_skills(&sources, &result.items);
     result
 }
 
@@ -239,6 +237,9 @@ fn sync_hooks_for_adapter(
         Some(ProjectionMode::CopilotHookFile) => {
             crate::copilot_hook_sync::sync_copilot_hooks(adapter, enabled)
         }
+        Some(ProjectionMode::GrokHookFile) => {
+            crate::grok_hook_sync::sync_grok_hooks(adapter, enabled)
+        }
         Some(ProjectionMode::JsonSection) => hook_sync::sync_json_hooks(adapter, enabled),
         _ => Ok((HookSyncOutcome::NoOp, vec![])),
     }
@@ -258,6 +259,9 @@ fn inspect_hooks_for_adapter(
         }
         Some(ProjectionMode::CopilotHookFile) => {
             crate::copilot_hook_sync::inspect_copilot_hooks(items, manifests, adapter)
+        }
+        Some(ProjectionMode::GrokHookFile) => {
+            crate::grok_hook_sync::inspect_grok_hooks(items, manifests, adapter)
         }
         Some(ProjectionMode::JsonSection) => hook_sync::inspect_hooks(items, manifests, adapter),
         _ => vec![],
@@ -1097,6 +1101,122 @@ mod tests {
     }
 
     #[test]
+    fn apply_suite_enables_every_grok_capability_kind() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/review/SKILL.md"), "# review");
+        write(
+            &root.path().join("agents/reviewer.md"),
+            "---\nname: reviewer\n---\n# review",
+        );
+        write(&root.path().join("rules/team/style.mdc"), "# style");
+        write(&root.path().join("commands/ship.md"), "# ship");
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{ "id": "fmt", "command": "run", "events": [{"name":"Stop"}] }"#,
+        );
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Grok,
+            &suite(
+                "grok-all",
+                &[
+                    "skill:review",
+                    "agent:reviewer.md",
+                    "rule:team/style.mdc",
+                    "command:ship.md",
+                    "hook:fmt",
+                ],
+            ),
+            &[],
+        );
+
+        assert!(settings.tools.grok.skills_path.join("review").exists());
+        assert!(settings.tools.grok.agents_path.join("reviewer.md").exists());
+        assert!(settings
+            .tools
+            .grok
+            .rules_path
+            .join("team/style.md")
+            .exists());
+        assert!(settings
+            .tools
+            .grok
+            .commands_path
+            .as_ref()
+            .unwrap()
+            .join("ship.md")
+            .exists());
+        assert!(settings
+            .tools
+            .grok
+            .hooks_dir
+            .as_ref()
+            .unwrap()
+            .join("fmt.json")
+            .exists());
+
+        let enabled = enabled_ids(&settings, &scanned.items, ToolId::Grok);
+        for id in [
+            "skill:review",
+            "agent:reviewer.md",
+            "rule:team/style.mdc",
+            "command:ship.md",
+            "hook:fmt",
+        ] {
+            assert!(
+                enabled.iter().any(|got| got == id),
+                "{id} missing from {enabled:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn apply_suite_skips_grok_when_hook_targets_omit_grok() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{
+                "id": "fmt",
+                "command": "run",
+                "events": [{"name":"Stop"}],
+                "targets": ["cursor"]
+            }"#,
+        );
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Grok,
+            &suite("cursor-only-hook", &["hook:fmt"]),
+            &[],
+        );
+
+        assert!(
+            !settings
+                .tools
+                .grok
+                .hooks_dir
+                .as_ref()
+                .unwrap()
+                .join("fmt.json")
+                .exists(),
+            "hooks whose targets omit grok must not write ~/.grok/hooks"
+        );
+        assert!(
+            !enabled_ids(&settings, &scanned.items, ToolId::Grok)
+                .iter()
+                .any(|id| id == "hook:fmt"),
+            "untargeted hook must stay out of Grok enabled state"
+        );
+    }
+
+    #[test]
     fn apply_empty_suite_disables_everything() {
         let root = tempfile::tempdir().unwrap();
         let tools = tempfile::tempdir().unwrap();
@@ -1446,12 +1566,13 @@ mod tests {
         settings.tools.kiro.enabled = false;
         settings.tools.copilot.enabled = false;
         settings.tools.antigravity.enabled = false;
+        settings.tools.grok.enabled = false;
 
         let scanned = scan(&settings);
         let result = inspect(&scanned.items, &settings);
 
         // One status per tool.
-        assert_eq!(result.adapter_statuses.len(), 8);
+        assert_eq!(result.adapter_statuses.len(), 9);
         let openclaw = result
             .adapter_statuses
             .iter()
@@ -1471,6 +1592,13 @@ mod tests {
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Kiro));
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Copilot));
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Antigravity));
+        assert!(!result.states.iter().any(|s| s.tool == ToolId::Grok));
+        let grok = result
+            .adapter_statuses
+            .iter()
+            .find(|s| s.tool == ToolId::Grok)
+            .unwrap();
+        assert!(!grok.available);
         assert!(result
             .states
             .iter()

@@ -81,6 +81,13 @@ fn sync_tracer_hook_for_tool(
         .map(|_| ())
         .map_err(|e| e.message);
     }
+    if tool == ToolId::Grok {
+        return agentic_core::grok_hook_sync::sync_single_grok_hook(
+            &adapter, &item, &manifest, enabled,
+        )
+        .map(|_| ())
+        .map_err(|e| e.message);
+    }
     hook_sync::sync_single_json_hook(&adapter, &item, &manifest, enabled)
         .map(|_| ())
         .map_err(|e| e.message)

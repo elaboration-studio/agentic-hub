@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::model::ToolId;
 use crate::settings::{Settings, ToolSettings};
 
 /// True if `candidate` is safe to open: it exists and canonicalizes to a path
@@ -22,17 +23,12 @@ pub fn is_openable(candidate: &Path, settings: &Settings, workspace_dirs: &[Path
     for source in settings.resolve_sources() {
         dir_roots.push(source.path);
     }
-    for tool in [
-        &settings.tools.codex,
-        &settings.tools.claude,
-        &settings.tools.cursor,
-        &settings.tools.openclaw,
-        &settings.tools.openstandard,
-        &settings.tools.kiro,
-        &settings.tools.copilot,
-        &settings.tools.antigravity,
-    ] {
-        collect_tool_targets(tool, &mut dir_roots, &mut exact_files);
+    for tool_id in ToolId::ALL {
+        collect_tool_targets(
+            settings.tools.for_tool(tool_id),
+            &mut dir_roots,
+            &mut exact_files,
+        );
     }
     dir_roots.extend(workspace_dirs.iter().cloned());
 
@@ -106,6 +102,34 @@ mod tests {
         fs::write(&file, "# a").unwrap();
 
         assert!(is_openable(&file, &settings, &[]));
+    }
+
+    #[test]
+    fn allows_projected_file_under_grok_tool_dirs() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        let settings = Settings::sandboxed(root.path(), tools.path());
+
+        let skill = settings.tools.grok.skills_path.join("review");
+        fs::create_dir_all(&skill).unwrap();
+        assert!(
+            is_openable(&skill, &settings, &[]),
+            "Grok skill dir must be on the open allowlist"
+        );
+
+        let hook = settings
+            .tools
+            .grok
+            .hooks_dir
+            .clone()
+            .unwrap()
+            .join("fmt.json");
+        fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        fs::write(&hook, "{}").unwrap();
+        assert!(
+            is_openable(&hook, &settings, &[]),
+            "Grok hooks dir must be on the open allowlist"
+        );
     }
 
     #[test]

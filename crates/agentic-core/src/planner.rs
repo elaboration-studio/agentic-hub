@@ -59,7 +59,8 @@ fn inspect_item(item: &CapabilityItem, adapter: &ResolvedAdapter) -> Option<Tool
         // Hooks are filtered out above; handled by hook_sync / kiro_hook_sync / copilot_hook_sync.
         ProjectionMode::JsonSection
         | ProjectionMode::KiroHookFile
-        | ProjectionMode::CopilotHookFile => return None,
+        | ProjectionMode::CopilotHookFile
+        | ProjectionMode::GrokHookFile => return None,
     };
 
     Some(ToolCapabilityState {

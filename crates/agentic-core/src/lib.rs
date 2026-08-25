@@ -15,6 +15,7 @@ pub mod client_telemetry;
 pub mod codex_agent;
 pub mod copilot_hook_sync;
 pub mod error;
+pub mod grok_hook_sync;
 pub mod hook_sync;
 pub mod internal_hooks;
 pub mod kiro_hook_sync;

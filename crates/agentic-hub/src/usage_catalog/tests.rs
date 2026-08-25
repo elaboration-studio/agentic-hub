@@ -55,6 +55,7 @@ fn isolated_settings(tools: &[ToolId], shared_root: &Path, tools_root: &Path) ->
             ToolId::Kiro => &mut t.kiro,
             ToolId::Copilot => &mut t.copilot,
             ToolId::Antigravity => &mut t.antigravity,
+            ToolId::Grok => &mut t.grok,
         };
         tool_settings.enabled = enabled;
         tool_settings.skills_path = root.join("skills");
@@ -818,5 +819,43 @@ fn kiro_resolves_repository_and_global_skills() {
     assert_eq!(
         local_attr.events[0].capability_id.as_deref(),
         Some("skill:local-kiro-skill")
+    );
+}
+
+#[test]
+fn grok_resolves_repository_and_global_skills() {
+    let source = TestRepo::new();
+    let tools = TestRepo::new();
+    let repo = TestRepo::new();
+    fs::create_dir(repo.path().join(".git")).unwrap();
+    let mut settings = isolated_settings(&[ToolId::Grok], source.path(), tools.path());
+    settings.tools.grok.hooks_dir = Some(tools.path().join("grok/hooks"));
+    local_skill(source.path(), "skills/cto", "repo-research");
+    local_skill(repo.path(), ".grok/skills", "local-grok-skill");
+    let global = AttributionState::default().normalize(
+        &slash_prompt_event("/repo-research what is this?", "s-grok"),
+        "grok",
+    );
+    let local = AttributionState::default().normalize(
+        &json!({
+            "hookEventName": "user_prompt_submit",
+            "promptId": "s-grok-local",
+            "cwd": repo.path(),
+            "workspaceRoot": repo.path(),
+            "prompt": "/local-grok-skill help"
+        }),
+        "grok",
+    );
+
+    let global_attr = attribute_batch(global, &settings, "grok");
+    let local_attr = attribute_batch(local, &settings, "grok");
+
+    assert_eq!(
+        global_attr.events[0].capability_id.as_deref(),
+        Some("skill:cto/repo-research")
+    );
+    assert_eq!(
+        local_attr.events[0].capability_id.as_deref(),
+        Some("skill:local-grok-skill")
     );
 }

@@ -447,6 +447,15 @@ fn documented_skill_roots(
             .into_iter()
             .map(|ancestor| ancestor.join(".kiro/skills"))
             .collect(),
+        ToolId::Grok => ancestors
+            .into_iter()
+            .flat_map(|ancestor| {
+                [
+                    ancestor.join(".grok/skills"),
+                    ancestor.join(".agents/skills"),
+                ]
+            })
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -481,6 +490,15 @@ fn documented_agent_roots(
         ToolId::Kiro => ancestors
             .into_iter()
             .map(|ancestor| ancestor.join(".kiro/agents"))
+            .collect(),
+        ToolId::Grok => ancestors
+            .into_iter()
+            .flat_map(|ancestor| {
+                [
+                    ancestor.join(".grok/agents"),
+                    ancestor.join(".agents/agents"),
+                ]
+            })
             .collect(),
         _ => Vec::new(),
     }
@@ -755,6 +773,7 @@ fn tool_id(value: &str) -> Option<ToolId> {
         "claude" => Some(ToolId::Claude),
         "codex" => Some(ToolId::Codex),
         "kiro" => Some(ToolId::Kiro),
+        "grok" => Some(ToolId::Grok),
         _ => None,
     }
 }

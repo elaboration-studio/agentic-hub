@@ -118,6 +118,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
       kiro: toolSettings(overrides.kiro ?? false),
       copilot: toolSettings(overrides.copilot ?? false),
       antigravity: toolSettings(overrides.antigravity ?? false),
+      grok: toolSettings(overrides.grok ?? false),
     },
   };
 }
@@ -374,6 +375,7 @@ describe("manager store — loadWorkspace (read-only inventory)", () => {
       "kiro",
       "copilot",
       "antigravity",
+      "grok",
     ]);
     // Local resources are namespaced so they stay distinct from globals.
     expect(s.desired[`cursor::${WS}skill:a`]).toBe(true);

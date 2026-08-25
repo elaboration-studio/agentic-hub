@@ -91,7 +91,7 @@ Each canonical event in the source manifest becomes one entry in the `hooks` arr
 
 ### Hook targets
 
-Kiro is **opt-in**: add `"kiro"` to a hook's `targets` array. Default targets remain `[cursor, claude, codex]`.
+Kiro is **opt-in**: add `"kiro"` to a hook's `targets` array. Default targets remain `[cursor, claude, codex, grok]`.
 
 ## Workspace inventory
 

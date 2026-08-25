@@ -40,7 +40,7 @@ A hook lives under `<source>/hooks/<hook-name>/hook.json`, optionally with sibli
 Substitution and defaults:
 
 - `${HOOK_DIR}` resolves to the absolute path of the hook's containing folder at projection time. The scanner sets a hook's `source_path` to that folder.
-- `targets` is optional and defaults to `["cursor", "claude", "codex"]`. OpenClaw is never a default target (no public hook spec).
+- `targets` is optional and defaults to `["cursor", "claude", "codex", "grok"]`. OpenClaw, Kiro, Copilot, Antigravity, and OpenStandard stay opt-in.
 - `loopLimit` (positive integer) is a Cursor-only safety knob that caps re-runs on the same triggering event; surfaced as `loop_limit` in `~/.cursor/hooks.json` and ignored by tools that do not model it.
 
 ## Tool coverage

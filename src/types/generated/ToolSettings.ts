@@ -3,12 +3,12 @@
 /**
  * Per-tool target paths and toggles. Mirrors the IPC `ToolSettings` shape.
  */
-export type ToolSettings = { enabled: boolean, skillsPath: string, agentsPath: string, rulesPath: string, instructionsPath: string | null, hooksEnabled: boolean, hooksFile: string | null,
+export type ToolSettings = { enabled: boolean, skillsPath: string, agentsPath: string, rulesPath: string, instructionsPath: string | null, hooksEnabled: boolean, hooksFile: string | null, 
 /**
- * Per-hook JSON directory (Kiro/Copilot). `None` for tools that use a
+ * Per-hook JSON directory (Kiro/Copilot/Grok). `None` for tools that use a
  * single `hooks_file` instead.
  */
-hooksDir: string | null,
+hooksDir: string | null, 
 /**
  * Directory holding slash-command prompts (`commands`/`prompts`). `None`
  * when the tool has no command concept (OpenClaw). Injected for configs

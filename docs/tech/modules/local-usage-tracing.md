@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-08-24
+Last Updated: 2026-08-25
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [docs/features/local-skill-usage-tracing.md](../../features/local-skill-usage-tracing.md)
 Related Docs: [docs/tech/modules/hook-projection-sync.md](./hook-projection-sync.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
@@ -47,7 +47,7 @@ Schema v2 keeps all v1 fields and adds:
 | --- | --- |
 | `event_id` | UUID-like id from payload or generated locally |
 | `timestamp` | ISO 8601 timestamp |
-| `source_tool` | Agentic tool id such as `codex`, `claude`, `cursor`, or `kiro` |
+| `source_tool` | Agentic tool id such as `codex`, `claude`, `cursor`, `kiro`, or `grok` |
 | `event_type` | Terminal events count: `PostToolUse`, `PostToolUseFailure`, `PostSkillUse`, `CommandPaletteUse`, and MCP wrapper completions |
 | `tool_name` | Tool or MCP tool name when available |
 | `skill_name` | Explicit skill name when available |
@@ -91,15 +91,17 @@ The capability catalog combines:
 Resolution compares canonical exact paths first, documented tool scope and
 precedence second, and unique names last. Names are slugged (`Repo Research` →
 `repo-research`) and matched against folder names plus SKILL.md `name` aliases.
-Codex, Cursor, and Kiro prefer a unique workspace match, then a unique global
+Codex, Cursor, Kiro, and Grok prefer a unique workspace match, then a unique global
 match. Claude prefers unique global, then unique workspace. Codex discovers
 ancestor `.agents/skills` roots from `cwd` to repository root. Claude discovers
 ancestor and nested `.claude/skills` roots. Kiro discovers ancestor
-`.kiro/skills` roots. Cursor uses all `workspace_roots` and discovers
+`.kiro/skills` roots. Grok discovers ancestor `.grok/skills` and `.agents/skills`
+roots. Cursor uses all `workspace_roots` and discovers
 `.agents/skills`, `.cursor/skills`, `.claude/skills`, and `.codex/skills`.
 Repository agents are discovered under `.cursor/agents` / `.agents/agents`
 (Cursor), ancestor `.claude/agents` (Claude), ancestor `.codex/agents` /
-`.agents/agents` (Codex), and ancestor `.kiro/agents` (Kiro). Repository roots
+`.agents/agents` (Codex), ancestor `.kiro/agents` (Kiro), and ancestor
+`.grok/agents` (Grok). Repository roots
 come from the hook payload, not Agentic Hub's saved-workspace list.
 
 A tool-global installed item is what that tool actually executes for a name, so
@@ -140,6 +142,9 @@ global catalog alone. Uncertain history is preserved unchanged.
 - Kiro uses `turn_id` when present, otherwise the same in-memory session
   tracker as Claude. CLI payloads send `userPromptSubmit`; that name is
   canonicalized to `UserPromptSubmit` before attribution.
+- Grok uses `promptId`. Event names arrive as snake_case (`post_tool_use`) and
+  are canonicalized to PascalCase. `read_file` is treated as a skill/agent file
+  read. Qualified slash names (`/user:commit`) drop the scope prefix.
 
 The collector hashes correlation material in memory and combines it with tool,
 workspace scope, and capability identity to create `invocation_key`. A skill is
@@ -248,9 +253,10 @@ capability. Generic tool calls without a skill signal are no longer stored.
 - Recovery retries a stopped collector three times, clears the outage after a
   successful probe, and emits only one failure event per continuous outage.
 - Cursor lower-camel hook event names are canonicalized before storage.
-- Cursor, Codex, Claude, and Kiro fixtures extract every distinct explicit skill in a
+- Cursor, Codex, Claude, Kiro, and Grok fixtures extract every distinct explicit skill in a
   turn and never persist raw prompt or tool input. Spaced slash names and
-  SKILL.md `name` aliases resolve to the folder skill.
+  SKILL.md `name` aliases resolve to the folder skill. Grok snake_case events,
+  `read_file` paths, and `/user:` slash prefixes are covered.
 - `/health`, images, pasted files, arbitrary paths, traversal, missing paths,
   and out-of-root paths produce no occurrence.
 - Attribution covers repository-only, nested, symlinked, global-only,

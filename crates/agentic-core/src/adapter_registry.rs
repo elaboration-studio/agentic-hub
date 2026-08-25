@@ -31,6 +31,8 @@ pub enum ProjectionMode {
     KiroHookFile,
     /// One Copilot v1 hook JSON file per hook id under `hooks_dir`.
     CopilotHookFile,
+    /// One Claude-style JSON file per hook id under `~/.grok/hooks/`.
+    GrokHookFile,
 }
 
 /// A tool's resolved, canonical-path adapter for global scope.
@@ -44,7 +46,7 @@ pub struct ResolvedAdapter {
     pub instructions_path: Option<PathBuf>,
     pub hooks_enabled: bool,
     pub hooks_file: Option<PathBuf>,
-    /// Per-hook JSON directory (Kiro and Copilot). `None` when hooks use
+    /// Per-hook JSON directory (Kiro, Copilot, and Grok). `None` when hooks use
     /// `hooks_file`.
     pub hooks_dir: Option<PathBuf>,
     /// Slash-command directory. `None` when the tool has no command concept
@@ -62,6 +64,7 @@ fn tool_settings(settings: &Settings, tool: ToolId) -> &ToolSettings {
         ToolId::Kiro => &settings.tools.kiro,
         ToolId::Copilot => &settings.tools.copilot,
         ToolId::Antigravity => &settings.tools.antigravity,
+        ToolId::Grok => &settings.tools.grok,
     }
 }
 
@@ -101,13 +104,14 @@ pub fn resolve_all(settings: &Settings) -> Vec<ResolvedAdapter> {
 }
 
 /// Tools supported in workspace scope. OpenClaw and OpenStandard are global-only.
-pub const WORKSPACE_TOOL_IDS: [ToolId; 6] = [
+pub const WORKSPACE_TOOL_IDS: [ToolId; 7] = [
     ToolId::Codex,
     ToolId::Claude,
     ToolId::Cursor,
     ToolId::Kiro,
     ToolId::Copilot,
     ToolId::Antigravity,
+    ToolId::Grok,
 ];
 
 /// Materialize a workspace-scoped adapter rooted at `ws`. Paths are hard-coded
@@ -197,6 +201,18 @@ pub fn create_workspace_adapter(tool: ToolId, ws: &std::path::Path) -> ResolvedA
             hooks_dir: None,
             commands_path: None,
         },
+        ToolId::Grok => ResolvedAdapter {
+            tool_id: tool,
+            enabled: true,
+            skills_path: j(".grok/skills"),
+            agents_path: j(".grok/agents"),
+            rules_path: j(".grok/rules"),
+            instructions_path: Some(j("AGENTS.md")),
+            hooks_enabled: true,
+            hooks_file: None,
+            hooks_dir: Some(j(".grok/hooks")),
+            commands_path: Some(j(".grok/commands")),
+        },
         ToolId::Openclaw => ResolvedAdapter {
             tool_id: tool,
             enabled: false,
@@ -250,9 +266,11 @@ impl ResolvedAdapter {
             (ToolId::Claude | ToolId::Kiro | ToolId::Copilot | ToolId::Antigravity, Skill) => {
                 Layout::Flat
             }
-            (ToolId::Cursor | ToolId::Codex | ToolId::Kiro | ToolId::Copilot, Agent) => {
-                Layout::Flat
-            }
+            (
+                ToolId::Cursor | ToolId::Codex | ToolId::Kiro | ToolId::Copilot | ToolId::Grok,
+                Agent,
+            ) => Layout::Flat,
+            (ToolId::Grok, CapabilityKind::Command) => Layout::Flat,
             _ => Layout::Nested,
         }
     }
@@ -262,8 +280,8 @@ impl ResolvedAdapter {
     pub fn projection_mode_for(&self, kind: CapabilityKind) -> Option<ProjectionMode> {
         use CapabilityKind::{Agent, Command, Hook, Rule, Skill};
         use ProjectionMode::{
-            CodexAgentToml, CopilotHookFile, FileSync, JsonSection, KiroHookFile, LinkSync,
-            MarkdownSectionSync,
+            CodexAgentToml, CopilotHookFile, FileSync, GrokHookFile, JsonSection, KiroHookFile,
+            LinkSync, MarkdownSectionSync,
         };
         match (self.tool_id, kind) {
             (ToolId::Openclaw, Hook | Command) => None,
@@ -272,6 +290,8 @@ impl ResolvedAdapter {
             (ToolId::Kiro, Command) => None,
             (ToolId::Copilot, Hook) => Some(CopilotHookFile),
             (ToolId::Copilot, Command) => None,
+            (ToolId::Grok, Hook) => Some(GrokHookFile),
+            (ToolId::Grok, Rule) => Some(LinkSync),
             (_, Hook) => Some(JsonSection),
             (ToolId::Cursor, Agent) => Some(FileSync),
             (ToolId::Codex, Agent) => Some(CodexAgentToml),
@@ -292,7 +312,7 @@ impl ResolvedAdapter {
     }
 
     /// Base directory for an item's kind (`skills`/`agents`/`rules` dir). `None`
-    /// for hooks, which target the single `hooks_file`.
+    /// for hooks, which use `hooks_file` or per-id files under `hooks_dir`.
     pub fn base_path_for(&self, kind: CapabilityKind) -> Option<&PathBuf> {
         match kind {
             CapabilityKind::Skill => Some(&self.skills_path),
@@ -315,7 +335,7 @@ impl ResolvedAdapter {
     }
 
     /// The per-item target path for symlink/managed-copy kinds. `None` for hooks
-    /// (which target the tool's single `hooks_file`, routed through `hook_sync`).
+    /// (routed through `hook_sync` / per-file hook adapters).
     pub fn target_path_for(&self, item: &CapabilityItem) -> Option<PathBuf> {
         let base = match item.kind {
             CapabilityKind::Skill => &self.skills_path,
@@ -336,7 +356,20 @@ impl ResolvedAdapter {
         if self.tool_id == ToolId::Copilot {
             rel = copilot_target_rel(item.kind, rel);
         }
+        if self.tool_id == ToolId::Grok {
+            rel = grok_target_rel(item.kind, rel);
+        }
         Some(base.join(rel))
+    }
+}
+
+fn grok_target_rel(kind: CapabilityKind, rel: PathBuf) -> PathBuf {
+    if kind != CapabilityKind::Rule {
+        return rel;
+    }
+    match rel.extension().and_then(|ext| ext.to_str()) {
+        Some("mdc") => rel.with_extension("md"),
+        _ => rel,
     }
 }
 
@@ -791,6 +824,108 @@ mod tests {
         assert!(WORKSPACE_TOOL_IDS.contains(&ToolId::Kiro));
         assert!(WORKSPACE_TOOL_IDS.contains(&ToolId::Copilot));
         assert!(WORKSPACE_TOOL_IDS.contains(&ToolId::Antigravity));
+        assert!(WORKSPACE_TOOL_IDS.contains(&ToolId::Grok));
+    }
+
+    #[test]
+    fn grok_projection_modes_and_layout() {
+        let s = Settings::default();
+        let grok = resolve(&s, ToolId::Grok);
+        assert!(!grok.enabled);
+        assert_eq!(grok.layout_for(CapabilityKind::Skill), Layout::Nested);
+        assert_eq!(
+            grok.projection_mode_for(CapabilityKind::Skill),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(grok.layout_for(CapabilityKind::Agent), Layout::Flat);
+        assert_eq!(
+            grok.projection_mode_for(CapabilityKind::Agent),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            grok.projection_mode_for(CapabilityKind::Rule),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(grok.layout_for(CapabilityKind::Command), Layout::Flat);
+        assert_eq!(
+            grok.projection_mode_for(CapabilityKind::Command),
+            Some(ProjectionMode::LinkSync)
+        );
+        assert_eq!(
+            grok.projection_mode_for(CapabilityKind::Hook),
+            Some(ProjectionMode::GrokHookFile)
+        );
+        assert!(grok.skills_path.ends_with(".grok/skills"));
+        assert!(grok.agents_path.ends_with(".grok/agents"));
+        assert!(grok.rules_path.ends_with(".grok/rules"));
+        assert!(grok
+            .commands_path
+            .as_ref()
+            .is_some_and(|path| path.ends_with(".grok/commands")));
+        assert!(grok
+            .hooks_dir
+            .as_ref()
+            .is_some_and(|path| path.ends_with(".grok/hooks")));
+        assert!(grok.hooks_file.is_none());
+        assert!(grok.instructions_path.is_none());
+
+        let skill = item(CapabilityKind::Skill, "dev/repo-research");
+        let skill_target = grok.target_path_for(&skill).unwrap();
+        assert!(
+            skill_target.ends_with(Path::new(".grok/skills/dev/repo-research")),
+            "grok keeps nested skills: {skill_target:?}"
+        );
+
+        let agent = item(CapabilityKind::Agent, "team/reviewer.md");
+        let agent_target = grok.target_path_for(&agent).unwrap();
+        assert!(
+            agent_target.ends_with(Path::new(".grok/agents/reviewer.md")),
+            "grok flattens agents: {agent_target:?}"
+        );
+
+        let command = item(CapabilityKind::Command, "review/code-review.md");
+        let command_target = grok.target_path_for(&command).unwrap();
+        assert!(
+            command_target.ends_with(Path::new(".grok/commands/code-review.md")),
+            "grok flattens commands: {command_target:?}"
+        );
+
+        let mdc = item(CapabilityKind::Rule, "team/style.mdc");
+        let mdc_target = grok.target_path_for(&mdc).unwrap();
+        assert!(
+            mdc_target.ends_with(Path::new(".grok/rules/team/style.md")),
+            "grok rewrites .mdc rules to .md: {mdc_target:?}"
+        );
+        let md = item(CapabilityKind::Rule, "always.md");
+        let md_target = grok.target_path_for(&md).unwrap();
+        assert!(
+            md_target.ends_with(Path::new(".grok/rules/always.md")),
+            "{md_target:?}"
+        );
+    }
+
+    #[test]
+    fn workspace_adapter_grok_paths() {
+        let ws = Path::new("/ws");
+        let grok = create_workspace_adapter(ToolId::Grok, ws);
+        assert!(grok.enabled);
+        assert_eq!(grok.skills_path, ws.join(".grok/skills"));
+        assert_eq!(grok.agents_path, ws.join(".grok/agents"));
+        assert_eq!(grok.rules_path, ws.join(".grok/rules"));
+        assert_eq!(grok.instructions_path, Some(ws.join("AGENTS.md")));
+        assert_eq!(grok.hooks_dir, Some(ws.join(".grok/hooks")));
+        assert_eq!(grok.commands_path, Some(ws.join(".grok/commands")));
+    }
+
+    #[test]
+    fn resolve_restores_default_grok_hook_dir_for_legacy_settings() {
+        let mut settings = Settings::default();
+        settings.tools.grok.hooks_dir = None;
+        let grok = resolve(&settings, ToolId::Grok);
+        assert!(grok
+            .hooks_dir
+            .as_ref()
+            .is_some_and(|path| path.ends_with(".grok/hooks")));
     }
 
     #[test]

@@ -454,6 +454,10 @@ fn canonical_event_type(event_type: &str) -> String {
         "postToolUseFailure" => "PostToolUseFailure".to_string(),
         "preToolUse" => "PreToolUse".to_string(),
         "beforeSubmitPrompt" => "UserPromptSubmit".to_string(),
+        "user_prompt_submit" => "UserPromptSubmit".to_string(),
+        "post_tool_use" => "PostToolUse".to_string(),
+        "post_tool_use_failure" => "PostToolUseFailure".to_string(),
+        "pre_tool_use" => "PreToolUse".to_string(),
         "stop" => "Stop".to_string(),
         other => other.to_string(),
     }

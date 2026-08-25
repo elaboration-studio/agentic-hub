@@ -40,6 +40,7 @@ User-facing feature designs aligned with each milestone.
 - [kiro-tool-adapter.md](features/kiro-tool-adapter.md) — opt-in Kiro projection and workspace inventory
 - [copilot-tool-adapter.md](features/copilot-tool-adapter.md) — opt-in GitHub Copilot projection and workspace inventory
 - [antigravity-tool-adapter.md](features/antigravity-tool-adapter.md) — opt-in Google Antigravity projection and workspace inventory
+- [grok-tool-adapter.md](features/grok-tool-adapter.md) — opt-in Grok Build projection, tracer hook, and usage attribution
 - [local-skill-usage-tracing.md](features/local-skill-usage-tracing.md) — local skill usage counts (enabled by default, opt-out in Config) surfaced in the Manager matrix and Statistics tabs
 - [color-scheme.md](features/color-scheme.md) — app-wide light, dark, and follow-system appearance
 - [session-explorer.md](features/session-explorer.md) — read-only, local browse/search of Codex, Claude Code, and Cursor session history in the Resources panel
@@ -57,6 +58,7 @@ Detailed technical design for each subsystem of the projection engine and adjace
 - [kiro-tool-adapter.md](tech/modules/kiro-tool-adapter.md) — Kiro paths and per-hook JSON projection
 - [copilot-tool-adapter.md](tech/modules/copilot-tool-adapter.md) — Copilot paths, filename transforms, and per-hook JSON projection
 - [antigravity-tool-adapter.md](tech/modules/antigravity-tool-adapter.md) — Antigravity paths and aggregate hook/rule projection
+- [grok-tool-adapter.md](tech/modules/grok-tool-adapter.md) — Grok Build paths, per-file Claude-style hook JSON, and tracer attribution
 - [suite-presets.md](tech/modules/suite-presets.md) — suite store, full-reset apply pipeline
 - [suite-bindings.md](tech/modules/suite-bindings.md) — suite↔tool binding store; auto re-sync on capability edits
 - [workspace-inventory.md](tech/modules/workspace-inventory.md) — workspace target store, per-tool scan, read-only inventory contract

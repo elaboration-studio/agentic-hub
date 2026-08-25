@@ -159,7 +159,7 @@ pub struct ScanResult {
     pub locked_skills: Vec<crate::source_skill_lock::LibraryLockedSkill>,
 }
 
-/// The eight supported AI tools.
+/// The nine supported AI tools.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
@@ -180,10 +180,12 @@ pub enum ToolId {
     Copilot,
     /// Google Antigravity IDE/CLI (`~/.gemini/` shared layout).
     Antigravity,
+    /// Grok Build CLI (`~/.grok/`).
+    Grok,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 8] = [
+    pub const ALL: [ToolId; 9] = [
         ToolId::Codex,
         ToolId::Claude,
         ToolId::Cursor,
@@ -192,6 +194,7 @@ impl ToolId {
         ToolId::Kiro,
         ToolId::Copilot,
         ToolId::Antigravity,
+        ToolId::Grok,
     ];
 
     /// Lowercase id, matching the serde wire representation.
@@ -205,6 +208,7 @@ impl ToolId {
             ToolId::Kiro => "kiro",
             ToolId::Copilot => "copilot",
             ToolId::Antigravity => "antigravity",
+            ToolId::Grok => "grok",
         }
     }
 }

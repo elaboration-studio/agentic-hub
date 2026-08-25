@@ -2,7 +2,7 @@
 
 Status: Stable
 Mode: Detailed
-Last Updated: 2026-06-30
+Last Updated: 2026-08-25
 Depends On: [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md)
 Related Docs: [docs/tech/modules/claude-flat-skill-layout.md](../modules/claude-flat-skill-layout.md), [docs/tech/modules/kiro-tool-adapter.md](../modules/kiro-tool-adapter.md), [docs/tech/modules/openclaw-tool-adapter.md](../modules/openclaw-tool-adapter.md), [docs/tech/modules/rule-projection-sync.md](../modules/rule-projection-sync.md), [docs/tech/modules/workspace-inventory.md](../modules/workspace-inventory.md)
 
@@ -44,17 +44,17 @@ The Codex `agentsPath` default was `~/.agents/agents` before v0.5.0, which colli
 
 ### Opt-in adapters
 
-| Aspect | Kiro | GitHub Copilot | Google Antigravity |
-|--------|------|----------------|--------------------|
-| Tool id | `kiro` | `copilot` | `antigravity` |
-| Default `enabled` | `false` | `false` | `false` |
-| `skillLayout` | `Flat` | `Flat`* | `Flat`* |
-| Skill projection | **managed copy** (flat) | symlink (flat)* | **managed copy** (flat)* |
-| Agents | managed copy (flat) | symlink (flat) | not supported |
-| Rules | managed block in `~/.kiro/steering/AGENTS.md` | symlink (`.instructions.md`) | managed block in `~/.gemini/AGENTS.md` |
-| Hooks | one v1 JSON per id in `~/.kiro/hooks` | one v1 JSON per id in `~/.copilot/hooks` | `json_section` in `~/.gemini/config/hooks.json` |
-| Commands | not supported | not supported | not supported |
-| Hook targeting | explicit `"kiro"` | explicit `"copilot"` | explicit `"antigravity"` |
+| Aspect | Kiro | GitHub Copilot | Google Antigravity | Grok Build |
+|--------|------|----------------|--------------------|------------|
+| Tool id | `kiro` | `copilot` | `antigravity` | `grok` |
+| Default `enabled` | `false` | `false` | `false` | `false` |
+| `skillLayout` | `Flat` | `Flat`* | `Flat`* | `Nested` |
+| Skill projection | **managed copy** (flat) | symlink (flat)* | **managed copy** (flat)* | symlink (nested) |
+| Agents | managed copy (flat) | symlink (flat) | not supported | symlink (flat) |
+| Rules | managed block in `~/.kiro/steering/AGENTS.md` | symlink (`.instructions.md`) | managed block in `~/.gemini/AGENTS.md` | symlink under `~/.grok/rules/` (`.mdc` → `.md`) |
+| Hooks | one v1 JSON per id in `~/.kiro/hooks` | one v1 JSON per id in `~/.copilot/hooks` | `json_section` in `~/.gemini/config/hooks.json` | one Claude-style JSON per id in `~/.grok/hooks` |
+| Commands | not supported | not supported | not supported | symlink (flat) into `~/.grok/commands` |
+| Hook targeting | explicit `"kiro"` | explicit `"copilot"` | explicit `"antigravity"` | default with Cursor / Claude / Codex |
 
 \* **Copilot** skill loaders scan only the top level of their skills dir; Copilot CLI fixed symlink discovery in v1.x ([#1021](https://github.com/github/copilot-cli/issues/1021)), so skills stay symlinks with flat layout. **Antigravity** ignores symlinks ([#633](https://github.com/vercel-labs/skills/issues/633)) and uses the same non-recursive scan — skills hard-copy to `~/.gemini/config/skills`.
 
@@ -95,14 +95,14 @@ OpenClaw is **not supported** in workspace scope.
 
 Workspace scope is **read-only inventory** (`workspace_inventory`): it scans these per-tool dirs and reports what each tool already has. It never writes. The "scan source" column is the directory/file each tool actually reads.
 
-| Aspect | Codex | Claude Code | Cursor | Kiro | Copilot | Antigravity |
-|--------|-------|-------------|--------|------|---------|-------------|
-| Skills scan source | `<ws>/.agents/skills` | `<ws>/.claude/skills` | `<ws>/.cursor/skills` + `<ws>/.agents/skills` | `<ws>/.kiro/skills` | `<ws>/.github/skills` + `<ws>/.agents/skills` | `<ws>/.agents/skills` + `<ws>/.agent/skills` |
-| Agents scan source | `<ws>/.codex/agents/*.toml` | `<ws>/.claude/agents/*.md` | `<ws>/.cursor/agents` + `<ws>/.agents/agents` | `<ws>/.kiro/agents/*.md` | `<ws>/.github/agents/*.agent.md` | _none_ |
-| Rules scan source | (in `AGENTS.md`) | (in `CLAUDE.md`) | `<ws>/.cursor/rules/*.mdc` | `<ws>/.kiro/steering/*.md` | `<ws>/.github/instructions/*.instructions.md` | `<ws>/.agents/rules` + `<ws>/.agent/rules` |
-| Hooks inventory | aggregate file not decomposed | aggregate file not decomposed | aggregate file not decomposed | `<ws>/.kiro/hooks/*.json` | `<ws>/.github/hooks/*.json` | aggregate file not decomposed |
-| Commands scan source | `<ws>/.codex/prompts/**/*.md` | `<ws>/.claude/commands/**/*.md` | `<ws>/.cursor/commands/**/*.md` | _none_ | _none_ | _none_ |
-| Instructions scan source | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | `<ws>/AGENTS.md` | `<ws>/AGENTS.md` + native `<ws>/.kiro/steering/*.md` | `<ws>/.github/copilot-instructions.md` + `<ws>/AGENTS.md` | `<ws>/AGENTS.md` + `<ws>/.agents/AGENTS.md` |
+| Aspect | Codex | Claude Code | Cursor | Kiro | Copilot | Antigravity | Grok |
+|--------|-------|-------------|--------|------|---------|-------------|------|
+| Skills scan source | `<ws>/.agents/skills` | `<ws>/.claude/skills` | `<ws>/.cursor/skills` + `<ws>/.agents/skills` | `<ws>/.kiro/skills` | `<ws>/.github/skills` + `<ws>/.agents/skills` | `<ws>/.agents/skills` + `<ws>/.agent/skills` | `<ws>/.grok/skills` + `<ws>/.agents/skills` |
+| Agents scan source | `<ws>/.codex/agents/*.toml` | `<ws>/.claude/agents/*.md` | `<ws>/.cursor/agents` + `<ws>/.agents/agents` | `<ws>/.kiro/agents/*.md` | `<ws>/.github/agents/*.agent.md` | _none_ | `<ws>/.grok/agents/*.md` |
+| Rules scan source | (in `AGENTS.md`) | (in `CLAUDE.md`) | `<ws>/.cursor/rules/*.mdc` | `<ws>/.kiro/steering/*.md` | `<ws>/.github/instructions/*.instructions.md` | `<ws>/.agents/rules` + `<ws>/.agent/rules` | `<ws>/.grok/rules/*.md` |
+| Hooks inventory | aggregate file not decomposed | aggregate file not decomposed | aggregate file not decomposed | `<ws>/.kiro/hooks/*.json` | `<ws>/.github/hooks/*.json` | aggregate file not decomposed | `<ws>/.grok/hooks/*.json` |
+| Commands scan source | `<ws>/.codex/prompts/**/*.md` | `<ws>/.claude/commands/**/*.md` | `<ws>/.cursor/commands/**/*.md` | _none_ | _none_ | _none_ | `<ws>/.grok/commands/*.md` |
+| Instructions scan source | `<ws>/AGENTS.md` | `<ws>/CLAUDE.md` | `<ws>/AGENTS.md` | `<ws>/AGENTS.md` + native `<ws>/.kiro/steering/*.md` | `<ws>/.github/copilot-instructions.md` + `<ws>/AGENTS.md` | `<ws>/AGENTS.md` + `<ws>/.agents/AGENTS.md` | `<ws>/AGENTS.md` |
 
 Notes:
 - **Codex agents are TOML** (`.codex/agents/*.toml`), distinct from Claude/Cursor markdown agents — the scanner matches `*.toml` for Codex, `*.md` otherwise.
@@ -114,14 +114,14 @@ Notes:
 
 ### Skill
 
-- Global Codex / Cursor / OpenClaw / OpenStandard: symlink (nested)
+- Global Codex / Cursor / OpenClaw / OpenStandard / Grok: symlink (nested)
 - Global Claude: managed copy (flat) — Claude's skill loader does not follow symlinks
 - Global Claude agents: managed copy (nested) — Claude's agent loader does not follow symlinks
 - Workspace: hard copy (nested)
 
 ### Agent
 
-- Global Claude / OpenClaw / OpenStandard: managed copy (Claude agents, nested) or symlink (OpenClaw / OpenStandard agents, nested)
+- Global Claude / OpenClaw / OpenStandard / Grok: managed copy (Claude agents, nested) or symlink (OpenClaw / OpenStandard nested; Grok flat)
 - Global Codex: managed copy rendered to TOML (`codex_agent_toml`) — **flat** (Codex loads only top-level `*.toml` subagents)
 - Global Cursor: managed copy (per-root manifest) — **flat** (Cursor's subagent loader is non-recursive; identity is the filename)
 - Flat collisions resolve via `resolve_target_collisions`; a layout change self-heals via `prune_other_paths_for_item`
@@ -137,6 +137,7 @@ Notes:
 ### Command
 
 - Global Codex / Cursor / OpenStandard: symlink (nested) into `~/.codex/prompts`, `~/.cursor/commands`, `~/.agents/commands`
+- Global Grok: symlink (flat) into `~/.grok/commands` — Grok loads top-level `*.md` command files
 - Global Claude: managed copy (nested) into `~/.claude/commands` — Claude's loader does not follow symlinks
 - Global OpenClaw: not supported (no command concept)
 - Workspace: read-only inventory (nested `*.md` under each tool's commands dir; Codex uses `prompts`)
@@ -144,8 +145,9 @@ Notes:
 ### Hook
 
 - Global Codex / Claude / Cursor / OpenStandard: managed JSON entry in the tool's hooks file (`json_section`)
+- Global Kiro / Copilot / Grok: one JSON file per hook id under `hooksDir` (`kiro_hook_file` / `copilot_hook_file` / `grok_hook_file`)
 - Global OpenClaw: not supported (no public hook spec)
-- **OpenStandard hooks are opt-in.** A hook's default target set is the trio `[Cursor, Claude, Codex]` (`HookManifest::effective_targets`), so OpenStandard receives a hook only when the hook's `hook.json` lists it explicitly (`"targets": ["openstandard"]`). Unlike skills/agents/rules — which project to OpenStandard by default — hooks do not, to keep the default `~/.agents/hooks.json` empty unless asked for.
+- **OpenStandard hooks are opt-in.** A hook's default target set is `[Cursor, Claude, Codex, Grok]` (`HookManifest::effective_targets`), so OpenStandard receives a hook only when the hook's `hook.json` lists it explicitly (`"targets": ["openstandard"]`). Unlike skills/agents/rules — which project to OpenStandard by default — hooks do not, to keep the default `~/.agents/hooks.json` empty unless asked for.
 - Workspace Codex / Claude / Cursor: managed JSON entry in `<ws>/.codex/hooks.json` / `<ws>/.claude/settings.json` / `<ws>/.cursor/hooks.json`
 - Cursor uses a flat shape (camelCase events); Codex / Claude use a two-level shape (PascalCase events, marker on the matcher group). See [hook-projection-sync.md](../modules/hook-projection-sync.md).
 
@@ -246,3 +248,23 @@ If a developer asks "where does enabling skill X for tool Y go?", the answer sho
 | Hook targets | opt-in via `"targets": ["kiro"]` |
 
 See [kiro-tool-adapter.md](../modules/kiro-tool-adapter.md).
+
+## Grok Build (global scope)
+
+| Aspect | Grok |
+|--------|------|
+| Tool id | `grok` |
+| Default `enabled` | `false` |
+| `skillsPath` | `~/.grok/skills` |
+| `agentsPath` | `~/.grok/agents` |
+| `rulesPath` | `~/.grok/rules` |
+| `commandsPath` | `~/.grok/commands` |
+| `hooksDir` | `~/.grok/hooks` |
+| Skill projection | symlink (nested) |
+| Agent projection | symlink (flat) |
+| Rule projection | symlink (nested; `.mdc` → `.md`) |
+| Command projection | symlink (flat) |
+| Hook projection | `grok_hook_file` — one Claude-style JSON per hook id |
+| Hook targets | default with Cursor / Claude / Codex |
+
+See [grok-tool-adapter.md](../modules/grok-tool-adapter.md). Grok global hooks in `~/.grok/hooks/` are always trusted; the hub never writes project `.grok/hooks/`.

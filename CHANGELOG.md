@@ -8,6 +8,12 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.16.3] — 2026-08-25
+
+### Added
+
+- **Grok Build tool adapter and usage tracing.** You can now opt in a Grok column that projects skills, agents, rules (`.mdc` → `.md`), commands, and hooks into `~/.grok/`. Default hook targets include Grok alongside Cursor / Claude / Codex. When tracing is on, a managed tracer hook attributes Grok `promptId` turns, `read_file` SKILL.md reads, and qualified slash names (`/user:commit`). Open/Reveal works on Grok skill and hook paths; broken `~/.grok/hooks` JSON is left untouched.
+
 ## [0.16.2] — 2026-08-24
 
 ### Fixed
