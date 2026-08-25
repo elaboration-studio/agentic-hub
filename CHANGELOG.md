@@ -8,6 +8,10 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cmd+Alt+A no longer brings the main window with the palette.** Closing the hub hides the whole app; summoning the palette then unhid NSApp and `RunEvent::Reopen` focused the hub on top of search. The palette now blocks that reopen and hides the hub again if it was not already visible.
+
 ## [0.16.3] — 2026-08-25
 
 ### Added
