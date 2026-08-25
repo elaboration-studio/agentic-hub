@@ -203,7 +203,13 @@ fn default_usage_tracing_enabled() -> bool {
 }
 
 fn default_usage_capture_tools() -> Vec<ToolId> {
-    vec![ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro]
+    vec![
+        ToolId::Codex,
+        ToolId::Claude,
+        ToolId::Cursor,
+        ToolId::Kiro,
+        ToolId::Grok,
+    ]
 }
 
 fn default_usage_retention_days() -> u32 {
@@ -230,7 +236,7 @@ pub struct ToolSettings {
     pub instructions_path: Option<PathBuf>,
     pub hooks_enabled: bool,
     pub hooks_file: Option<PathBuf>,
-    /// Per-hook JSON directory (Kiro/Copilot). `None` for tools that use a
+    /// Per-hook JSON directory (Kiro/Copilot/Grok). `None` for tools that use a
     /// single `hooks_file` instead.
     #[serde(default)]
     pub hooks_dir: Option<PathBuf>,
@@ -264,6 +270,8 @@ pub struct ToolsSettings {
     pub copilot: ToolSettings,
     #[serde(default = "default_antigravity")]
     pub antigravity: ToolSettings,
+    #[serde(default = "default_grok")]
+    pub grok: ToolSettings,
 }
 
 impl ToolsSettings {
@@ -277,6 +285,7 @@ impl ToolsSettings {
             ToolId::Kiro => &self.kiro,
             ToolId::Copilot => &self.copilot,
             ToolId::Antigravity => &self.antigravity,
+            ToolId::Grok => &self.grok,
         }
     }
 }
@@ -295,6 +304,10 @@ fn default_copilot() -> ToolSettings {
 
 fn default_antigravity() -> ToolSettings {
     ToolSettings::defaults_for(ToolId::Antigravity)
+}
+
+fn default_grok() -> ToolSettings {
+    ToolSettings::defaults_for(ToolId::Grok)
 }
 
 /// Last-known main window size and position in logical pixels. Restored on
@@ -410,6 +423,7 @@ pub fn default_commands_path(tool: ToolId) -> Option<PathBuf> {
         ToolId::Claude => Some(expand_tilde("~/.claude/commands")),
         ToolId::Cursor => Some(expand_tilde("~/.cursor/commands")),
         ToolId::Openstandard => Some(expand_tilde("~/.agents/commands")),
+        ToolId::Grok => Some(expand_tilde("~/.grok/commands")),
         ToolId::Openclaw | ToolId::Kiro | ToolId::Copilot | ToolId::Antigravity => None,
     }
 }
@@ -421,6 +435,7 @@ pub fn default_hooks_dir(tool: ToolId) -> Option<PathBuf> {
     match tool {
         ToolId::Kiro => Some(expand_tilde("~/.kiro/hooks")),
         ToolId::Copilot => Some(expand_tilde("~/.copilot/hooks")),
+        ToolId::Grok => Some(expand_tilde("~/.grok/hooks")),
         ToolId::Codex
         | ToolId::Claude
         | ToolId::Cursor
@@ -443,7 +458,7 @@ pub fn default_instructions_path(tool: ToolId) -> Option<PathBuf> {
         ToolId::Kiro => Some(expand_tilde("~/.kiro/steering/AGENTS.md")),
         ToolId::Copilot => Some(expand_tilde("~/.copilot/copilot-instructions.md")),
         ToolId::Antigravity => Some(expand_tilde("~/.gemini/AGENTS.md")),
-        ToolId::Cursor => None,
+        ToolId::Cursor | ToolId::Grok => None,
     }
 }
 
@@ -540,6 +555,17 @@ impl ToolSettings {
                 hooks_dir: None,
                 commands_path: None,
             },
+            ToolId::Grok => ToolSettings {
+                enabled: false,
+                skills_path: expand_tilde("~/.grok/skills"),
+                agents_path: expand_tilde("~/.grok/agents"),
+                rules_path: expand_tilde("~/.grok/rules"),
+                instructions_path: None,
+                hooks_enabled: true,
+                hooks_file: None,
+                hooks_dir: default_hooks_dir(ToolId::Grok),
+                commands_path: default_commands_path(ToolId::Grok),
+            },
         }
     }
 }
@@ -555,6 +581,7 @@ impl Default for ToolsSettings {
             kiro: ToolSettings::defaults_for(ToolId::Kiro),
             copilot: ToolSettings::defaults_for(ToolId::Copilot),
             antigravity: ToolSettings::defaults_for(ToolId::Antigravity),
+            grok: ToolSettings::defaults_for(ToolId::Grok),
         }
     }
 }
@@ -840,6 +867,20 @@ impl Settings {
                 commands_path: None,
             }
         };
+        let grok_tool = || {
+            let base = tools_dir.join("grok");
+            ToolSettings {
+                enabled: true,
+                skills_path: base.join("skills"),
+                agents_path: base.join("agents"),
+                rules_path: base.join("rules"),
+                instructions_path: None,
+                hooks_enabled: true,
+                hooks_file: None,
+                hooks_dir: Some(base.join("hooks")),
+                commands_path: Some(base.join("commands")),
+            }
+        };
         Settings {
             sources: Vec::new(),
             shared_root: shared_root.into(),
@@ -874,6 +915,7 @@ impl Settings {
                 kiro: kiro_tool(),
                 copilot: copilot_tool(),
                 antigravity: antigravity_tool(),
+                grok: grok_tool(),
             },
         }
     }
@@ -1298,6 +1340,21 @@ mod tests {
         let s = Settings::default();
         assert!(s.usage_tracing.enabled, "usage tracing is on by default");
         assert!(s.usage_tracing.capture_tools.contains(&ToolId::Kiro));
+        assert!(s.usage_tracing.capture_tools.contains(&ToolId::Grok));
+        assert!(!s.tools.grok.enabled);
+        assert!(s.tools.grok.skills_path.ends_with(".grok/skills"));
+        assert!(s
+            .tools
+            .grok
+            .hooks_dir
+            .as_ref()
+            .is_some_and(|path| path.ends_with(".grok/hooks")));
+        assert!(s
+            .tools
+            .grok
+            .commands_path
+            .as_ref()
+            .is_some_and(|path| path.ends_with(".grok/commands")));
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
@@ -1331,6 +1388,8 @@ mod tests {
         .unwrap();
         let loaded = Settings::load_from(&path).unwrap();
         assert!(loaded.usage_tracing.enabled, "absent block defaults to on");
+        assert!(!loaded.tools.grok.enabled, "absent grok tool defaults off");
+        assert!(loaded.tools.grok.skills_path.ends_with(".grok/skills"));
     }
 
     #[test]

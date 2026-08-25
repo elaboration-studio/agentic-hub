@@ -105,6 +105,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
       kiro: toolSettings(overrides.kiro ?? false),
       copilot: toolSettings(overrides.copilot ?? false),
       antigravity: toolSettings(overrides.antigravity ?? false),
+      grok: toolSettings(overrides.grok ?? false),
     },
   };
 }
@@ -232,7 +233,7 @@ describe("computeResourceInventory", () => {
     ).toBe(inventory.total);
     expect(inventory.sourceCount).toBe(2);
     expect(inventory.enabledTools).toBe(3);
-    expect(inventory.totalTools).toBe(8);
+    expect(inventory.totalTools).toBe(9);
     expect(inventory.favoritesCount).toBe(2);
   });
 });
@@ -313,7 +314,7 @@ describe("useStatisticsStore", () => {
       total: 2,
       sourceCount: 2,
       enabledTools: 2,
-      totalTools: 8,
+      totalTools: 9,
       favoritesCount: 1,
       byKind: { skill: 1, agent: 0, rule: 1, hook: 0, command: 0 },
     });

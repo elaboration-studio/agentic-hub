@@ -58,10 +58,8 @@ pub fn scan(settings: &Settings) -> ScanResult {
     let mut result = scanner::scan_all(&sources);
     hook_sync::annotate_validation(&mut result.items);
     internal_hooks::append_items(&mut result.items, settings);
-    result.locked_skills = crate::source_skill_lock::mark_locked_library_skills(
-        &sources,
-        &result.items,
-    );
+    result.locked_skills =
+        crate::source_skill_lock::mark_locked_library_skills(&sources, &result.items);
     result
 }
 
@@ -239,6 +237,9 @@ fn sync_hooks_for_adapter(
         Some(ProjectionMode::CopilotHookFile) => {
             crate::copilot_hook_sync::sync_copilot_hooks(adapter, enabled)
         }
+        Some(ProjectionMode::GrokHookFile) => {
+            crate::grok_hook_sync::sync_grok_hooks(adapter, enabled)
+        }
         Some(ProjectionMode::JsonSection) => hook_sync::sync_json_hooks(adapter, enabled),
         _ => Ok((HookSyncOutcome::NoOp, vec![])),
     }
@@ -258,6 +259,9 @@ fn inspect_hooks_for_adapter(
         }
         Some(ProjectionMode::CopilotHookFile) => {
             crate::copilot_hook_sync::inspect_copilot_hooks(items, manifests, adapter)
+        }
+        Some(ProjectionMode::GrokHookFile) => {
+            crate::grok_hook_sync::inspect_grok_hooks(items, manifests, adapter)
         }
         Some(ProjectionMode::JsonSection) => hook_sync::inspect_hooks(items, manifests, adapter),
         _ => vec![],
@@ -1446,12 +1450,13 @@ mod tests {
         settings.tools.kiro.enabled = false;
         settings.tools.copilot.enabled = false;
         settings.tools.antigravity.enabled = false;
+        settings.tools.grok.enabled = false;
 
         let scanned = scan(&settings);
         let result = inspect(&scanned.items, &settings);
 
         // One status per tool.
-        assert_eq!(result.adapter_statuses.len(), 8);
+        assert_eq!(result.adapter_statuses.len(), 9);
         let openclaw = result
             .adapter_statuses
             .iter()
@@ -1471,6 +1476,13 @@ mod tests {
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Kiro));
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Copilot));
         assert!(!result.states.iter().any(|s| s.tool == ToolId::Antigravity));
+        assert!(!result.states.iter().any(|s| s.tool == ToolId::Grok));
+        let grok = result
+            .adapter_statuses
+            .iter()
+            .find(|s| s.tool == ToolId::Grok)
+            .unwrap();
+        assert!(!grok.available);
         assert!(result
             .states
             .iter()

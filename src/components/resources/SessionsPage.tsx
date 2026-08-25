@@ -46,6 +46,7 @@ const TOOL_LABEL: Record<SessionSummary["tool"], string> = {
   kiro: "Kiro",
   copilot: "Copilot",
   antigravity: "Antigravity",
+  grok: "Grok",
 };
 
 function ToolIcon(props: { tool: SessionSummary["tool"]; className?: string }) {

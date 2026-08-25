@@ -670,7 +670,9 @@ function UsageTracingPanel({ settings, onChanged }: PanelProps) {
             {syncBusy ? "Syncing hooks…" : "Reload tracer hooks"}
           </Button>
           {syncDone && !syncBusy && settings.usageTracing.enabled && (
-            <span className={hint}>Hooks synced — restart Codex, Claude, Cursor, or Kiro to apply.</span>
+            <span className={hint}>
+              Hooks synced — restart Codex, Claude, Cursor, Kiro, or Grok to apply.
+            </span>
           )}
         </div>
         {!settings.usageTracing.enabled && (
@@ -776,8 +778,8 @@ function ToolsPanel({ settings, onChanged }: PanelProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-2 p-0">
         <p className={hint}>
-          Enabled tools appear as columns in the manager. Kiro, Copilot, and Antigravity are off by
-          default — enable them here when you use those tools. Expand a tool to see where the hub
+          Enabled tools appear as columns in the manager. Kiro, Copilot, Antigravity, and Grok are
+          off by default — enable them here when you use those tools. Expand a tool to see where the hub
           writes skills, agents, rules, hooks, and commands; use{" "}
           <FolderOpen className="inline h-3 w-3 align-text-bottom" aria-hidden /> to reveal the
           target in Finder.

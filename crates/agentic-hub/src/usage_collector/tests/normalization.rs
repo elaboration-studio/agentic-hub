@@ -477,3 +477,65 @@ fn normalize_reads_kiro_camel_case_prompt_submit() {
     assert_eq!(input.skill_name.as_deref(), Some("repo-research"));
     assert_eq!(input.source_tool, "kiro");
 }
+
+#[test]
+fn normalize_event_canonicalizes_grok_snake_case_post_tool_use() {
+    let raw = json!({
+        "hookEventName": "post_tool_use",
+        "promptId": "turn-1",
+        "toolName": "read_file",
+        "toolInput": {
+            "target_file": "/Users/ArnoYe/.grok/skills/feature-dev/SKILL.md"
+        }
+    });
+
+    let input = first_event(raw, "grok");
+
+    assert_eq!(input.event_type, "PostToolUse");
+    assert_eq!(input.source_tool, "grok");
+    assert_eq!(input.tool_name.as_deref(), Some("read_file"));
+    assert_eq!(input.skill_name.as_deref(), Some("feature-dev"));
+}
+
+#[test]
+fn normalize_event_strips_grok_qualified_slash_prefix() {
+    let raw = json!({
+        "hookEventName": "user_prompt_submit",
+        "promptId": "turn-2",
+        "prompt": "/user:commit stage the docs"
+    });
+
+    let input = first_event(raw, "grok");
+
+    assert_eq!(input.event_type, "PostSkillUse");
+    assert_eq!(input.skill_name.as_deref(), Some("commit"));
+    assert!(input.metadata.get("prompt").is_none());
+}
+
+#[test]
+fn grok_prompt_id_correlates_prompt_and_tool_events() {
+    let state = AttributionState::default();
+    let prompt = state.normalize(
+        &json!({
+            "hookEventName": "user_prompt_submit",
+            "promptId": "abc-turn",
+            "prompt": "/feature-dev ship this"
+        }),
+        "grok",
+    );
+    let tool = state.normalize(
+        &json!({
+            "hookEventName": "post_tool_use",
+            "promptId": "abc-turn",
+            "toolName": "read_file",
+            "toolInput": {
+                "target_file": "/tmp/.grok/skills/feature-dev/SKILL.md"
+            }
+        }),
+        "grok",
+    );
+    assert_eq!(
+        prompt.occurrences[0].correlation_hash,
+        tool.occurrences[0].correlation_hash
+    );
+}

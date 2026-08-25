@@ -129,6 +129,9 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
         if tool == ToolId::Antigravity {
             skill_dirs.push(ws.join(".agent/skills"));
         }
+        if tool == ToolId::Grok {
+            skill_dirs.push(ws.join(".agents/skills"));
+        }
         for dir in &skill_dirs {
             collect_skills(dir, &mut found, &mut errors);
         }
@@ -150,7 +153,7 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
                 );
             }
         }
-        if tool == ToolId::Cursor || tool == ToolId::Kiro {
+        if tool == ToolId::Cursor || tool == ToolId::Kiro || tool == ToolId::Grok {
             collect_files(
                 &adapter.rules_path,
                 CapabilityKind::Rule,
@@ -179,7 +182,7 @@ pub fn scan_workspace(ws: &Path, tools: &[ToolId]) -> WorkspaceInventory {
                 &mut errors,
             );
         }
-        if tool == ToolId::Kiro {
+        if tool == ToolId::Kiro || tool == ToolId::Grok {
             collect_kiro_hooks(&adapter, &mut found, &mut errors);
         }
         if tool == ToolId::Copilot {
@@ -350,7 +353,7 @@ fn collect_installed_for_tool(
     }
 
     match tool {
-        ToolId::Kiro => collect_kiro_hooks(adapter, found, errors),
+        ToolId::Kiro | ToolId::Grok => collect_kiro_hooks(adapter, found, errors),
         ToolId::Copilot => collect_copilot_hooks(adapter, found, errors),
         _ => {}
     }
@@ -390,6 +393,7 @@ fn tool_label(tool: ToolId) -> &'static str {
         ToolId::Kiro => "Kiro",
         ToolId::Copilot => "Copilot",
         ToolId::Antigravity => "Antigravity",
+        ToolId::Grok => "Grok",
     }
 }
 
@@ -828,13 +832,14 @@ mod tests {
         fs::write(path, contents).unwrap();
     }
 
-    const WS_TOOLS: [ToolId; 6] = [
+    const WS_TOOLS: [ToolId; 7] = [
         ToolId::Codex,
         ToolId::Claude,
         ToolId::Cursor,
         ToolId::Kiro,
         ToolId::Copilot,
         ToolId::Antigravity,
+        ToolId::Grok,
     ];
 
     #[test]
@@ -924,6 +929,34 @@ mod tests {
         assert!(ids.contains(&"agent:reviewer.md"));
         assert!(ids.contains(&"hook:fmt.json"));
         assert!(inv.states.iter().all(|s| s.tool == ToolId::Kiro));
+    }
+
+    #[test]
+    fn discovers_grok_skills_agents_rules_hooks_and_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+        write(&ws.join(".grok/skills/commit/SKILL.md"), "# commit");
+        write(
+            &ws.join(".grok/agents/reviewer.md"),
+            "---\nname: reviewer\n---\n# review",
+        );
+        write(&ws.join(".grok/rules/style.md"), "# style");
+        write(
+            &ws.join(".grok/hooks/fmt.json"),
+            r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo"}]}]}}"#,
+        );
+        write(&ws.join(".grok/commands/ship.md"), "# ship");
+        write(&ws.join("AGENTS.md"), "# project");
+
+        let inv = scan_workspace(ws, &[ToolId::Grok]);
+        let ids: Vec<&str> = inv.items.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"skill:commit"), "{ids:?}");
+        assert!(ids.contains(&"agent:reviewer.md"), "{ids:?}");
+        assert!(ids.contains(&"rule:style.md"), "{ids:?}");
+        assert!(ids.contains(&"hook:fmt.json"), "{ids:?}");
+        assert!(ids.contains(&"command:ship.md"), "{ids:?}");
+        assert!(ids.contains(&"rule:AGENTS.md"), "{ids:?}");
+        assert!(inv.states.iter().all(|s| s.tool == ToolId::Grok));
     }
 
     #[test]

@@ -83,4 +83,21 @@ describe("getToolProjectionTargets", () => {
       "/home/.copilot/hooks",
     );
   });
+
+  it("uses grok rules dir, hooks dir, and commands path", () => {
+    const ts = tool({
+      skillsPath: "/home/.grok/skills",
+      agentsPath: "/home/.grok/agents",
+      rulesPath: "/home/.grok/rules",
+      instructionsPath: null,
+      hooksFile: null,
+      hooksDir: "/home/.grok/hooks",
+      commandsPath: "/home/.grok/commands",
+    });
+    const rows = getToolProjectionTargets("grok", ts);
+    expect(rows.find((r) => r.kind === "rule")?.path).toBe("/home/.grok/rules");
+    expect(rows.find((r) => r.kind === "hook")?.path).toBe("/home/.grok/hooks");
+    expect(rows.find((r) => r.kind === "command")?.path).toBe("/home/.grok/commands");
+    expect(rows.find((r) => r.kind === "command")?.unsupported).toBeUndefined();
+  });
 });

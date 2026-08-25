@@ -103,7 +103,7 @@ impl AttributionState {
         let direct = match source_tool {
             "cursor" => string_at(raw, &["generation_id", "generationId"]),
             "codex" => string_at(raw, &["turn_id", "turnId"]),
-            "claude" => string_at(raw, &["prompt_id", "promptId"]),
+            "claude" | "grok" => string_at(raw, &["prompt_id", "promptId"]),
             "kiro" => string_at(raw, &["turn_id", "turnId"]),
             _ => None,
         };
@@ -155,7 +155,7 @@ fn extract_references(raw: &Value, source_tool: &str, event_type: &str) -> Vec<S
             push_name_ref(&mut refs, &name, "prompt_expansion", 90, false);
         }
     }
-    if tool_name.as_deref() == Some("Read") {
+    if matches!(tool_name.as_deref(), Some("Read" | "read_file")) {
         if let Some(path) = nested_string_at(
             raw,
             &["tool_input", "toolInput", "input"],
@@ -209,7 +209,7 @@ fn collect_prompt_refs(text: &str, refs: &mut Vec<SkillReference>) {
         } else if let Some(name) = token.strip_prefix('/') {
             push_joined_name_refs(
                 refs,
-                name,
+                strip_qualified_slash(name),
                 &tokens[index + 1..],
                 "slash_reference",
                 60,
@@ -390,6 +390,21 @@ fn is_join_stopword(name: &str) -> bool {
     )
 }
 
+fn strip_qualified_slash(name: &str) -> &str {
+    let Some((prefix, rest)) = name.split_once(':') else {
+        return name;
+    };
+    if prefix.is_empty()
+        || rest.is_empty()
+        || !prefix
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return name;
+    }
+    rest
+}
+
 fn valid_skill_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
@@ -403,7 +418,7 @@ fn supports_prompt_attribution(tool: &str) -> bool {
 }
 
 pub fn is_traced_source_tool(tool: &str) -> bool {
-    matches!(tool, "cursor" | "claude" | "codex" | "kiro")
+    matches!(tool, "cursor" | "claude" | "codex" | "kiro" | "grok")
 }
 
 fn prompt_event(event_type: &str) -> bool {
@@ -415,7 +430,12 @@ fn canonical_event_type(event_type: &str) -> String {
         "postToolUse" => "PostToolUse",
         "postToolUseFailure" => "PostToolUseFailure",
         "preToolUse" => "PreToolUse",
-        "beforeSubmitPrompt" | "userPromptSubmit" | "promptSubmit" => "UserPromptSubmit",
+        "beforeSubmitPrompt" | "userPromptSubmit" | "promptSubmit" | "user_prompt_submit" => {
+            "UserPromptSubmit"
+        }
+        "post_tool_use" => "PostToolUse",
+        "post_tool_use_failure" => "PostToolUseFailure",
+        "pre_tool_use" => "PreToolUse",
         other => other,
     }
     .to_string()

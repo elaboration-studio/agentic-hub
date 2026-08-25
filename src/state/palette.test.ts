@@ -155,6 +155,7 @@ function makeSettings(): Settings {
       kiro: toolSettings(false),
       copilot: toolSettings(false),
       antigravity: toolSettings(false),
+      grok: toolSettings(false),
     },
   };
 }

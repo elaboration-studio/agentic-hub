@@ -13,8 +13,13 @@ pub const SOURCE_LABEL: &str = "Agentic Hub";
 pub const USAGE_TRACER_ID_PREFIX: &str = "agentic-hub-usage-tracer";
 pub const USAGE_TRACER_SCRIPT: &str = "usage-tracer.sh";
 
-pub const USAGE_TRACER_TOOLS: [ToolId; 4] =
-    [ToolId::Codex, ToolId::Claude, ToolId::Cursor, ToolId::Kiro];
+pub const USAGE_TRACER_TOOLS: [ToolId; 5] = [
+    ToolId::Codex,
+    ToolId::Claude,
+    ToolId::Cursor,
+    ToolId::Kiro,
+    ToolId::Grok,
+];
 
 pub fn is_internal_item(item: &CapabilityItem) -> bool {
     item.source_id == SOURCE_ID
@@ -66,7 +71,9 @@ pub fn usage_tracer_enabled(settings: &Settings, tool: ToolId) -> bool {
     }
     // Kiro joined after capture_tools shipped as [codex, claude, cursor].
     // Existing configs omit it; an enabled Kiro tool is still captured.
-    settings.usage_tracing.capture_tools.contains(&tool) || tool == ToolId::Kiro
+    settings.usage_tracing.capture_tools.contains(&tool)
+        || tool == ToolId::Kiro
+        || tool == ToolId::Grok
 }
 
 pub fn usage_tracer_item_id(tool: ToolId) -> String {
@@ -161,7 +168,7 @@ pub fn usage_tracer_command(settings: &Settings, tool: ToolId, hook_dir: &Path) 
 fn prompt_skill_attribution_tool(tool: ToolId) -> bool {
     matches!(
         tool,
-        ToolId::Codex | ToolId::Claude | ToolId::Cursor | ToolId::Kiro
+        ToolId::Codex | ToolId::Claude | ToolId::Cursor | ToolId::Kiro | ToolId::Grok
     )
 }
 

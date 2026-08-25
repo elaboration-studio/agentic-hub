@@ -180,7 +180,9 @@ Before planning, `filter_desired_enabled_for_tool(tool_id, desired, items, manif
 `agentic-core::internal_hooks` contributes virtual hook items and manifests for
 Agentic Hub-owned behavior. The initial registry entry is the local usage tracer
 (`hook:agentic-hub-usage-tracer-{tool}`), whose source identity is
-`Agentic Hub` / `agentic-hub`.
+`Agentic Hub` / `agentic-hub`. Capture tools are Codex, Claude, Cursor, Kiro,
+and Grok. Grok uses `GrokHookFile` (one Claude-style JSON file under
+`~/.grok/hooks/`) rather than `json_section`.
 
 These hooks are included in scans and inspection results when enabled by
 settings, but they are not suite-selectable and are locked in Manager/palette

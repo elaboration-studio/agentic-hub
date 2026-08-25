@@ -48,6 +48,14 @@ function ruleTarget(toolId: ToolId, ts: ToolSettings): ToolProjectionTarget {
       detail: "symlinks under rules dir",
     };
   }
+  if (toolId === "grok") {
+    return {
+      kind: "rule",
+      label: KIND_LABEL.rule,
+      path: ts.rulesPath,
+      detail: "symlinks under rules dir",
+    };
+  }
   if (toolId === "copilot") {
     return {
       kind: "rule",

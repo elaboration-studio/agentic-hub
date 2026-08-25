@@ -118,6 +118,7 @@ function makeSettings(overrides: Partial<Record<ToolId, boolean>> = {}): Setting
       kiro: toolSettings(overrides.kiro ?? false),
       copilot: toolSettings(overrides.copilot ?? false),
       antigravity: toolSettings(overrides.antigravity ?? false),
+      grok: toolSettings(overrides.grok ?? false),
     },
   };
 }
