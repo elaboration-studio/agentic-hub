@@ -9,6 +9,7 @@
 //! lives in the shell.
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use agentic_core::settings::{
@@ -19,6 +20,56 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 /// Label of the floating command-palette window/panel.
 pub const PALETTE_LABEL: &str = "palette";
+
+/// Set while the palette is being summoned or is visible. Closing the hub
+/// hides the whole NSApplication; showing any window then unhides it and
+/// AppKit restores the main window. `RunEvent::Reopen` would also `show` +
+/// `set_focus` main. This guard keeps a global-shortcut summon from activating
+/// the hub window.
+static PALETTE_BLOCKS_MAIN: AtomicBool = AtomicBool::new(false);
+
+/// Whether a Dock/reopen should surface the main window. A live palette
+/// summon means the user asked for search, not the hub.
+pub fn should_surface_main_on_reopen(palette_blocks_main: bool) -> bool {
+    !palette_blocks_main
+}
+
+fn set_palette_blocks_main(blocks: bool) {
+    PALETTE_BLOCKS_MAIN.store(blocks, Ordering::SeqCst);
+}
+
+pub fn palette_blocks_main() -> bool {
+    PALETTE_BLOCKS_MAIN.load(Ordering::SeqCst)
+}
+
+/// Clear the summon guard so an explicit hub surface (Dock, Open Manager) works.
+pub fn allow_main_window() {
+    set_palette_blocks_main(false);
+}
+
+/// Hide the hub after a palette show only when it was not already on screen.
+pub fn should_hide_main_after_palette_show(main_was_visible: bool) -> bool {
+    !main_was_visible
+}
+
+/// After a palette show, hide main again if it was not visible going in.
+/// Unhiding NSApp otherwise restores every window that was on screen at hide.
+#[cfg(target_os = "macos")]
+fn keep_main_hidden_if_needed(app: &AppHandle, main_was_visible: bool) {
+    if !should_hide_main_after_palette_show(main_was_visible) {
+        return;
+    }
+    if let Some(main) = app.get_webview_window(crate::main_window::MAIN_LABEL) {
+        let _ = main.hide();
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn main_window_is_visible(app: &AppHandle) -> bool {
+    app.get_webview_window(crate::main_window::MAIN_LABEL)
+        .and_then(|win| win.is_visible().ok())
+        .unwrap_or(false)
+}
 
 const PALETTE_WIDTH: f64 = 680.0;
 const PALETTE_HEIGHT: f64 = 460.0;
@@ -55,6 +106,7 @@ mod imp {
         panel!(PalettePanel {
             config: {
                 can_become_key_window: true,
+                can_become_main_window: false,
                 is_floating_panel: true
             }
         })
@@ -101,17 +153,24 @@ mod imp {
 
     /// Toggle the palette: hide if visible, otherwise re-center and show as key.
     pub fn toggle_palette(app: &AppHandle) {
+        // Arm before the main-thread hop so a racing Dock/reopen cannot show
+        // the hub. The hide path clears the guard once visibility is known.
+        super::set_palette_blocks_main(true);
         on_main(app, |app| {
             let Ok(panel) = app.get_webview_panel(PALETTE_LABEL) else {
+                super::set_palette_blocks_main(false);
                 return;
             };
             if panel.is_visible() {
                 panel.hide();
+                super::set_palette_blocks_main(false);
             } else {
+                let main_was_visible = super::main_window_is_visible(app);
                 if let Some(win) = app.get_webview_window(PALETTE_LABEL) {
                     let _ = win.center();
                 }
                 panel.show_and_make_key();
+                super::keep_main_hidden_if_needed(app, main_was_visible);
                 crate::telemetry::record_client_engagement(app);
             }
         });
@@ -123,19 +182,24 @@ mod imp {
             if let Ok(panel) = app.get_webview_panel(PALETTE_LABEL) {
                 panel.hide();
             }
+            super::set_palette_blocks_main(false);
         });
     }
 
     /// Show and focus the palette even when it is already visible.
     pub fn show_palette(app: &AppHandle) {
+        super::set_palette_blocks_main(true);
         on_main(app, |app| {
             let Ok(panel) = app.get_webview_panel(PALETTE_LABEL) else {
+                super::set_palette_blocks_main(false);
                 return;
             };
+            let main_was_visible = super::main_window_is_visible(app);
             if let Some(win) = app.get_webview_window(PALETTE_LABEL) {
                 let _ = win.center();
             }
             panel.show_and_make_key();
+            super::keep_main_hidden_if_needed(app, main_was_visible);
             crate::telemetry::record_client_engagement(app);
         });
     }

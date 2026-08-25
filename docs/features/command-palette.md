@@ -129,7 +129,10 @@ flowchart TD
   CanJoinAllSpaces` collection behavior so it overlays full-screen apps without
   switching Spaces — standard `NSWindow` cannot ([tauri#11488](https://github.com/tauri-apps/tauri/issues/11488)).
   Panel objc ops run on the main thread (`run_on_main_thread`); non-macOS falls
-  back to an always-on-top, all-workspaces window. The
+  back to an always-on-top, all-workspaces window. Summoning does **not** surface
+  the main window: the panel cannot become the app's main window, a summon guard
+  skips `RunEvent::Reopen` show/focus of the hub, and if the hub was hidden it
+  is hidden again after the panel appears. The
   `tauri-plugin-global-shortcut` handler keeps hub-toggle behavior, while direct
   shortcuts store a one-shot launch mode and always show/focus the panel—even if
   it is already visible. It hides on `WindowEvent::Focused(false)`.

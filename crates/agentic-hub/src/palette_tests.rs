@@ -3,9 +3,10 @@ use std::collections::HashSet;
 use agentic_core::settings::{PaletteLaunchMode, Settings};
 
 use super::{
-    dispatch_palette_shortcut, replace_registered_shortcuts,
-    replace_registered_shortcuts_and_persist, PaletteShortcutSet, PaletteShortcutState,
-    ShortcutRegistrar,
+    allow_main_window, dispatch_palette_shortcut, palette_blocks_main,
+    replace_registered_shortcuts, replace_registered_shortcuts_and_persist,
+    set_palette_blocks_main, should_hide_main_after_palette_show, should_surface_main_on_reopen,
+    PaletteShortcutSet, PaletteShortcutState, ShortcutRegistrar,
 };
 
 #[derive(Default)]
@@ -130,6 +131,26 @@ fn direct_shortcut_dispatches_requested_mode_and_always_shows_palette() {
     assert!(!toggled);
     assert_eq!(shown, 2);
     assert_eq!(state.take_launch_mode(), PaletteLaunchMode::Commands);
+}
+
+#[test]
+fn reopen_does_not_surface_main_while_palette_blocks_it() {
+    assert!(!should_surface_main_on_reopen(true));
+    assert!(should_surface_main_on_reopen(false));
+}
+
+#[test]
+fn allow_main_window_clears_the_summon_guard() {
+    set_palette_blocks_main(true);
+    assert!(!should_surface_main_on_reopen(palette_blocks_main()));
+    allow_main_window();
+    assert!(should_surface_main_on_reopen(palette_blocks_main()));
+}
+
+#[test]
+fn hidden_hub_is_rehidden_after_palette_summon() {
+    assert!(should_hide_main_after_palette_show(false));
+    assert!(!should_hide_main_after_palette_show(true));
 }
 
 #[test]

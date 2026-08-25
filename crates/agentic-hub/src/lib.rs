@@ -258,9 +258,13 @@ pub fn run() {
         // `applicationShouldHandleReopen`), so a background app is never stranded.
         .run(|app, event| match event {
             RunEvent::Reopen { .. } => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                // Global-shortcut palette summon can unhide the app and fire
+                // reopen. Do not bring the hub window along with the palette.
+                if palette::should_surface_main_on_reopen(palette::palette_blocks_main()) {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 }
                 // Nudge the frontend to run a throttled update scan on re-open.
                 let _ = app.emit("app-reopened", ());
