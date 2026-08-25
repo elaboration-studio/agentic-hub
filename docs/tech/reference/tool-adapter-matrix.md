@@ -51,10 +51,10 @@ The Codex `agentsPath` default was `~/.agents/agents` before v0.5.0, which colli
 | `skillLayout` | `Flat` | `Flat`* | `Flat`* | `Nested` |
 | Skill projection | **managed copy** (flat) | symlink (flat)* | **managed copy** (flat)* | symlink (nested) |
 | Agents | managed copy (flat) | symlink (flat) | not supported | symlink (flat) |
-| Rules | managed block in `~/.kiro/steering/AGENTS.md` | symlink (`.instructions.md`) | managed block in `~/.gemini/AGENTS.md` | symlink under `~/.grok/rules/` |
+| Rules | managed block in `~/.kiro/steering/AGENTS.md` | symlink (`.instructions.md`) | managed block in `~/.gemini/AGENTS.md` | symlink under `~/.grok/rules/` (`.mdc` → `.md`) |
 | Hooks | one v1 JSON per id in `~/.kiro/hooks` | one v1 JSON per id in `~/.copilot/hooks` | `json_section` in `~/.gemini/config/hooks.json` | one Claude-style JSON per id in `~/.grok/hooks` |
 | Commands | not supported | not supported | not supported | symlink (flat) into `~/.grok/commands` |
-| Hook targeting | explicit `"kiro"` | explicit `"copilot"` | explicit `"antigravity"` | explicit `"grok"` |
+| Hook targeting | explicit `"kiro"` | explicit `"copilot"` | explicit `"antigravity"` | default with Cursor / Claude / Codex |
 
 \* **Copilot** skill loaders scan only the top level of their skills dir; Copilot CLI fixed symlink discovery in v1.x ([#1021](https://github.com/github/copilot-cli/issues/1021)), so skills stay symlinks with flat layout. **Antigravity** ignores symlinks ([#633](https://github.com/vercel-labs/skills/issues/633)) and uses the same non-recursive scan — skills hard-copy to `~/.gemini/config/skills`.
 
@@ -147,7 +147,7 @@ Notes:
 - Global Codex / Claude / Cursor / OpenStandard: managed JSON entry in the tool's hooks file (`json_section`)
 - Global Kiro / Copilot / Grok: one JSON file per hook id under `hooksDir` (`kiro_hook_file` / `copilot_hook_file` / `grok_hook_file`)
 - Global OpenClaw: not supported (no public hook spec)
-- **OpenStandard hooks are opt-in.** A hook's default target set is the trio `[Cursor, Claude, Codex]` (`HookManifest::effective_targets`), so OpenStandard receives a hook only when the hook's `hook.json` lists it explicitly (`"targets": ["openstandard"]`). Unlike skills/agents/rules — which project to OpenStandard by default — hooks do not, to keep the default `~/.agents/hooks.json` empty unless asked for.
+- **OpenStandard hooks are opt-in.** A hook's default target set is `[Cursor, Claude, Codex, Grok]` (`HookManifest::effective_targets`), so OpenStandard receives a hook only when the hook's `hook.json` lists it explicitly (`"targets": ["openstandard"]`). Unlike skills/agents/rules — which project to OpenStandard by default — hooks do not, to keep the default `~/.agents/hooks.json` empty unless asked for.
 - Workspace Codex / Claude / Cursor: managed JSON entry in `<ws>/.codex/hooks.json` / `<ws>/.claude/settings.json` / `<ws>/.cursor/hooks.json`
 - Cursor uses a flat shape (camelCase events); Codex / Claude use a two-level shape (PascalCase events, marker on the matcher group). See [hook-projection-sync.md](../modules/hook-projection-sync.md).
 
@@ -262,9 +262,9 @@ See [kiro-tool-adapter.md](../modules/kiro-tool-adapter.md).
 | `hooksDir` | `~/.grok/hooks` |
 | Skill projection | symlink (nested) |
 | Agent projection | symlink (flat) |
-| Rule projection | symlink (nested) |
+| Rule projection | symlink (nested; `.mdc` → `.md`) |
 | Command projection | symlink (flat) |
 | Hook projection | `grok_hook_file` — one Claude-style JSON per hook id |
-| Hook targets | opt-in via `"targets": ["grok"]` |
+| Hook targets | default with Cursor / Claude / Codex |
 
 See [grok-tool-adapter.md](../modules/grok-tool-adapter.md). Grok global hooks in `~/.grok/hooks/` are always trusted; the hub never writes project `.grok/hooks/`.

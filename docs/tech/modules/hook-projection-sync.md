@@ -24,7 +24,7 @@ pub struct HookManifest {
     pub command: String,             // shell command; may contain ${HOOK_DIR}
     pub timeout: Option<u32>,        // seconds
     pub loop_limit: Option<u32>,     // Cursor-only safety knob; positive int
-    pub targets: Option<Vec<ToolId>>,// defaults to [cursor, claude, codex]
+    pub targets: Option<Vec<ToolId>>,// defaults to [cursor, claude, codex, grok]
 }
 
 pub struct HookEventSpec {

@@ -1101,6 +1101,80 @@ mod tests {
     }
 
     #[test]
+    fn apply_suite_enables_every_grok_capability_kind() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(&root.path().join("skills/review/SKILL.md"), "# review");
+        write(
+            &root.path().join("agents/reviewer.md"),
+            "---\nname: reviewer\n---\n# review",
+        );
+        write(&root.path().join("rules/team/style.mdc"), "# style");
+        write(&root.path().join("commands/ship.md"), "# ship");
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{ "id": "fmt", "command": "run", "events": [{"name":"Stop"}] }"#,
+        );
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Grok,
+            &suite(
+                "grok-all",
+                &[
+                    "skill:review",
+                    "agent:reviewer.md",
+                    "rule:team/style.mdc",
+                    "command:ship.md",
+                    "hook:fmt",
+                ],
+            ),
+            &[],
+        );
+
+        assert!(settings.tools.grok.skills_path.join("review").exists());
+        assert!(settings.tools.grok.agents_path.join("reviewer.md").exists());
+        assert!(settings
+            .tools
+            .grok
+            .rules_path
+            .join("team/style.md")
+            .exists());
+        assert!(settings
+            .tools
+            .grok
+            .commands_path
+            .as_ref()
+            .unwrap()
+            .join("ship.md")
+            .exists());
+        assert!(settings
+            .tools
+            .grok
+            .hooks_dir
+            .as_ref()
+            .unwrap()
+            .join("fmt.json")
+            .exists());
+
+        let enabled = enabled_ids(&settings, &scanned.items, ToolId::Grok);
+        for id in [
+            "skill:review",
+            "agent:reviewer.md",
+            "rule:team/style.mdc",
+            "command:ship.md",
+            "hook:fmt",
+        ] {
+            assert!(
+                enabled.iter().any(|got| got == id),
+                "{id} missing from {enabled:?}"
+            );
+        }
+    }
+
+    #[test]
     fn apply_empty_suite_disables_everything() {
         let root = tempfile::tempdir().unwrap();
         let tools = tempfile::tempdir().unwrap();

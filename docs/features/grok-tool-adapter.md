@@ -25,7 +25,7 @@ As an Agentic Hub user who runs Grok Build, I want the same shared skills, agent
   - agents → `~/.grok/agents/` (symlink, flat `*.md`)
   - rules → `~/.grok/rules/` (symlink, nested `*.md`)
   - commands → `~/.grok/commands/` (symlink, flat `*.md`)
-  - hooks with `"targets": ["grok"]` → one Claude-style JSON file per hook id under `~/.grok/hooks/`
+  - hooks (default target, same as Cursor / Claude / Codex) → one Claude-style JSON file per hook id under `~/.grok/hooks/`
 - Managed usage-tracer hook at `~/.grok/hooks/agentic-hub-usage-tracer-grok.json` when tracing is on and Grok is enabled.
 - Attribution of Grok hook payloads: `promptId` turn identity, slash / `$skill` prompt refs, `read_file` of `SKILL.md` / agent markdown, catalog roots under `~/.grok/skills` and `<ws>/.grok/skills` plus `.agents/skills`.
 - Read-only workspace inventory of `<ws>/.grok/{skills,agents,rules,hooks,commands}`.
@@ -42,7 +42,7 @@ As an Agentic Hub user who runs Grok Build, I want the same shared skills, agent
 
 ## Experience
 
-Config → Tools gains a **Grok** accordion, off by default. Enabling it shows the Grok column in the Manager. Toggling a skill / agent / rule / command for Grok projects a symlink into the matching `~/.grok/` directory. Hooks stay opt-in: a source hook projects to Grok only when its `hook.json` lists `"grok"` in `targets`.
+Config → Tools gains a **Grok** accordion, off by default. Enabling it shows the Grok column in the Manager. Toggling a skill, agent, rule, command, or hook for Grok projects into the matching `~/.grok/` path. Hooks without an explicit `targets` list include Grok (same default set as Cursor / Claude / Codex). A hook that lists `targets` without `"grok"` still skips Grok. `.mdc` rules are rewritten to `.md` because Grok only loads `*.md` in `~/.grok/rules/`.
 
 When local usage tracing is enabled and Grok is on, Agentic Hub writes a managed tracer file under `~/.grok/hooks/`. Grok loads that directory as always-trusted global hooks — no `/hooks-trust` step. Config shows Grok in the per-tool tracer diagnostics (hook installed, last event, resolved / unresolved). Disabling tracing or Grok removes only the managed tracer file; user-authored `~/.grok/hooks/*.json` stay untouched.
 
@@ -53,10 +53,10 @@ Statistics and the Manager Usage column treat `grok` like `codex` / `claude` / `
 - [ ] `ToolId::Grok` appears in the Manager when enabled in Config; it is absent (or disabled) on fresh settings.
 - [ ] Enabling a skill for Grok symlinks it under `~/.grok/skills/` preserving nested path.
 - [ ] Enabling an agent for Grok symlinks a flat `*.md` under `~/.grok/agents/`.
-- [ ] Enabling a rule for Grok symlinks it under `~/.grok/rules/`.
+- [ ] Enabling a rule for Grok symlinks it under `~/.grok/rules/`; a `.mdc` source lands as `.md`.
 - [ ] Enabling a command for Grok symlinks a flat `*.md` under `~/.grok/commands/`.
-- [ ] Hooks with `"targets": ["grok"]` write `~/.grok/hooks/<id>.json` in Claude two-level JSON with `_agenticHub` on the matcher group.
-- [ ] Hooks without `"grok"` in `targets` do not write Grok files.
+- [ ] Enabling a hook for Grok (default targets or explicit `"grok"`) writes `~/.grok/hooks/<id>.json` in Claude two-level JSON with `_agenticHub` on the matcher group.
+- [ ] Hooks whose `targets` omit `"grok"` do not write Grok files.
 - [ ] Foreign Grok hook files and non-hub files under `~/.grok/` are never overwritten.
 - [ ] Enabling tracing while Grok is on installs `agentic-hub-usage-tracer-grok.json` for `UserPromptSubmit`, `PostToolUse`, and `PostToolUseFailure`.
 - [ ] Disabling tracing removes only that managed tracer file.

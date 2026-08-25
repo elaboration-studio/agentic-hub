@@ -208,7 +208,7 @@ fn empty_sync_removes_managed_file_but_preserves_foreign_file() {
 }
 
 #[test]
-fn grok_not_in_default_hook_targets() {
+fn grok_is_in_default_hook_targets() {
     let m = HookManifest {
         id: "fmt".to_string(),
         name: None,
@@ -219,7 +219,7 @@ fn grok_not_in_default_hook_targets() {
         loop_limit: None,
         targets: None,
     };
-    assert!(!m.effective_targets().contains(&ToolId::Grok));
+    assert!(m.effective_targets().contains(&ToolId::Grok));
 }
 
 #[test]

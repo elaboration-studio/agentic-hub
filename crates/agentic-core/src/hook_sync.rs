@@ -124,11 +124,13 @@ pub struct HookManifest {
 }
 
 impl HookManifest {
-    /// Effective targets: explicit `targets` or the default trio.
+    /// Effective targets: explicit `targets` or the default Cursor / Claude /
+    /// Codex / Grok set. OpenStandard, Kiro, Copilot, and Antigravity stay
+    /// opt-in via `"targets"`.
     pub fn effective_targets(&self) -> Vec<ToolId> {
         self.targets
             .clone()
-            .unwrap_or_else(|| vec![ToolId::Cursor, ToolId::Claude, ToolId::Codex])
+            .unwrap_or_else(|| vec![ToolId::Cursor, ToolId::Claude, ToolId::Codex, ToolId::Grok])
     }
 }
 
@@ -944,9 +946,10 @@ mod tests {
 
     #[test]
     fn targets_filter_excludes_untargeted_tool() {
-        // Default targets is the trio (Cursor included).
+        // Default targets is Cursor / Claude / Codex / Grok.
         let default_m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
         assert!(default_m.effective_targets().contains(&ToolId::Cursor));
+        assert!(default_m.effective_targets().contains(&ToolId::Grok));
 
         // Explicit targets honored: a Claude-only hook excludes Cursor.
         let mut claude_only = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);

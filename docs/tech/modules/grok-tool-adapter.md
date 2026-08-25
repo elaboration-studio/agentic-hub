@@ -34,13 +34,13 @@ Grok also scans vendor-compat trees (`~/.claude/skills`, `~/.cursor/skills`, `.a
 |-----------------|------------|--------|
 | `skill` | **symlink** (nested) | `~/.grok/skills/` |
 | `agent` | **symlink** (flat `*.md`) | `~/.grok/agents/` |
-| `rule` | **symlink** (nested) | `~/.grok/rules/` |
+| `rule` | **symlink** (nested; `.mdc` → `.md`) | `~/.grok/rules/` |
 | `command` | **symlink** (flat `*.md`) | `~/.grok/commands/` |
 | `hook` | `grok_hook_file` | `~/.grok/hooks/<hook-id>.json` |
 
 No `instructionsPath`. Home rules are files under `rules/`, like Cursor, not a managed AGENTS.md block. Project-root `AGENTS.md` remains a workspace-inventory attribution (Grok loads it) and is already scanned for other tools.
 
-Grok walks skill directories recursively and does not document symlink rejection, so skills stay nested symlinks. Agents and commands are documented as files in those directories — flatten to basename. Rules keep nested paths (Cursor-like); flatten later if the loader is top-level-only.
+Grok walks skill directories recursively and does not document symlink rejection, so skills stay nested symlinks. Agents and commands are documented as files in those directories — flatten to basename. Rules keep nested paths. Grok's home rules loader scans `*.md` only, so a source `.mdc` is projected as `.md` (the symlink still points at the original file).
 
 ## Settings defaults
 
@@ -107,7 +107,7 @@ Unsupported events produce notes, not errors.
 
 ### Hook targets
 
-Grok is **opt-in**: add `"grok"` to a hook's `targets` array. Default targets remain `[cursor, claude, codex]`. The usage tracer manifest sets `targets: ["grok"]` for its Grok copy.
+Grok is in the **default** hook target set with Cursor, Claude, and Codex. A hook with no `targets` field projects to Grok when Grok is enabled. Explicit `targets` still win — omit `"grok"` to keep a hook off Grok. The usage tracer manifest sets `targets: ["grok"]` for its Grok copy.
 
 ## Usage tracing
 

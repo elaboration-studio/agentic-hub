@@ -356,7 +356,20 @@ impl ResolvedAdapter {
         if self.tool_id == ToolId::Copilot {
             rel = copilot_target_rel(item.kind, rel);
         }
+        if self.tool_id == ToolId::Grok {
+            rel = grok_target_rel(item.kind, rel);
+        }
         Some(base.join(rel))
+    }
+}
+
+fn grok_target_rel(kind: CapabilityKind, rel: PathBuf) -> PathBuf {
+    if kind != CapabilityKind::Rule {
+        return rel;
+    }
+    match rel.extension().and_then(|ext| ext.to_str()) {
+        Some("mdc") => rel.with_extension("md"),
+        _ => rel,
     }
 }
 
@@ -875,6 +888,19 @@ mod tests {
         assert!(
             command_target.ends_with(Path::new(".grok/commands/code-review.md")),
             "grok flattens commands: {command_target:?}"
+        );
+
+        let mdc = item(CapabilityKind::Rule, "team/style.mdc");
+        let mdc_target = grok.target_path_for(&mdc).unwrap();
+        assert!(
+            mdc_target.ends_with(Path::new(".grok/rules/team/style.md")),
+            "grok rewrites .mdc rules to .md: {mdc_target:?}"
+        );
+        let md = item(CapabilityKind::Rule, "always.md");
+        let md_target = grok.target_path_for(&md).unwrap();
+        assert!(
+            md_target.ends_with(Path::new(".grok/rules/always.md")),
+            "{md_target:?}"
         );
     }
 
