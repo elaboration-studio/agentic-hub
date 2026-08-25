@@ -47,10 +47,16 @@ pub fn allow_main_window() {
     set_palette_blocks_main(false);
 }
 
+/// Hide the hub after a palette show only when it was not already on screen.
+pub fn should_hide_main_after_palette_show(main_was_visible: bool) -> bool {
+    !main_was_visible
+}
+
 /// After a palette show, hide main again if it was not visible going in.
 /// Unhiding NSApp otherwise restores every window that was on screen at hide.
+#[cfg(target_os = "macos")]
 fn keep_main_hidden_if_needed(app: &AppHandle, main_was_visible: bool) {
-    if main_was_visible {
+    if !should_hide_main_after_palette_show(main_was_visible) {
         return;
     }
     if let Some(main) = app.get_webview_window(crate::main_window::MAIN_LABEL) {
@@ -58,6 +64,7 @@ fn keep_main_hidden_if_needed(app: &AppHandle, main_was_visible: bool) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn main_window_is_visible(app: &AppHandle) -> bool {
     app.get_webview_window(crate::main_window::MAIN_LABEL)
         .and_then(|win| win.is_visible().ok())
@@ -151,6 +158,7 @@ mod imp {
         super::set_palette_blocks_main(true);
         on_main(app, |app| {
             let Ok(panel) = app.get_webview_panel(PALETTE_LABEL) else {
+                super::set_palette_blocks_main(false);
                 return;
             };
             if panel.is_visible() {
@@ -183,6 +191,7 @@ mod imp {
         super::set_palette_blocks_main(true);
         on_main(app, |app| {
             let Ok(panel) = app.get_webview_panel(PALETTE_LABEL) else {
+                super::set_palette_blocks_main(false);
                 return;
             };
             let main_was_visible = super::main_window_is_visible(app);
