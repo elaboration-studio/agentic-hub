@@ -183,6 +183,40 @@ fn sync_refuses_to_overwrite_foreign_hook_file() {
 }
 
 #[test]
+fn sync_refuses_to_overwrite_broken_hook_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let hooks_dir = dir.path().join("hooks");
+    fs::create_dir_all(&hooks_dir).unwrap();
+    let target = hooks_dir.join("fmt.json");
+    fs::write(&target, "{ broken").unwrap();
+
+    let item = hook_item("fmt", dir.path().join("src/fmt"));
+    let m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
+    let adapter = grok_adapter(&hooks_dir);
+    let err = sync_grok_hooks(&adapter, &[(&item, &m)]).unwrap_err();
+    assert_eq!(err.code, "hook_target_broken_json");
+    assert_eq!(fs::read_to_string(&target).unwrap(), "{ broken");
+}
+
+#[test]
+fn inspect_skips_hooks_not_targeting_grok() {
+    let dir = tempfile::tempdir().unwrap();
+    let hooks_dir = dir.path().join("hooks");
+    let hook_dir = dir.path().join("src/fmt");
+    fs::create_dir_all(&hook_dir).unwrap();
+    let item = hook_item("fmt", hook_dir);
+    let mut m = manifest("fmt", vec![ev(HookCanonicalEvent::Stop, None)]);
+    m.targets = Some(vec![ToolId::Cursor]);
+    let adapter = grok_adapter(&hooks_dir);
+    let manifests = HashMap::from([(item.id.clone(), m)]);
+    let states = inspect_grok_hooks(&[item], &manifests, &adapter);
+    assert!(
+        states.is_empty(),
+        "hooks whose targets omit grok must not appear in Grok inspect"
+    );
+}
+
+#[test]
 fn empty_sync_removes_managed_file_but_preserves_foreign_file() {
     let dir = tempfile::tempdir().unwrap();
     let hooks_dir = dir.path().join("hooks");
@@ -220,6 +254,26 @@ fn grok_is_in_default_hook_targets() {
         targets: None,
     };
     assert!(m.effective_targets().contains(&ToolId::Grok));
+}
+
+#[test]
+fn sync_single_refuses_to_remove_broken_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let hooks_dir = dir.path().join("hooks");
+    fs::create_dir_all(&hooks_dir).unwrap();
+    let target = hooks_dir.join("agentic-hub-usage-tracer-grok.json");
+    fs::write(&target, "{ broken").unwrap();
+    let hook_dir = dir.path().join("src/tracer");
+    fs::create_dir_all(&hook_dir).unwrap();
+    let item = hook_item("agentic-hub-usage-tracer-grok", hook_dir);
+    let m = manifest(
+        "agentic-hub-usage-tracer-grok",
+        vec![ev(HookCanonicalEvent::PostToolUse, Some(".*"))],
+    );
+    let adapter = grok_adapter(&hooks_dir);
+    let err = sync_single_grok_hook(&adapter, &item, &m, false).unwrap_err();
+    assert_eq!(err.code, "hook_target_broken_json");
+    assert_eq!(fs::read_to_string(&target).unwrap(), "{ broken");
 }
 
 #[test]

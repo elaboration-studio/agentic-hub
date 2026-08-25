@@ -191,7 +191,7 @@ No writes.
 - `adapter_registry`: Grok projection modes and layouts; workspace adapter paths
 - `settings`: missing `tools.grok` loads defaults; Grok disabled by default
 - `grok_hook_sync`: two-level PascalCase write, marker, stale, foreign file, unsupported event notes, tracer-shaped multi-event file
-- `api`: hook sync with `"targets": ["grok"]`; default-target hooks skip Grok
+- `api`: default-target hooks include Grok; explicit `targets` that omit `"grok"` skip Grok files
 - `workspace_inventory`: `.grok/` scan paths
 - `internal_hooks` / collector: tracer enabled for Grok when tool + tracing on; removed when either off
 - Attribution fixtures: snake_case `post_tool_use`, `read_file` + `target_file` SKILL.md, `/user:commit` prefix strip, `promptId` dedupe, `.grok/skills` workspace catalog

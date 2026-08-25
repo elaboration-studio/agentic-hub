@@ -69,8 +69,8 @@ pub fn usage_tracer_enabled(settings: &Settings, tool: ToolId) -> bool {
     if !settings.usage_tracing.enabled || !settings.tools.for_tool(tool).enabled {
         return false;
     }
-    // Kiro joined after capture_tools shipped as [codex, claude, cursor].
-    // Existing configs omit it; an enabled Kiro tool is still captured.
+    // Kiro and Grok joined after capture_tools shipped as [codex, claude, cursor].
+    // Existing configs omit them; an enabled Kiro or Grok tool is still captured.
     settings.usage_tracing.capture_tools.contains(&tool)
         || tool == ToolId::Kiro
         || tool == ToolId::Grok

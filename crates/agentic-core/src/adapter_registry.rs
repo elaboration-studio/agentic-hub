@@ -312,7 +312,7 @@ impl ResolvedAdapter {
     }
 
     /// Base directory for an item's kind (`skills`/`agents`/`rules` dir). `None`
-    /// for hooks, which target the single `hooks_file`.
+    /// for hooks, which use `hooks_file` or per-id files under `hooks_dir`.
     pub fn base_path_for(&self, kind: CapabilityKind) -> Option<&PathBuf> {
         match kind {
             CapabilityKind::Skill => Some(&self.skills_path),
@@ -335,7 +335,7 @@ impl ResolvedAdapter {
     }
 
     /// The per-item target path for symlink/managed-copy kinds. `None` for hooks
-    /// (which target the tool's single `hooks_file`, routed through `hook_sync`).
+    /// (routed through `hook_sync` / per-file hook adapters).
     pub fn target_path_for(&self, item: &CapabilityItem) -> Option<PathBuf> {
         let base = match item.kind {
             CapabilityKind::Skill => &self.skills_path,

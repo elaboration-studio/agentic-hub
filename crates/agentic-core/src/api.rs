@@ -1175,6 +1175,48 @@ mod tests {
     }
 
     #[test]
+    fn apply_suite_skips_grok_when_hook_targets_omit_grok() {
+        let root = tempfile::tempdir().unwrap();
+        let tools = tempfile::tempdir().unwrap();
+        write(
+            &root.path().join("hooks/fmt/hook.json"),
+            r#"{
+                "id": "fmt",
+                "command": "run",
+                "events": [{"name":"Stop"}],
+                "targets": ["cursor"]
+            }"#,
+        );
+        let settings = Settings::sandboxed(root.path(), tools.path());
+        let scanned = scan(&settings);
+        apply_suite(
+            &scanned.items,
+            &settings,
+            ToolId::Grok,
+            &suite("cursor-only-hook", &["hook:fmt"]),
+            &[],
+        );
+
+        assert!(
+            !settings
+                .tools
+                .grok
+                .hooks_dir
+                .as_ref()
+                .unwrap()
+                .join("fmt.json")
+                .exists(),
+            "hooks whose targets omit grok must not write ~/.grok/hooks"
+        );
+        assert!(
+            !enabled_ids(&settings, &scanned.items, ToolId::Grok)
+                .iter()
+                .any(|id| id == "hook:fmt"),
+            "untargeted hook must stay out of Grok enabled state"
+        );
+    }
+
+    #[test]
     fn apply_empty_suite_disables_everything() {
         let root = tempfile::tempdir().unwrap();
         let tools = tempfile::tempdir().unwrap();

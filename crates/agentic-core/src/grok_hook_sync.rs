@@ -375,9 +375,13 @@ fn remove_managed_grok_file(
             Ok((HookSyncOutcome::Removed, vec![]))
         }
         FileRead::Missing | FileRead::Ok(_) => Ok((HookSyncOutcome::NoOp, vec![])),
-        FileRead::Foreign | FileRead::ForeignContent | FileRead::Broken => {
-            Ok((HookSyncOutcome::NoOp, vec![]))
-        }
+        FileRead::Foreign | FileRead::ForeignContent => Ok((HookSyncOutcome::NoOp, vec![])),
+        FileRead::Broken => Err(HookSyncError {
+            path: target.to_path_buf(),
+            code: "hook_target_broken_json".to_string(),
+            message: "Hook config file is not valid Grok hook JSON; refusing to overwrite"
+                .to_string(),
+        }),
     }
 }
 
