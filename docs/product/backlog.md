@@ -18,7 +18,6 @@ their agentic resources, it doesn't belong here.
 | N1 | P0 | Integration tests vs tmp dirs | Trust the plan/apply engine never clobbers real files | Closes M4 test debt; see [testing-strategy](../tech/development/testing-strategy.md) |
 | N2 | P0 | Tauri boot/apply smoke test | Catch packaging/IPC regressions before release | Boot window → apply on tmp root → assert disk state |
 | N3 | P1 | Version reconciliation | Keep release metadata honest | `0.7.0` plan folded into `0.6.1`; verify `package.json`/`tauri.conf.json`/Cargo all read `0.6.1` |
-| N4 | P1 | Grok Build adapter + full trace | Count Grok skill use and project the shared library into `~/.grok/` | [grok-tool-adapter](../features/grok-tool-adapter.md) |
 
 ## Next — planned, not started
 

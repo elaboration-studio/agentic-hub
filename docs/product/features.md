@@ -18,7 +18,7 @@ rules, hooks) across tools from one place.
 | Capability matrix (flat + tree, search, filters) | ✅ | `0.1.0` | [mvp](../features/mvp-unified-agentic-capability-manager.md) |
 | Plan-then-apply engine (safe FS, partial-tolerant) | ✅ | `0.1.0` | [projection arch](../../ARCHITECTURE.projection.md) |
 | Tool adapter registry (Codex, Claude, Cursor, OpenClaw) | ✅ | `0.1.0` | [tool-adapter-matrix](../tech/reference/tool-adapter-matrix.md) |
-| Grok Build tool adapter + usage tracing | 🔭 | in flight | [grok-tool-adapter](../features/grok-tool-adapter.md) |
+| Grok Build tool adapter + usage tracing | ✅ | `0.16.3` | [grok-tool-adapter](../features/grok-tool-adapter.md) |
 | Rule instruction sync (3 modes, managed block) | ✅ | `0.1.0` | [rule-projection-sync](../tech/modules/rule-projection-sync.md) |
 | Hooks projection (`json_section`) | ✅ | `0.1.x` | [hooks-projection](../features/hooks-projection.md) |
 | Multi-source roots (priority, first-wins, `__archived__`) | ✅ | `0.1.0` | [multi-source-roots](../tech/modules/multi-source-roots.md) |
