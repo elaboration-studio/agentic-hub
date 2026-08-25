@@ -5,28 +5,31 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.16.2] — 2026-08-24
+## [0.16.3] — 2026-08-25
 
 ### Highlights
 
-- **Spaced slash skills and SKILL.md name aliases are tracked** — `/grill me`,
-  `/Repo Research`, and frontmatter names like `grilling` now resolve to the
-  folder skill on Codex, Claude, and Cursor.
-- **Kiro usage tracing** — when Kiro is enabled, Agentic Hub installs a managed
-  tracer hook and attributes Kiro skill usage the same way as the other tools.
-
-### Fixed
-
-- **Spaced slash commands.** Prompt tokens were split on whitespace, so
-  `/grill me` became `grill` and was dropped. Hyphen-joined slash tokens now
-  resolve to the folder skill.
-- **SKILL.md name aliases.** A frontmatter `name` that differs from the folder
-  (`grilling` → `grill-me`) now maps to the installed skill.
+- **Grok Build is a first-class tool.** Opt in the Grok column to project
+  skills, agents, rules, commands, and hooks into `~/.grok/`. Usage tracing
+  attributes Grok turns the same way as Cursor, Claude, Codex, and Kiro.
 
 ### Added
 
-- **Kiro tracer hook.** Managed install under `~/.kiro/hooks/`, camelCase
-  `userPromptSubmit` payloads, and `.kiro/skills` repository catalog roots.
+- **Grok adapter.** Skills (nested symlinks), agents and commands (flat
+  `*.md`), rules (nested, `.mdc` → `.md`), and per-id Claude-style hook JSON
+  under `~/.grok/hooks/`. Grok is disabled by default until you enable it in
+  Config. Default hook targets now include Grok; hooks whose `targets` omit
+  `"grok"` stay out of the Grok column.
+- **Grok usage tracing.** When tracing is on and Grok is enabled, a managed
+  tracer hook records `promptId` turns, `read_file` SKILL.md reads, and
+  qualified slash names (`/user:commit`).
+
+### Fixed
+
+- **Broken Grok hook files are never overwritten.** Invalid JSON under
+  `~/.grok/hooks/` is left as-is and reported instead of replaced.
+- **Open / Reveal works on Grok paths.** Skill folders and hook files under
+  `~/.grok/` are on the open allowlist.
 
 ### Known Issues
 
