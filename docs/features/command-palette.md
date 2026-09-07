@@ -3,7 +3,7 @@
 Status: Implemented
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-06-26
+Last Updated: 2026-09-08
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [ARCHITECTURE.permissions.md](../../ARCHITECTURE.permissions.md)
 Related Docs: [docs/tech/modules/tauri-ipc-contract.md](../tech/modules/tauri-ipc-contract.md), [docs/features/open-files.md](./open-files.md), [docs/tech/modules/suite-bindings.md](../tech/modules/suite-bindings.md)
 
@@ -27,8 +27,9 @@ slice of resources I mean instead of getting one global mixed result list.
 ### In scope
 
 - A dedicated floating palette window (label `palette`): borderless, transparent,
-  centered, hidden until summoned, dismissed on blur or Esc. On macOS it is a
-  non-activating `NSPanel` so it floats over other apps' full-screen Spaces.
+  hidden until summoned, dismissed on blur or Esc, and centered on the display
+  containing the focused app/window. On macOS it is a non-activating `NSPanel`
+  so it floats over other apps' full-screen Spaces.
 - A configurable global accelerator (default `Cmd+Alt+A`) that toggles it.
 - **Layered root hub.** Summoning lands on a categorized list of first-class
   commands grouped into sections — no resource results at the root:
@@ -129,10 +130,14 @@ flowchart TD
   CanJoinAllSpaces` collection behavior so it overlays full-screen apps without
   switching Spaces — standard `NSWindow` cannot ([tauri#11488](https://github.com/tauri-apps/tauri/issues/11488)).
   Panel objc ops run on the main thread (`run_on_main_thread`); non-macOS falls
-  back to an always-on-top, all-workspaces window. Summoning does **not** surface
-  the main window: the panel cannot become the app's main window, a summon guard
-  skips `RunEvent::Reopen` show/focus of the hub, and if the hub was hidden it
-  is hidden again after the panel appears. The
+  back to an always-on-top, all-workspaces window. Before that main-thread hop,
+  a revisioned presentation request blocks `RunEvent::Reopen` from surfacing the
+  hub; stale show/hide callbacks cannot override the latest request. The callback
+  moves the panel onto `NSScreen.mainScreen` before native centering, which is
+  the screen containing the focused window. Dismissal restores the presentation
+  that existed before summon: an app-hidden hub returns to app-hidden state (and
+  remains Cmd+Tab-restorable), a focused hub regains focus, and an external-app
+  summon leaves the hub's window order unchanged. The
   `tauri-plugin-global-shortcut` handler keeps hub-toggle behavior, while direct
   shortcuts store a one-shot launch mode and always show/focus the panel—even if
   it is already visible. It hides on `WindowEvent::Focused(false)`.
@@ -192,6 +197,11 @@ flowchart TD
 ## Acceptance criteria
 
 - [ ] The configured hub shortcut (default `Cmd+Alt+A`) toggles the palette from any app.
+- [ ] The palette centers on the display containing the currently focused
+      app/window, including non-primary displays.
+- [ ] Dismissing the palette restores the prior window state: an app-hidden hub
+      stays hidden but remains Cmd+Tab-restorable, a focused hub regains focus,
+      and an external-app summon does not reorder the hub window.
 - [ ] The default all-resource, skill, and command shortcuts always show/focus
       their search mode, including while the panel is already visible.
 - [ ] Summoning lands on the categorized hub (Search / Go to / Navigate / Actions);
