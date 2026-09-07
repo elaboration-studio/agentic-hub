@@ -5,19 +5,29 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.16.4] — 2026-08-25
+## [0.16.5] — 2026-09-08
 
 ### Highlights
 
-- **Cmd+Alt+A no longer brings the hub window with the palette.** If the hub
-  was hidden, search stays on top by itself.
+- **Search opens where you are working.** `Cmd+Alt+A` now centers the command
+  palette on the display containing the focused app/window.
+- **The hub stays in the window state you left it.** Dismissing search restores
+  an app-hidden or focused hub correctly and does not reorder it when summoned
+  over another app.
 
 ### Fixed
 
-- **Palette summon no longer unhides the hub.** Closing the hub hides the
-  whole app; showing the palette then unhid NSApp and Dock-reopen focused the
-  main window on top of search. The palette now skips that reopen and hides
-  the hub again if it was not already visible.
+- Active-display placement now moves the native panel onto the focused screen
+  before AppKit centers it.
+- Palette presentation tracks app-hidden, focused-main, and external-app
+  origins, restoring each state on dismiss without leaving a visible,
+  windowless application.
+- Revision tokens prevent an older blur/dismiss callback from cancelling a
+  newer palette summon.
+
+### Migration
+
+- None.
 
 ### Known Issues
 

@@ -159,7 +159,7 @@ pub async fn cmd_take_palette_launch_mode(
 /// navigation commands that route back into the main window.
 #[tauri::command]
 pub async fn cmd_show_main(app: AppHandle) -> IpcResult<()> {
-    palette::allow_main_window();
+    palette::allow_main_window(&app);
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
         let _ = win.set_focus();

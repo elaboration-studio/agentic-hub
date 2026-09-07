@@ -11,6 +11,7 @@ mod install_window;
 mod main_window;
 mod menu;
 mod palette;
+mod palette_presentation;
 mod paste;
 mod suite_recovery;
 mod telemetry;
@@ -80,6 +81,7 @@ pub fn run() {
                 .build(),
         )
         .manage(palette::PaletteShortcutState::default())
+        .manage(palette::PalettePresentationState::default())
         .manage(WatcherState::default())
         .manage(TelemetryState::default())
         .manage(UsageCollectorState::default())
@@ -260,7 +262,7 @@ pub fn run() {
             RunEvent::Reopen { .. } => {
                 // Global-shortcut palette summon can unhide the app and fire
                 // reopen. Do not bring the hub window along with the palette.
-                if palette::should_surface_main_on_reopen(palette::palette_blocks_main()) {
+                if palette::should_surface_main_on_reopen(palette::palette_blocks_main(app)) {
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();

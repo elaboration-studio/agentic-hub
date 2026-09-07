@@ -8,6 +8,19 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.16.5] — 2026-09-08
+
+### Fixed
+
+- **The command palette now follows the focused display.** `Cmd+Alt+A` moves the
+  panel to the display containing the focused app/window before centering, so
+  multi-monitor summons no longer appear on an unrelated screen.
+- **Palette dismissal no longer strands or reorders the hub window.** A hidden
+  hub returns to app-hidden state and remains restorable with Cmd+Tab; a focused
+  hub regains focus; summoning over another app leaves the hub's window order
+  unchanged. Revisioned presentation requests also prevent stale blur callbacks
+  from overriding a newer summon.
+
 ## [0.16.4] — 2026-08-25
 
 ### Fixed

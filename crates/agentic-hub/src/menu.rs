@@ -83,6 +83,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 pub fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         ID_SETTINGS => {
+            crate::palette::allow_main_window(app);
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.show();
                 let _ = win.set_focus();
@@ -91,6 +92,7 @@ pub fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         }
         ID_PALETTE => crate::palette::toggle_palette(app),
         ID_CHECK_UPDATES => {
+            crate::palette::allow_main_window(app);
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.show();
                 let _ = win.set_focus();

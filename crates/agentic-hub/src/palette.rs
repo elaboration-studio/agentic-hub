@@ -1,15 +1,8 @@
-//! Command-palette panel + global-shortcut wiring.
-//!
-//! The palette is a borderless, transparent, floating panel (Alfred-style)
-//! summoned by a user-configurable global accelerator. On macOS it is an
-//! `NSPanel` (non-activating, `FullScreenAuxiliary` + `CanJoinAllSpaces`) so it
-//! overlays other apps' full-screen Spaces — a plain `NSWindow` cannot, see
-//! <https://github.com/tauri-apps/tauri/issues/11488>. On other platforms it is
-//! an always-on-top window. All logic here is framework wiring; no domain logic
-//! lives in the shell.
+//! Command-palette lifecycle, active-display placement, and shortcut wiring.
+//! macOS uses a non-activating `NSPanel` that can join full-screen Spaces;
+//! other platforms use an always-on-top window.
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use agentic_core::settings::{
@@ -18,65 +11,42 @@ use agentic_core::settings::{
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
-/// Label of the floating command-palette window/panel.
-pub const PALETTE_LABEL: &str = "palette";
+#[cfg(test)]
+use crate::palette_presentation::dismissal_after_palette;
+pub(crate) use crate::palette_presentation::PalettePresentationState;
+use crate::palette_presentation::{
+    main_origin_before_palette, PaletteDismissal, PaletteMainOrigin,
+};
 
-/// Set while the palette is being summoned or is visible. Closing the hub
-/// hides the whole NSApplication; showing any window then unhides it and
-/// AppKit restores the main window. `RunEvent::Reopen` would also `show` +
-/// `set_focus` main. This guard keeps a global-shortcut summon from activating
-/// the hub window.
-static PALETTE_BLOCKS_MAIN: AtomicBool = AtomicBool::new(false);
-
-/// Whether a Dock/reopen should surface the main window. A live palette
-/// summon means the user asked for search, not the hub.
 pub fn should_surface_main_on_reopen(palette_blocks_main: bool) -> bool {
     !palette_blocks_main
 }
 
-fn set_palette_blocks_main(blocks: bool) {
-    PALETTE_BLOCKS_MAIN.store(blocks, Ordering::SeqCst);
+pub fn palette_blocks_main(app: &AppHandle) -> bool {
+    app.state::<PalettePresentationState>().active()
 }
 
-pub fn palette_blocks_main() -> bool {
-    PALETTE_BLOCKS_MAIN.load(Ordering::SeqCst)
+pub fn allow_main_window(app: &AppHandle) {
+    app.state::<PalettePresentationState>().cancel();
 }
 
-/// Clear the summon guard so an explicit hub surface (Dock, Open Manager) works.
-pub fn allow_main_window() {
-    set_palette_blocks_main(false);
-}
-
-/// Hide the hub after a palette show only when it was not already on screen.
-pub fn should_hide_main_after_palette_show(main_was_visible: bool) -> bool {
-    !main_was_visible
-}
-
-/// After a palette show, hide main again if it was not visible going in.
-/// Unhiding NSApp otherwise restores every window that was on screen at hide.
-#[cfg(target_os = "macos")]
-fn keep_main_hidden_if_needed(app: &AppHandle, main_was_visible: bool) {
-    if !should_hide_main_after_palette_show(main_was_visible) {
-        return;
+fn position_on_active_screen<T>(
+    active_screen_origin: Option<T>,
+    mut move_to_screen: impl FnMut(T),
+    mut native_center: impl FnMut(),
+) {
+    if let Some(origin) = active_screen_origin {
+        move_to_screen(origin);
     }
-    if let Some(main) = app.get_webview_window(crate::main_window::MAIN_LABEL) {
-        let _ = main.hide();
-    }
+    native_center();
 }
 
-#[cfg(target_os = "macos")]
-fn main_window_is_visible(app: &AppHandle) -> bool {
-    app.get_webview_window(crate::main_window::MAIN_LABEL)
-        .and_then(|win| win.is_visible().ok())
-        .unwrap_or(false)
-}
+pub const PALETTE_LABEL: &str = "palette";
 
 const PALETTE_WIDTH: f64 = 680.0;
 const PALETTE_HEIGHT: f64 = 460.0;
 
-/// Build the hidden palette window. Idempotent: returns the existing window if
-/// it was already created. Platform-specific floating behavior is applied by
-/// [`setup_palette`].
+/// Build the hidden palette window, or return the existing one.
 fn build_palette_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Some(win) = app.get_webview_window(PALETTE_LABEL) {
         return Ok(win);
@@ -95,9 +65,15 @@ fn build_palette_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
 #[cfg(target_os = "macos")]
 mod imp {
-    use super::{build_palette_window, AppHandle, Manager, PALETTE_LABEL};
+    use super::{
+        build_palette_window, main_origin_before_palette, position_on_active_screen, AppHandle,
+        Manager, PaletteDismissal, PaletteMainOrigin, PalettePresentationState, PALETTE_LABEL,
+    };
     use tauri_nspanel::{
-        tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt,
+        objc2_app_kit::{NSApplication, NSScreen},
+        objc2_foundation::MainThreadMarker as ObjcMainThreadMarker,
+        tauri_panel, CollectionBehavior, ManagerExt, Panel, PanelLevel, StyleMask,
+        WebviewWindowExt,
     };
 
     // A non-activating floating panel: it can become key (so the search field
@@ -112,9 +88,7 @@ mod imp {
         })
     }
 
-    /// Create the palette window (if needed) and convert it to a non-activating
-    /// floating panel that can overlay full-screen Spaces. Must run on the main
-    /// thread (objc window ops); the Tauri `setup` hook satisfies that.
+    /// Create the palette and convert it to a full-screen-capable floating panel.
     pub fn setup_palette(app: &AppHandle) -> tauri::Result<()> {
         if app.get_webview_panel(PALETTE_LABEL).is_ok() {
             return Ok(());
@@ -143,64 +117,129 @@ mod imp {
         Ok(())
     }
 
-    /// Run a closure on the macOS main thread. objc window/panel operations must
-    /// not run on the Tokio command threads; this dispatches them safely from any
-    /// caller (the global-shortcut and menu handlers are already main-thread).
+    /// Dispatch objc window operations from any caller to the macOS main thread.
     fn on_main(app: &AppHandle, f: impl FnOnce(&AppHandle) + Send + 'static) {
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || f(&handle));
     }
 
-    /// Toggle the palette: hide if visible, otherwise re-center and show as key.
+    fn center_on_active_screen(panel: &dyn Panel) {
+        let origin = ObjcMainThreadMarker::new()
+            .and_then(NSScreen::mainScreen)
+            .map(|screen| screen.visibleFrame().origin);
+        position_on_active_screen(
+            origin,
+            |screen_origin| panel.as_panel().setFrameOrigin(screen_origin),
+            || panel.as_panel().center(),
+        );
+    }
+
+    fn app_is_hidden() -> bool {
+        ObjcMainThreadMarker::new()
+            .map(|marker| NSApplication::sharedApplication(marker).isHidden())
+            .unwrap_or(false)
+    }
+
+    fn main_is_focused(app: &AppHandle) -> bool {
+        app.get_webview_window(crate::main_window::MAIN_LABEL)
+            .and_then(|main| main.is_focused().ok())
+            .unwrap_or(false)
+    }
+
+    fn show_panel(app: &AppHandle, panel: &dyn Panel, request: u64) {
+        let origin = main_origin_before_palette(app_is_hidden(), main_is_focused(app));
+        if !app
+            .state::<PalettePresentationState>()
+            .start(request, origin)
+        {
+            return;
+        }
+        center_on_active_screen(panel);
+        panel.show_and_make_key();
+        if origin == PaletteMainOrigin::HiddenApp {
+            if let Some(main) = app.get_webview_window(crate::main_window::MAIN_LABEL) {
+                let _ = main.hide();
+            }
+        }
+        crate::telemetry::record_client_engagement(app);
+    }
+
+    fn dismiss_panel(app: &AppHandle, panel: &dyn Panel, request: u64) {
+        let Some(dismissal) = app.state::<PalettePresentationState>().complete(request) else {
+            return;
+        };
+        panel.hide();
+        match dismissal {
+            PaletteDismissal::RestoreHiddenApp => {
+                // Re-establish app-level hiding so Cmd+Tab can restore the hub.
+                // Both operations are synchronous in this main-thread callback,
+                // so the main window is never composited between them.
+                if let Some(main) = app.get_webview_window(crate::main_window::MAIN_LABEL) {
+                    let _ = main.show();
+                }
+                let _ = app.hide();
+            }
+            PaletteDismissal::RefocusMain => {
+                if let Some(main) = app.get_webview_window(crate::main_window::MAIN_LABEL) {
+                    let _ = main.set_focus();
+                }
+            }
+            PaletteDismissal::None => {}
+        }
+    }
+
     pub fn toggle_palette(app: &AppHandle) {
-        // Arm before the main-thread hop so a racing Dock/reopen cannot show
-        // the hub. The hide path clears the guard once visibility is known.
-        super::set_palette_blocks_main(true);
-        on_main(app, |app| {
+        let Some(request) = app.state::<PalettePresentationState>().request_show() else {
+            return;
+        };
+        on_main(app, move |app| {
             let Ok(panel) = app.get_webview_panel(PALETTE_LABEL) else {
-                super::set_palette_blocks_main(false);
+                let _ = app.state::<PalettePresentationState>().complete(request);
                 return;
             };
             if panel.is_visible() {
-                panel.hide();
-                super::set_palette_blocks_main(false);
+                dismiss_panel(app, panel.as_ref(), request);
             } else {
-                let main_was_visible = super::main_window_is_visible(app);
-                if let Some(win) = app.get_webview_window(PALETTE_LABEL) {
-                    let _ = win.center();
-                }
-                panel.show_and_make_key();
-                super::keep_main_hidden_if_needed(app, main_was_visible);
-                crate::telemetry::record_client_engagement(app);
+                show_panel(app, panel.as_ref(), request);
             }
         });
     }
 
-    /// Hide the palette panel if it exists (used on blur / dismiss / nav).
     pub fn hide_palette(app: &AppHandle) {
-        on_main(app, |app| {
+        let Some(request) = app.state::<PalettePresentationState>().request_hide() else {
+            return;
+        };
+        on_main(app, move |app| {
             if let Ok(panel) = app.get_webview_panel(PALETTE_LABEL) {
-                panel.hide();
+                dismiss_panel(app, panel.as_ref(), request);
+            } else {
+                let _ = app.state::<PalettePresentationState>().complete(request);
             }
-            super::set_palette_blocks_main(false);
         });
     }
 
-    /// Show and focus the palette even when it is already visible.
     pub fn show_palette(app: &AppHandle) {
-        super::set_palette_blocks_main(true);
-        on_main(app, |app| {
+        let Some(request) = app.state::<PalettePresentationState>().request_show() else {
+            return;
+        };
+        on_main(app, move |app| {
             let Ok(panel) = app.get_webview_panel(PALETTE_LABEL) else {
-                super::set_palette_blocks_main(false);
+                let _ = app.state::<PalettePresentationState>().complete(request);
                 return;
             };
-            let main_was_visible = super::main_window_is_visible(app);
-            if let Some(win) = app.get_webview_window(PALETTE_LABEL) {
-                let _ = win.center();
+            if panel.is_visible() {
+                let origin = main_origin_before_palette(app_is_hidden(), main_is_focused(app));
+                if !app
+                    .state::<PalettePresentationState>()
+                    .resume(request, origin)
+                {
+                    return;
+                }
+                center_on_active_screen(panel.as_ref());
+                panel.show_and_make_key();
+            } else {
+                show_panel(app, panel.as_ref(), request);
             }
-            panel.show_and_make_key();
-            super::keep_main_hidden_if_needed(app, main_was_visible);
-            crate::telemetry::record_client_engagement(app);
         });
     }
 }
@@ -209,8 +248,6 @@ mod imp {
 mod imp {
     use super::{build_palette_window, AppHandle, Manager, PALETTE_LABEL};
 
-    /// Create the palette window as an always-on-top, all-workspaces window. On
-    /// non-macOS platforms this is the best available floating behavior.
     pub fn setup_palette(app: &AppHandle) -> tauri::Result<()> {
         let win = build_palette_window(app)?;
         let _ = win.set_always_on_top(true);
@@ -218,7 +255,6 @@ mod imp {
         Ok(())
     }
 
-    /// Toggle the palette: hide if visible, otherwise re-center, show, and focus.
     pub fn toggle_palette(app: &AppHandle) {
         if let Some(win) = app.get_webview_window(PALETTE_LABEL) {
             if win.is_visible().unwrap_or(false) {
@@ -232,14 +268,12 @@ mod imp {
         }
     }
 
-    /// Hide the palette window if it exists (used on blur / dismiss / nav).
     pub fn hide_palette(app: &AppHandle) {
         if let Some(win) = app.get_webview_window(PALETTE_LABEL) {
             let _ = win.hide();
         }
     }
 
-    /// Show and focus the palette even when it is already visible.
     pub fn show_palette(app: &AppHandle) {
         if let Some(win) = app.get_webview_window(PALETTE_LABEL) {
             let _ = win.center();
@@ -252,9 +286,7 @@ mod imp {
 
 pub use imp::{hide_palette, setup_palette, show_palette, toggle_palette};
 
-/// Parsed shortcut-to-launch-mode mapping used by both registration and the
-/// global plugin handler. Parsing before settings persistence keeps shortcut
-/// strings away from execution sinks and catches alias-equivalent duplicates.
+/// Parsed shortcut-to-launch-mode mapping shared by registration and dispatch.
 #[derive(Debug, Clone)]
 pub struct PaletteShortcutSet {
     entries: Vec<(PaletteLaunchMode, Shortcut)>,
@@ -330,8 +362,7 @@ impl PaletteShortcutSet {
     }
 }
 
-/// OS registration boundary, injectable so rollback is covered without
-/// touching the real global shortcut manager in unit tests.
+/// Injectable OS registration boundary for rollback tests.
 pub trait ShortcutRegistrar {
     fn unregister_all(&mut self) -> Result<(), String>;
     fn register(&mut self, shortcut: Shortcut) -> Result<(), String>;
@@ -357,8 +388,7 @@ impl ShortcutRegistrar for AppShortcutRegistrar<'_> {
     }
 }
 
-/// Replace all shortcuts as one recoverable operation. A failed new
-/// registration removes the partial set and restores the prior complete set.
+/// Replace all shortcuts, restoring the prior set if registration fails.
 pub fn replace_registered_shortcuts(
     registrar: &mut impl ShortcutRegistrar,
     previous: &PaletteShortcutSet,
@@ -384,8 +414,7 @@ pub fn replace_registered_shortcuts(
     Ok(())
 }
 
-/// Persist only after OS registration succeeds. If persistence fails, restore
-/// the prior OS set so disk and live shortcuts remain aligned.
+/// Persist after registration, restoring prior shortcuts if persistence fails.
 pub fn replace_registered_shortcuts_and_persist(
     registrar: &mut impl ShortcutRegistrar,
     previous: &PaletteShortcutSet,
@@ -404,7 +433,6 @@ pub fn replace_registered_shortcuts_and_persist(
     Ok(())
 }
 
-/// Registered mapping plus the next one-shot palette destination.
 #[derive(Debug)]
 pub struct PaletteShortcutState {
     registered: Mutex<PaletteShortcutSet>,
@@ -481,7 +509,6 @@ pub fn handle_shortcut_press(app: &AppHandle, shortcut: &Shortcut) {
     dispatch_palette_shortcut(&state, mode, || toggle_palette(app), || show_palette(app));
 }
 
-/// Register the complete set and update dispatch state only after success.
 pub fn register_palette_shortcuts(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     let state = app.state::<PaletteShortcutState>();
     let previous = state.registered()?;
@@ -491,7 +518,6 @@ pub fn register_palette_shortcuts(app: &AppHandle, settings: &Settings) -> Resul
     state.set_registered(next)
 }
 
-/// Commit shortcuts and their persisted settings as one transaction.
 pub fn register_palette_shortcuts_and_persist(
     app: &AppHandle,
     settings: &Settings,

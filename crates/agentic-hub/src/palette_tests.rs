@@ -1,12 +1,14 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 
 use agentic_core::settings::{PaletteLaunchMode, Settings};
 
 use super::{
-    allow_main_window, dispatch_palette_shortcut, palette_blocks_main,
-    replace_registered_shortcuts, replace_registered_shortcuts_and_persist,
-    set_palette_blocks_main, should_hide_main_after_palette_show, should_surface_main_on_reopen,
-    PaletteShortcutSet, PaletteShortcutState, ShortcutRegistrar,
+    dismissal_after_palette, dispatch_palette_shortcut, main_origin_before_palette,
+    position_on_active_screen, replace_registered_shortcuts,
+    replace_registered_shortcuts_and_persist, should_surface_main_on_reopen, PaletteDismissal,
+    PaletteMainOrigin, PalettePresentationState, PaletteShortcutSet, PaletteShortcutState,
+    ShortcutRegistrar,
 };
 
 #[derive(Default)]
@@ -140,17 +142,105 @@ fn reopen_does_not_surface_main_while_palette_blocks_it() {
 }
 
 #[test]
-fn allow_main_window_clears_the_summon_guard() {
-    set_palette_blocks_main(true);
-    assert!(!should_surface_main_on_reopen(palette_blocks_main()));
-    allow_main_window();
-    assert!(should_surface_main_on_reopen(palette_blocks_main()));
+fn presentation_blocks_reopen_before_main_thread_captures_origin() {
+    let state = PalettePresentationState::default();
+
+    let request = state.request_show().unwrap();
+
+    assert!(!should_surface_main_on_reopen(state.active()));
+    assert!(state.start(request, PaletteMainOrigin::HiddenApp));
+    assert_eq!(
+        state.complete(request),
+        Some(PaletteDismissal::RestoreHiddenApp)
+    );
 }
 
 #[test]
-fn hidden_hub_is_rehidden_after_palette_summon() {
-    assert!(should_hide_main_after_palette_show(false));
-    assert!(!should_hide_main_after_palette_show(true));
+fn cancelled_pending_presentation_rejects_a_queued_show() {
+    let state = PalettePresentationState::default();
+    let request = state.request_show().unwrap();
+
+    state.cancel();
+
+    assert!(!state.start(request, PaletteMainOrigin::HiddenApp));
+    assert!(!state.active());
+}
+
+#[test]
+fn stale_queued_dismissal_does_not_cancel_a_later_show() {
+    let state = PalettePresentationState::default();
+    let stale_hide = state.request_hide().unwrap();
+    let show = state.request_show().unwrap();
+
+    assert_eq!(state.complete(stale_hide), None);
+    assert!(state.active());
+    assert!(state.start(show, PaletteMainOrigin::ExternalApp));
+}
+
+#[test]
+fn allow_main_window_clears_the_summon_guard() {
+    let state = PalettePresentationState::default();
+    let request = state.request_show().unwrap();
+    assert!(state.start(request, PaletteMainOrigin::ExternalApp));
+    assert!(!should_surface_main_on_reopen(state.active()));
+    state.cancel();
+    assert!(should_surface_main_on_reopen(state.active()));
+}
+
+#[test]
+fn hidden_app_is_restored_as_app_hidden_after_palette_dismissal() {
+    let origin = main_origin_before_palette(true, false);
+
+    assert_eq!(origin, PaletteMainOrigin::HiddenApp);
+    assert_eq!(
+        dismissal_after_palette(origin),
+        PaletteDismissal::RestoreHiddenApp
+    );
+}
+
+#[test]
+fn focused_main_window_regains_focus_after_palette_dismissal() {
+    let origin = main_origin_before_palette(false, true);
+
+    assert_eq!(origin, PaletteMainOrigin::FocusedMain);
+    assert_eq!(
+        dismissal_after_palette(origin),
+        PaletteDismissal::RefocusMain
+    );
+}
+
+#[test]
+fn externally_summoned_palette_does_not_change_main_window_order() {
+    let origin = main_origin_before_palette(false, false);
+
+    assert_eq!(origin, PaletteMainOrigin::ExternalApp);
+    assert_eq!(dismissal_after_palette(origin), PaletteDismissal::None);
+}
+
+#[test]
+fn palette_moves_to_active_display_before_native_centering() {
+    let actions = RefCell::new(Vec::new());
+
+    position_on_active_screen(
+        Some((-1920.0, 23.0)),
+        |origin| actions.borrow_mut().push(format!("move:{origin:?}")),
+        || actions.borrow_mut().push("center".to_string()),
+    );
+
+    assert_eq!(actions.into_inner(), ["move:(-1920.0, 23.0)", "center"]);
+}
+
+#[test]
+fn palette_still_centers_when_the_active_display_is_unavailable() {
+    let actions = RefCell::new(Vec::new());
+
+    position_on_active_screen(
+        None::<(f64, f64)>,
+        |origin| actions.borrow_mut().push(format!("move:{origin:?}")),
+        || actions.borrow_mut().push("center".to_string()),
+    );
+
+    assert_eq!(actions.into_inner(), ["center"]);
 }
 
 #[test]
