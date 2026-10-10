@@ -1,0 +1,26 @@
+crates/agentic-core/src/agent_version.rs
+  s_0a3415ac0bbcaf::t_af0d22c7069255 157-169
+  s_0a3415ac0bbcaf::t_f1b681f8988671 156,170-182
+  s_0a3415ac0bbcaf::t_9c5a73d7bb66b5 7
+crates/agentic-core/src/bundle.rs
+  s_0a3415ac0bbcaf::t_6c962fb192ca99 290-321
+crates/agentic-core/src/bundle_lifecycle_tests.rs
+  s_0a3415ac0bbcaf::t_ac872c453dd58c 123-133,147
+  s_0a3415ac0bbcaf::t_ea819673345e89 122,134-146,148-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "783ca999ffbece6ace7795f0c65b3f5c06fdd420",
+  "prompts": {},
+  "sessions": {
+    "s_0a3415ac0bbcaf": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "efb54d1c-f7c8-45c0-b9c5-a64ca1bcf185",
+        "model": "kimi-k3"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    }
+  }
+}
