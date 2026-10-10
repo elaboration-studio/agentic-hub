@@ -1,0 +1,25 @@
+docs/features/agent-bundles.essential.md
+  s_0a3415ac0bbcaf::t_4e5885f13568ff 1-27
+docs/tech/reference/ehub-cli-contract.md
+  s_0a3415ac0bbcaf::t_4c160e920c694a 1-109
+docs/features/agent-bundles.md
+  s_0a3415ac0bbcaf::t_fb614180d3b523 1-55
+docs/tech/modules/agent-bundles.md
+  s_0a3415ac0bbcaf::t_98c00f47b29e92 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7f83fc5a2c17d94587f064c4a76e26ab1404ce29",
+  "prompts": {},
+  "sessions": {
+    "s_0a3415ac0bbcaf": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "efb54d1c-f7c8-45c0-b9c5-a64ca1bcf185",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    }
+  }
+}
