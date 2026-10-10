@@ -1,0 +1,149 @@
+crates/agentic-hub/src/commands.rs
+  s_646c26d1ba6656::t_ce2df2779d5732 847-858
+src/state/agentDraft.ts
+  s_646c26d1ba6656::t_cb5da269643c89 1-64
+crates/agentic-hub/src/headless.rs
+  s_646c26d1ba6656::t_ff225a2205add0 1-75
+crates/agentic-hub/src/lib.rs
+  s_646c26d1ba6656::t_8e63f08c3048d3 10
+  s_646c26d1ba6656::t_9839683eb49d6c 143-144
+  s_646c26d1ba6656::t_c201ef7f9e5f1a 45-66
+  s_646c26d1ba6656::t_eb24e33b43b75c 256
+docs/tech/modules/tauri-ipc-contract.md
+  s_646c26d1ba6656::t_2d60c29cbff033 356
+  s_646c26d1ba6656::t_7bf3e5582f4f6f 312,317-320
+  s_646c26d1ba6656::t_40e4cbecc8f0c2 373-378
+  s_646c26d1ba6656::t_c16dfb02677966 342,346
+  s_646c26d1ba6656::t_debe9b52d56b16 321-322
+crates/agentic-core/src/lib.rs
+  s_646c26d1ba6656::t_0891afa81ff3bd 18-19
+crates/agentic-hub/src/main.rs
+  s_646c26d1ba6656::t_7a6e2fbfe5e681 4-5,7-12
+src/shared.tsx
+  s_646c26d1ba6656::t_46ececf045c04b 80
+crates/agentic-core/src/cli_link.rs
+  s_646c26d1ba6656::t_df324b754da021 5-7
+  s_646c26d1ba6656::t_afd3a49bb2dc08 1-4,8-29,32,59-146
+  s_646c26d1ba6656::t_f12985e2d6da19 30-31,33-58
+src/ipc.ts
+  s_646c26d1ba6656::t_dee35a5055d453 278,287-288
+  s_646c26d1ba6656::t_61f9fd007fd63e 11
+  s_646c26d1ba6656::t_6c3730c2c560a9 307-310
+CHANGELOG.md
+  s_0a3415ac0bbcaf::t_e87154744e15a2 11-14
+src/components/manager/CapabilityTable.tsx
+  s_646c26d1ba6656::t_78c7616303c14b 336
+  s_646c26d1ba6656::t_b4a0b78c069e8c 196
+  s_646c26d1ba6656::t_783e992c566bc3 63-65
+src/components/suites/AgentSection.tsx
+  s_646c26d1ba6656::t_3accf8c74fa254 1-35,37-96,98-126
+  s_646c26d1ba6656::t_7cbb1a0dab64d8 36
+  s_646c26d1ba6656::t_2b1fb14d6fd2dc 97
+src/state/suites.test.ts
+  s_646c26d1ba6656::t_5a97adfe091128 287,308,330,430
+  s_646c26d1ba6656::t_5b53660b38c46f 452-588
+  s_646c26d1ba6656::t_e7945450390d74 35
+  s_646c26d1ba6656::t_a90777bad8920b 274,441
+  s_646c26d1ba6656::t_3dd9aeb299b3e6 318
+  s_646c26d1ba6656::t_5fbc05bd6a3a67 340,364
+  s_646c26d1ba6656::t_16dc7efca0cd6d 16
+  s_646c26d1ba6656::t_64ff08615586f4 423
+  s_646c26d1ba6656::t_67e6d4b7843d43 234,264,354,413
+  s_646c26d1ba6656::t_5696692ba5b616 214
+  s_646c26d1ba6656::t_ece0249166a08b 9
+  s_646c26d1ba6656::t_b833dfd8268625 43
+  s_646c26d1ba6656::t_667d2e14d3aff1 199
+  s_646c26d1ba6656::t_2cc3e666f93836 173
+  s_646c26d1ba6656::t_6f56d5f726b039 88
+  s_646c26d1ba6656::t_4056d3d9a3f930 398
+  s_646c26d1ba6656::t_a21b76cf231ca5 296
+src/components/ui/textarea.tsx
+  s_646c26d1ba6656::t_c9ee2be7467fbc 1-20
+src/state/agentDraft.test.ts
+  s_646c26d1ba6656::t_d20f5b5840e887 1-88
+src/components/suites/SuitesPage.tsx
+  s_646c26d1ba6656::t_dff121a72f93ef 10
+  s_646c26d1ba6656::t_15f36b4a825bf3 36
+  s_646c26d1ba6656::t_5938acf8c435fe 185-186
+  s_646c26d1ba6656::t_1e10e83bf9a5ce 155
+src/state/suites.ts
+  s_646c26d1ba6656::t_15a23afb33b686 67,75-76
+  s_646c26d1ba6656::t_1aff6f779ab774 121-122
+  s_646c26d1ba6656::t_ade35009831b71 196-207
+  s_646c26d1ba6656::t_f7a0e61c2516c2 90-92
+  s_646c26d1ba6656::t_6fe6c9fbbd7cdd 278
+  s_646c26d1ba6656::t_f72409e8805560 240,242-246,253,263
+  s_646c26d1ba6656::t_e016769d0e9027 142-143,150,154,162,165-176
+  s_646c26d1ba6656::t_d47dc6ed83b29d 8,15-22
+  s_646c26d1ba6656::t_3d6df98d908bee 106
+src/types/index.ts
+  s_646c26d1ba6656::t_f13459648a8a72 6
+src/types/generated/AgentSpec.ts
+  s_646c26d1ba6656::t_89168d88509651 7,11
+src/types/generated/ApplySuiteResult.ts
+  s_646c26d1ba6656::t_a676775797634d 10,14,18,23,28
+src/types/generated/CapabilityItem.ts
+  s_646c26d1ba6656::t_497fe77cd67e42 9,13,17,21,25,29
+src/types/generated/CliTool.ts
+  s_646c26d1ba6656::t_964f080039ee20 8,12,16,20,24,29
+src/types/generated/CliToolStatus.ts
+  s_646c26d1ba6656::t_8570e6086830b4 7
+src/types/generated/EditorPref.ts
+  s_646c26d1ba6656::t_9edfa512aef956 9
+src/types/generated/LibraryLockedSkill.ts
+  s_646c26d1ba6656::t_55bfe638925e33 9,13,17,21,25,29
+src/types/generated/LockedSkill.ts
+  s_646c26d1ba6656::t_1cf54cd4b58b2b 8,12,16,20
+src/types/generated/PlannedOperation.ts
+  s_646c26d1ba6656::t_fa37ad356732af 10,15,21
+src/types/generated/ScaffoldResult.ts
+  s_646c26d1ba6656::t_17b2437a0dbefa 6,10,14,18,22
+src/types/generated/ScanResult.ts
+  s_646c26d1ba6656::t_00381b838b53b1 9
+src/types/generated/SessionSummary.ts
+  s_646c26d1ba6656::t_e4fa5c9efaeae2 8,12,16
+src/types/generated/Settings.ts
+  s_646c26d1ba6656::t_87e5d4a1a876db 15,19,23,28,33,38,43,50,56,62,67,72,78,82,87,91,95,99
+src/types/generated/SkillFavorite.ts
+  s_646c26d1ba6656::t_64499452b1dcd8 8,12,16,20,24,28,33,37,41
+src/types/generated/SkillSearchHit.ts
+  s_646c26d1ba6656::t_e9528a31ba1002 9,13,17,21,25,29,33,37
+src/types/generated/SourceConfig.ts
+  s_646c26d1ba6656::t_45b9047c61eb02 7
+src/types/generated/SourceRef.ts
+  s_646c26d1ba6656::t_3176175677ad4c 10,15
+src/types/generated/SuiteBinding.ts
+  s_646c26d1ba6656::t_5cd361f517dcad 10
+src/types/generated/SuiteDefinition.ts
+  s_646c26d1ba6656::t_ad45fae7e0fdab 8,15,21
+src/types/generated/SuiteOwnership.ts
+  s_646c26d1ba6656::t_6b9745117758f0 9
+src/types/generated/SuiteValidationResult.ts
+  s_646c26d1ba6656::t_7ad70b2774e914 6
+src/types/generated/WorkspaceInventory.ts
+  s_646c26d1ba6656::t_683f096d354f42 11,15,19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "955eaa2356f7bf63531c8fba20dc5a6a9801da2a",
+  "prompts": {},
+  "sessions": {
+    "s_0a3415ac0bbcaf": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "efb54d1c-f7c8-45c0-b9c5-a64ca1bcf185",
+        "model": "grok-4.7"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    },
+    "s_646c26d1ba6656": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "060e6008-958b-49ff-a0aa-7df4f9841642",
+        "model": "claude-opus-5-5-high"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    }
+  }
+}
