@@ -1,0 +1,53 @@
+crates/agentic-core/src/bundle_tests.rs
+  s_e7acef5504f0f7::t_78d0fb972cc480 1-293
+  s_e7acef5504f0f7::t_199e6d33dbf3d4 294-314
+crates/agentic-core/src/agent_version_tests.rs
+  s_e7acef5504f0f7::t_0ed56b12113730 1-175,181
+  s_e7acef5504f0f7::t_8eafd5d036def5 176-180,182-201
+crates/agentic-core/src/bundle.rs
+  s_e7acef5504f0f7::t_59ec492172a9fd 1-6,9,11-14,17-170,173-177,296-298,303-304
+  s_e7acef5504f0f7::t_eba4f50c94f7d0 299-302,305-308
+  s_e7acef5504f0f7::t_b419c8534d257a 7-8,10,15-16
+  s_e7acef5504f0f7::t_c5e2b1396496a4 171-172,178-215,219-221,230,236-295
+  s_e7acef5504f0f7::t_00bdc370f227fb 216-218,222-229,231-235
+  s_e7acef5504f0f7::t_5b0fcb37900425 309-315
+crates/agentic-core/src/cli_tools.rs
+  s_e7acef5504f0f7::t_1d88ee1f9d0e6c 204-206,208-209
+  s_e7acef5504f0f7::t_415f75381a0908 207
+  s_e7acef5504f0f7::t_d14726c6676357 488-527
+crates/agentic-core/src/agent_version.rs
+  s_e7acef5504f0f7::t_2b8ec9f13714cd 1-5,13-16,20,23-29,51-53,157-161
+  s_e7acef5504f0f7::t_662dedbc0195bb 6-12,17-19,21-22,30-50,54-156
+  s_e7acef5504f0f7::t_6eb59ca666909c 162-163
+crates/agentic-core/src/bundle_test_fixture.rs
+  s_e7acef5504f0f7::t_297bf364c5e8ba 1-142
+  s_e7acef5504f0f7::t_2afe6a7b3ecd76 143-145
+crates/agentic-core/src/bundle_layout.rs
+  s_e7acef5504f0f7::t_95932c1a1c586b 1-386
+  s_e7acef5504f0f7::t_47d148a5b55e52 387-389
+crates/agentic-core/src/bundle_lifecycle_tests.rs
+  s_e7acef5504f0f7::t_da6f9378f3f0b4 1-60,69,72-75,89-154
+  s_e7acef5504f0f7::t_13d9730958ba90 61-68,70-71
+  s_e7acef5504f0f7::t_c5ae496a25ba9e 76-88
+  s_e7acef5504f0f7::t_d33fdd8803ba69 155-163
+crates/agentic-core/src/hook_sync.rs
+  s_e7acef5504f0f7::t_db1e755b2a7052 331,437,487-516,518-532,534-538,542,546,549,552,562-564,568-573,576,588-590
+crates/agentic-core/src/lib.rs
+  s_e7acef5504f0f7::t_91ad8d6749eb0c 12,15-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c53a7d41be876ed0f2b3badccfa0f632e4775a41",
+  "prompts": {},
+  "sessions": {
+    "s_e7acef5504f0f7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d6fea1a7-b97d-4a48-8d4e-7b7207d0d21b",
+        "model": "claude-opus-5-5-high"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    }
+  }
+}
