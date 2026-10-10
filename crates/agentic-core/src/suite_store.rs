@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::agent_spec::AgentSpec;
 use crate::error::{CoreError, Result};
 use crate::internal_hooks;
 use crate::managed_copy::now_iso8601;
@@ -50,6 +51,8 @@ pub struct SuiteCreateInput {
     /// [`SuiteCapabilityRef`]'s tolerant impl.
     #[serde(default)]
     pub capabilities: Vec<SuiteCapabilityRef>,
+    #[serde(default)]
+    pub agent: Option<AgentSpec>,
 }
 
 /// Partial update; `None` fields are left unchanged.
@@ -66,6 +69,22 @@ pub struct SuiteUpdateInput {
     /// base flag on every other suite; `Some(false)` just unsets this one.
     #[serde(default)]
     pub is_base: Option<bool>,
+    /// `Some(None)` (JSON `null`) clears the agent block; absent leaves it.
+    #[serde(default, deserialize_with = "present_or_null")]
+    pub agent: Option<Option<AgentSpec>>,
+}
+
+/// Distinguish a present `null` (`Some(None)`) from an absent field (`None`).
+fn present_or_null<'de, D, T>(deserializer: D) -> std::result::Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+fn validate_agent(agent: Option<&AgentSpec>) -> Result<()> {
+    agent.map_or(Ok(()), |a| a.validate().map_err(CoreError::InvalidAgent))
 }
 
 /// Dotfile-backed suite store.
@@ -134,6 +153,7 @@ impl SuiteStore {
         if name.is_empty() {
             return Err(CoreError::SuiteNameConflict("(empty name)".to_string()));
         }
+        validate_agent(input.agent.as_ref())?;
         let mut file = self.read_file()?;
         if file.suites.iter().any(|s| s.name == name) {
             return Err(CoreError::SuiteNameConflict(name));
@@ -145,6 +165,7 @@ impl SuiteStore {
             description: input.description,
             capabilities: input.capabilities,
             is_base: false,
+            agent: input.agent,
             created_at: now.clone(),
             updated_at: now,
         };
@@ -154,6 +175,7 @@ impl SuiteStore {
     }
 
     pub fn update(&self, id: &str, input: SuiteUpdateInput) -> Result<SuiteDefinition> {
+        validate_agent(input.agent.as_ref().and_then(Option::as_ref))?;
         let mut file = self.read_file()?;
         // Reject a rename that collides with a different suite.
         if let Some(new_name) = input.name.as_ref().map(|n| n.trim().to_string()) {
@@ -182,6 +204,9 @@ impl SuiteStore {
         }
         if let Some(is_base) = input.is_base {
             suite.is_base = is_base;
+        }
+        if let Some(agent) = input.agent {
+            suite.agent = agent;
         }
         suite.updated_at = now_iso8601();
         let updated = suite.clone();
@@ -338,6 +363,7 @@ mod tests {
             name: name.to_string(),
             description: None,
             capabilities: caps.iter().map(|s| (*s).into()).collect(),
+            agent: None,
         }
     }
 
@@ -428,6 +454,7 @@ mod tests {
             description: None,
             capabilities: vec!["skill:live".into(), "skill:gone".into()],
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -454,6 +481,7 @@ mod tests {
             description: None,
             capabilities: vec![absent, "skill:gone".into()],
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -534,6 +562,7 @@ mod tests {
             description: None,
             capabilities: vec!["skill:a".into(), "skill:missing".into()],
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -603,3 +632,7 @@ mod tests {
         assert_eq!(store.base().unwrap().unwrap().id, b.id);
     }
 }
+
+#[cfg(test)]
+#[path = "suite_store_agent_tests.rs"]
+mod agent_tests;

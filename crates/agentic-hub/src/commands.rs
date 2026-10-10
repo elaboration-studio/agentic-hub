@@ -1219,6 +1219,7 @@ mod tests {
                 name: "Selected".into(),
                 description: None,
                 capabilities: vec!["skill:selected".into()],
+                agent: None,
             })
             .unwrap();
         let bindings_path = state.path().join("bindings.json");

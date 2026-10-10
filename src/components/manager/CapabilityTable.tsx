@@ -67,6 +67,7 @@ const KIND_BADGE_COLOR: Record<CapabilityKind, string> = {
   rule: "text-success",
   hook: "text-warning",
   command: "text-kind-command",
+  mcp: "text-muted-foreground",
 };
 
 export interface CapabilityStateColumn {

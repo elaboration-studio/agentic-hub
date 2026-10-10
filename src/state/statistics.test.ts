@@ -316,7 +316,7 @@ describe("useStatisticsStore", () => {
       enabledTools: 2,
       totalTools: 9,
       favoritesCount: 1,
-      byKind: { skill: 1, agent: 0, rule: 1, hook: 0, command: 0 },
+      byKind: { skill: 1, agent: 0, rule: 1, hook: 0, command: 0, mcp: 0 },
     });
   });
 
