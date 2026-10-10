@@ -1,0 +1,29 @@
+crates/agentic-hub/Cargo.toml
+  s_0a3415ac0bbcaf::t_1f28c166114f5b 3
+crates/agentic-hub/tauri.conf.json
+  s_0a3415ac0bbcaf::t_c5c7ba984ccaa1 4
+package.json
+  s_0a3415ac0bbcaf::t_49671b86cd2747 4
+CHANGELOG.md
+  s_0a3415ac0bbcaf::t_d4e14110e0a1a8 11-12
+Cargo.lock
+  s_0a3415ac0bbcaf::t_b862820ba1da10 30
+RELEASE.md
+  s_0a3415ac0bbcaf::t_7f332b8a8d9443 8,12-13,15,17-18,20,22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7b1fb3328df35c9e031679b24eee92720c84cf4e",
+  "prompts": {},
+  "sessions": {
+    "s_0a3415ac0bbcaf": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "efb54d1c-f7c8-45c0-b9c5-a64ca1bcf185",
+        "model": "composer-2.5"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    }
+  }
+}
