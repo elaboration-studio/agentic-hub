@@ -9,8 +9,11 @@
 
 pub mod adapter_registry;
 pub mod agent_spec;
+pub mod agent_version;
 pub mod api;
 pub mod applier;
+pub mod bundle;
+mod bundle_layout;
 pub mod cli_tools;
 pub mod client_telemetry;
 pub mod codex_agent;
