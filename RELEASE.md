@@ -5,31 +5,18 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.16.5] — 2026-09-08
+## [0.17.0] — 2026-10-10
 
 ### Highlights
 
-- **Search opens where you are working.** `Cmd+Alt+A` now centers the command
-  palette on the display containing the focused app/window.
-- **The hub stays in the window state you left it.** Dismissing search restores
-  an app-hidden or focused hub correctly and does not reorder it when summoned
-  over another app.
+- **Agent bundles** let a suite ship instructions, required CLIs, and MCP servers as an immutable per-harness bundle under `~/.agentic-hub/bundles`.
+- **`ehub` CLI** — the app links `~/.agentic-hub/bin/ehub` to itself; use `ehub bundle` to build and refresh bundles for eCanvas eHub runs.
 
-### Fixed
+### Added
 
-- Active-display placement now moves the native panel onto the focused screen
-  before AppKit centers it.
-- Palette presentation tracks app-hidden, focused-main, and external-app
-  origins, restoring each state on dismiss without leaving a visible,
-  windowless application.
-- Revision tokens prevent an older blur/dismiss callback from cancelling a
-  newer palette summon.
+- Suite agent block (emoji, instructions, required CLIs) and MCP server definitions flow into versioned bundle directories.
+- Streaming hash + staging GC for bundle writes.
 
-### Migration
+### Pair with eCanvas
 
-- None.
-
-### Known Issues
-
-- The `r2.dev` feed is edge-cached, so a freshly published release can take up
-  to a minute to appear to update checks.
+- eCanvas **0.8.5** eHub agent profiles expect this build (or newer) on the Mac that mounts bundles.
