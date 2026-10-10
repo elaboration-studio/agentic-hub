@@ -1,0 +1,26 @@
+crates/agentic-core/src/cli_tests.rs
+  s_e7acef5504f0f7::t_45391569f7fa1e 1-251
+  s_e7acef5504f0f7::t_ac5ce7c0b8e2f8 252-277
+crates/agentic-core/src/cli.rs
+  s_e7acef5504f0f7::t_f2588147214dc9 6,10-15,17-18,20-23,35-37,39-72,87-315
+  s_e7acef5504f0f7::t_3a6734b0b5e3dd 1-5,7-9,16,19,24-34,38,73-86,316-320
+  s_e7acef5504f0f7::t_b2e965a14a9343 321-331
+crates/agentic-core/src/lib.rs
+  s_e7acef5504f0f7::t_5452cc21a0cbff 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e5a73210bb174ebf40724fefd2360bc9a3372ed2",
+  "prompts": {},
+  "sessions": {
+    "s_e7acef5504f0f7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d6fea1a7-b97d-4a48-8d4e-7b7207d0d21b",
+        "model": "claude-opus-5-5-high"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    }
+  }
+}
