@@ -5,19 +5,19 @@
  * project's `skills-lock.json`. Carries what the hub needs to offer a one-click
  * `npx skills update`: the inventory item it annotates and the install source.
  */
-export type LockedSkill = {
+export type LockedSkill = { 
 /**
  * The inventory item id this annotates (`skill:<rel>`, pre-namespacing).
  */
-itemId: string,
+itemId: string, 
 /**
  * The lock key — the skill's install name, passed to `skills update`.
  */
-name: string,
+name: string, 
 /**
  * The `owner/repo` (or other transport) source it was installed from.
  */
-source: string,
+source: string, 
 /**
  * Transport hint from the lock: `github`, `local`, etc.
  */

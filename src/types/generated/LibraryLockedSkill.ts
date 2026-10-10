@@ -6,27 +6,27 @@
  * `workspace_inventory::LockedSkill` for the source-root case, plus the
  * fields a library update needs to target the right root and destination.
  */
-export type LibraryLockedSkill = {
+export type LibraryLockedSkill = { 
 /**
  * The scanned item id this annotates (`skill:<rel>`).
  */
-itemId: string,
+itemId: string, 
 /**
  * The lock key — the skill's install name.
  */
-name: string,
+name: string, 
 /**
  * The `owner/repo` (or other transport) source it was installed from.
  */
-source: string,
+source: string, 
 /**
  * Transport hint from the lock: `github`, `local`, etc.
  */
-sourceType: string,
+sourceType: string, 
 /**
  * Which source root's lock this came from — needed to target a re-install.
  */
-sourceId: string,
+sourceId: string, 
 /**
  * Destination subpath under `skills/`, recovered from the lock's
  * `skillPath` so an update lands back at the same place.

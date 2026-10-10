@@ -4,11 +4,11 @@
  * Agent identity layered on a suite. Persisted inside the suite entry in
  * `~/.agentic-suites.json`; older hubs ignore the field.
  */
-export type AgentSpec = { emoji: string | null,
+export type AgentSpec = { emoji: string | null, 
 /**
  * Markdown prepended to the bundle's `instructions.md`.
  */
-instructions: string | null,
+instructions: string | null, 
 /**
  * Ids from the CLI tool catalog (`resources/cli-tools/catalog.json`).
  */

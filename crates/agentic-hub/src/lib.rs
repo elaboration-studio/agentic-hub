@@ -7,6 +7,7 @@
 mod appearance;
 mod commands;
 mod error;
+pub mod headless;
 mod install_window;
 mod main_window;
 mod menu;
@@ -38,6 +39,28 @@ fn with_macos_panel(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri
     #[cfg(not(target_os = "macos"))]
     {
         builder
+    }
+}
+
+/// Keep `~/.agentic-hub/bin/ehub` linked to this binary. Failures are logged,
+/// never fatal: the GUI does not depend on the link.
+#[cfg(unix)]
+fn ensure_cli_link() {
+    use agentic_core::cli_link::{self, LinkOutcome};
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(e) => {
+            eprintln!("ehub link: cannot resolve the app binary: {e}");
+            return;
+        }
+    };
+    match cli_link::ensure(&exe, &cli_link::default_link_path()) {
+        Ok(LinkOutcome::Unchanged) => {}
+        Ok(LinkOutcome::Conflict) => {
+            eprintln!("ehub link: a real file blocks ~/.agentic-hub/bin/ehub; left alone");
+        }
+        Ok(outcome) => eprintln!("ehub link: {outcome:?}"),
+        Err(e) => eprintln!("ehub link: {e}"),
     }
 }
 
@@ -117,6 +140,8 @@ pub fn run() {
                 settings.usage_tracing.collector_token = format!("trace-{}", uuid::Uuid::new_v4());
                 let _ = settings.save();
             }
+            #[cfg(unix)]
+            ensure_cli_link();
             appearance::apply(app.handle(), settings.color_scheme);
             // Start the source watcher on launch when enabled in settings.
             if settings.watcher_enabled {
@@ -228,6 +253,7 @@ pub fn run() {
             commands::cmd_create_suite,
             commands::cmd_update_suite,
             commands::cmd_delete_suite,
+            commands::cmd_agent_version,
             commands::cmd_apply_suite,
             commands::cmd_suite_apply_preview,
             commands::cmd_set_base_suite,

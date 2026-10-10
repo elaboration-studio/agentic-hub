@@ -60,6 +60,9 @@ import {
 
 const EMPTY_COLLAPSE: ReadonlySet<string> = new Set();
 const STICKY_HEAD = "sticky top-14 z-20 bg-card";
+// MCP lists after the projected kinds: suites can include it, but no tool home
+// receives it (bundles only), so Manager cells render "—".
+const TABLE_KINDS: CapabilityKind[] = [...KIND_ORDER, "mcp"];
 
 const KIND_BADGE_COLOR: Record<CapabilityKind, string> = {
   skill: "text-primary",
@@ -190,7 +193,7 @@ export function CapabilityTable(props: CapabilityTableProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
-            {KIND_ORDER.map((entry) => <SelectItem key={entry} value={entry}>{KIND_LABEL[entry]}</SelectItem>)}
+            {TABLE_KINDS.map((entry) => <SelectItem key={entry} value={entry}>{KIND_LABEL[entry]}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={usageSort} onValueChange={(next) => setUsageSort(next as UsageSort)}>
@@ -330,7 +333,7 @@ function leafRow(item: CapabilityItem, context: RenderContext, padding?: number,
 }
 
 function renderFlat(items: CapabilityItem[], context: RenderContext): ReactNode {
-  return KIND_ORDER.map((kind) => {
+  return TABLE_KINDS.map((kind) => {
     const rows = items
       .filter((item) => item.kind === kind)
       .sort((left, right) => compareByUsageSort(left, right, context.usageSort, context.props.usageStats));

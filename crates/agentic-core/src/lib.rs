@@ -15,6 +15,8 @@ pub mod applier;
 pub mod bundle;
 mod bundle_layout;
 pub mod cli;
+#[cfg(unix)]
+pub mod cli_link;
 pub mod cli_tools;
 pub mod client_telemetry;
 pub mod codex_agent;

@@ -6,7 +6,7 @@ import type { ToolId } from "./ToolId";
  * Manager matrix can lock the cell and name its owning suite on hover. Computed
  * from the live bindings, the suites, and the base suite against a fresh scan.
  */
-export type SuiteOwnership = { tool: ToolId, itemId: string, suiteId: string, suiteName: string,
+export type SuiteOwnership = { tool: ToolId, itemId: string, suiteId: string, suiteName: string, 
 /**
  * True when the owning suite is the base suite (merged in globally) rather
  * than the tool's explicitly bound suite.

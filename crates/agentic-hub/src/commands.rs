@@ -844,6 +844,18 @@ pub async fn cmd_delete_suite(app: AppHandle, id: String) -> IpcResult<()> {
     Ok(())
 }
 
+/// The suite's agent version, computed exactly as `ehub agents list` does
+/// (stored suite, no base merge) so the UI and the CLI agree.
+#[tauri::command]
+pub async fn cmd_agent_version(suite_id: String) -> IpcResult<String> {
+    let settings = Settings::load()?;
+    let suite = SuiteStore::with_path(settings.resolved_suites_path())
+        .get(&suite_id)?
+        .ok_or_else(|| IpcError::new("suite_not_found", "Suite no longer exists"))?;
+    let items = agentic_core::scan_all(&settings.resolve_sources()).items;
+    Ok(agentic_core::agent_version::agent_version(&suite, &items))
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplySuiteInput {

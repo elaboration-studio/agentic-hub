@@ -6,12 +6,14 @@ vi.mock("@/ipc", () => ({
   updateSuite: vi.fn(),
   deleteSuite: vi.fn(),
   setBaseSuite: vi.fn(),
+  agentVersion: vi.fn(),
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
 import {
+  agentVersion,
   createSuite,
   deleteSuite,
   listSuites,
@@ -30,6 +32,7 @@ import {
   suiteRefMatchesItem,
   useSuitesStore,
 } from "./suites";
+import { EMPTY_AGENT } from "./agentDraft";
 
 const mocked = {
   listSuites: vi.mocked(listSuites),
@@ -37,6 +40,7 @@ const mocked = {
   updateSuite: vi.mocked(updateSuite),
   deleteSuite: vi.mocked(deleteSuite),
   setBaseSuite: vi.mocked(setBaseSuite),
+  agentVersion: vi.mocked(agentVersion),
 };
 
 const SRC: SourceRef = { relHome: "~/.agentic", folder: ".agentic" };
@@ -81,6 +85,7 @@ function makeState(itemId: string, state: ToolCapabilityState["state"]): ToolCap
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocked.agentVersion.mockResolvedValue("abc123def456");
   useSuitesStore.setState(useSuitesStore.getInitialState(), true);
 });
 
@@ -165,7 +170,7 @@ describe("suites store — draft editing", () => {
 
     expect(s.isCreating).toBe(true);
     expect(s.selectedId).toBeUndefined();
-    expect(s.draft).toEqual({ name: "", description: "", capabilities: [] });
+    expect(s.draft).toEqual({ name: "", description: "", capabilities: [], agent: EMPTY_AGENT });
   });
 
   it("startCreateFromCurrent includes only enabled Hub-managed resources for the selected tool", () => {
@@ -191,6 +196,7 @@ describe("suites store — draft editing", () => {
       name: "",
       description: "",
       capabilities: [{ cap: "skill:enabled", source: SRC }],
+      agent: EMPTY_AGENT,
     });
   });
 
@@ -205,6 +211,7 @@ describe("suites store — draft editing", () => {
       name: "Backend",
       description: "",
       capabilities: [{ cap: "skill:a", source: SRC }],
+      agent: EMPTY_AGENT,
     });
   });
 
@@ -224,6 +231,7 @@ describe("suites store — draft editing", () => {
         name: "x",
         description: "",
         capabilities: [{ cap: "skill:a", source: SRC }],
+        agent: EMPTY_AGENT,
       },
     });
 
@@ -253,6 +261,7 @@ describe("suites store — draft editing", () => {
         name: "Backend",
         description: "",
         capabilities: [missingRef, liveRef],
+        agent: EMPTY_AGENT,
       },
     });
 
@@ -262,7 +271,7 @@ describe("suites store — draft editing", () => {
   });
 
   it("cancelEdit while creating discards the draft", () => {
-    useSuitesStore.setState({ isCreating: true, draft: { name: "x", description: "", capabilities: [] } });
+    useSuitesStore.setState({ isCreating: true, draft: { name: "x", description: "", capabilities: [], agent: EMPTY_AGENT } });
 
     useSuitesStore.getState().cancelEdit();
     const s = useSuitesStore.getState();
@@ -275,7 +284,7 @@ describe("suites store — draft editing", () => {
     useSuitesStore.setState({
       suites: [makeSuite({ name: "Backend", capabilities: [{ cap: "skill:a", source: SRC }] })],
       selectedId: "s1",
-      draft: { name: "edited", description: "", capabilities: [] },
+      draft: { name: "edited", description: "", capabilities: [], agent: EMPTY_AGENT },
     });
 
     useSuitesStore.getState().cancelEdit();
@@ -284,6 +293,7 @@ describe("suites store — draft editing", () => {
       name: "Backend",
       description: "",
       capabilities: [{ cap: "skill:a", source: SRC }],
+      agent: EMPTY_AGENT,
     });
   });
 });
@@ -295,7 +305,7 @@ describe("suites store — persistence", () => {
     mocked.listSuites.mockResolvedValue([created]);
     useSuitesStore.setState({
       isCreating: true,
-      draft: { name: "  Fresh  ", description: "  ", capabilities: [] },
+      draft: { name: "  Fresh  ", description: "  ", capabilities: [], agent: EMPTY_AGENT },
     });
 
     await useSuitesStore.getState().save();
@@ -305,6 +315,7 @@ describe("suites store — persistence", () => {
       name: "Fresh",
       description: null,
       capabilities: [],
+      agent: null,
     });
     expect(s.selectedId).toBe("new");
     expect(s.isCreating).toBe(false);
@@ -316,7 +327,7 @@ describe("suites store — persistence", () => {
     useSuitesStore.setState({
       suites: [makeSuite()],
       selectedId: "s1",
-      draft: { name: "Backend", description: "core", capabilities: [] },
+      draft: { name: "Backend", description: "core", capabilities: [], agent: EMPTY_AGENT },
     });
     useSuitesStore.getState().setCapabilities([makeItem("skill:a")], true);
 
@@ -326,6 +337,7 @@ describe("suites store — persistence", () => {
       name: "Backend",
       description: "core",
       capabilities: [{ cap: "skill:a", source: SRC }],
+      agent: null,
     });
   });
 
@@ -339,6 +351,7 @@ describe("suites store — persistence", () => {
         name: "Backend",
         description: "core",
         capabilities: [{ cap: "skill:a", source: SRC }],
+        agent: EMPTY_AGENT,
       },
     });
 
@@ -348,6 +361,7 @@ describe("suites store — persistence", () => {
       name: "Backend",
       description: "core",
       capabilities: [{ cap: "skill:a", source: SRC }],
+      agent: null,
     });
   });
 
@@ -381,6 +395,7 @@ describe("suites store — persistence", () => {
       name: "Backend",
       description: null,
       capabilities: [{ cap: "skill:a", source: liveSource }],
+      agent: null,
     });
   });
 
@@ -395,6 +410,7 @@ describe("suites store — persistence", () => {
         name: "Backend",
         description: "",
         capabilities: [{ cap: "skill:a", source: null }],
+        agent: EMPTY_AGENT,
       },
     });
 
@@ -404,13 +420,14 @@ describe("suites store — persistence", () => {
       name: "Backend",
       description: null,
       capabilities: [{ cap: "skill:a", source: null }],
+      agent: null,
     });
   });
 
   it("save is a no-op when the name is blank", async () => {
     useSuitesStore.setState({
       isCreating: true,
-      draft: { name: "   ", description: "", capabilities: [] },
+      draft: { name: "   ", description: "", capabilities: [], agent: EMPTY_AGENT },
     });
 
     await useSuitesStore.getState().save();
@@ -421,7 +438,7 @@ describe("suites store — persistence", () => {
   it("remove deletes the selected suite and clears the selection", async () => {
     mocked.deleteSuite.mockResolvedValue(undefined);
     mocked.listSuites.mockResolvedValue([]);
-    useSuitesStore.setState({ selectedId: "s1", draft: { name: "x", description: "", capabilities: [] } });
+    useSuitesStore.setState({ selectedId: "s1", draft: { name: "x", description: "", capabilities: [], agent: EMPTY_AGENT } });
 
     await useSuitesStore.getState().remove();
     const s = useSuitesStore.getState();
@@ -429,6 +446,143 @@ describe("suites store — persistence", () => {
     expect(mocked.deleteSuite).toHaveBeenCalledWith("s1");
     expect(s.selectedId).toBeUndefined();
     expect(s.draft).toBeUndefined();
+  });
+});
+
+describe("suites store — agent block", () => {
+  const agentSuite = makeSuite({
+    agent: { emoji: "🛠️", instructions: "Ship it.", requiredClis: ["gh"] },
+  });
+
+  it("selectSuite loads the agent block into the draft and fetches its version", async () => {
+    useSuitesStore.setState({ suites: [agentSuite] });
+
+    useSuitesStore.getState().selectSuite("s1");
+
+    expect(useSuitesStore.getState().draft?.agent).toEqual({
+      emoji: "🛠️",
+      instructions: "Ship it.",
+      requiredClis: ["gh"],
+    });
+    expect(mocked.agentVersion).toHaveBeenCalledWith("s1");
+    await vi.waitFor(() =>
+      expect(useSuitesStore.getState().agentVersion).toBe("abc123def456"),
+    );
+  });
+
+  it("drops a version that resolves after the selection moved on", async () => {
+    let resolveFirst: (v: string) => void = () => {};
+    mocked.agentVersion
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r; }))
+      .mockResolvedValueOnce("second000000");
+    useSuitesStore.setState({ suites: [agentSuite, makeSuite({ id: "s2" })] });
+
+    useSuitesStore.getState().selectSuite("s1");
+    useSuitesStore.getState().selectSuite("s2");
+    await vi.waitFor(() =>
+      expect(useSuitesStore.getState().agentVersion).toBe("second000000"),
+    );
+    resolveFirst("first0000000");
+    await Promise.resolve();
+
+    expect(useSuitesStore.getState().agentVersion).toBe("second000000");
+  });
+
+  it("a failed version lookup leaves the version blank without a toast", async () => {
+    mocked.agentVersion.mockRejectedValue(new Error("scan failed"));
+    useSuitesStore.setState({ suites: [agentSuite] });
+
+    useSuitesStore.getState().selectSuite("s1");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useSuitesStore.getState().agentVersion).toBeUndefined();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("startCreate clears the version and starts with an empty agent", () => {
+    useSuitesStore.setState({ agentVersion: "abc123def456" });
+
+    useSuitesStore.getState().startCreate();
+
+    expect(useSuitesStore.getState().agentVersion).toBeUndefined();
+    expect(useSuitesStore.getState().draft?.agent).toEqual(EMPTY_AGENT);
+  });
+
+  it("setAgent patches only the agent fields it is given", () => {
+    useSuitesStore.setState({ suites: [agentSuite] });
+    useSuitesStore.getState().selectSuite("s1");
+
+    useSuitesStore.getState().setAgent({ emoji: "🧭" });
+
+    expect(useSuitesStore.getState().draft?.agent).toEqual({
+      emoji: "🧭",
+      instructions: "Ship it.",
+      requiredClis: ["gh"],
+    });
+  });
+
+  it("toggleRequiredCli adds and removes catalog ids on the draft", () => {
+    useSuitesStore.setState({ suites: [agentSuite] });
+    useSuitesStore.getState().selectSuite("s1");
+
+    useSuitesStore.getState().toggleRequiredCli("jq");
+    expect(useSuitesStore.getState().draft?.agent.requiredClis).toEqual(["gh", "jq"]);
+
+    useSuitesStore.getState().toggleRequiredCli("gh");
+    expect(useSuitesStore.getState().draft?.agent.requiredClis).toEqual(["jq"]);
+  });
+
+  it("cancelEdit reverts agent edits to the stored block", () => {
+    useSuitesStore.setState({ suites: [agentSuite] });
+    useSuitesStore.getState().selectSuite("s1");
+    useSuitesStore.getState().setAgent({ instructions: "changed" });
+
+    useSuitesStore.getState().cancelEdit();
+
+    expect(useSuitesStore.getState().draft?.agent.instructions).toBe("Ship it.");
+  });
+
+  it("save sends the trimmed agent block and refreshes the version", async () => {
+    mocked.updateSuite.mockResolvedValue(agentSuite);
+    mocked.listSuites.mockResolvedValue([agentSuite]);
+    useSuitesStore.setState({ suites: [agentSuite] });
+    useSuitesStore.getState().selectSuite("s1");
+    useSuitesStore.getState().setAgent({ emoji: " 🧭 " });
+    mocked.agentVersion.mockClear();
+
+    await useSuitesStore.getState().save();
+
+    expect(mocked.updateSuite).toHaveBeenCalledWith("s1", {
+      name: "Backend",
+      description: null,
+      capabilities: [{ cap: "skill:a", source: SRC }],
+      agent: { emoji: "🧭", instructions: "Ship it.", requiredClis: ["gh"] },
+    });
+    expect(mocked.agentVersion).toHaveBeenCalledWith("s1");
+  });
+
+  it("save clears the agent block when every field is emptied", async () => {
+    mocked.updateSuite.mockResolvedValue(makeSuite());
+    mocked.listSuites.mockResolvedValue([makeSuite()]);
+    useSuitesStore.setState({ suites: [agentSuite] });
+    useSuitesStore.getState().selectSuite("s1");
+    useSuitesStore.getState().setAgent({ emoji: "", instructions: "", requiredClis: [] });
+
+    await useSuitesStore.getState().save();
+
+    expect(mocked.updateSuite.mock.calls[0][1].agent).toBeNull();
+  });
+
+  it("save refuses an over-limit agent block with a toast and no IPC", async () => {
+    useSuitesStore.setState({ suites: [agentSuite] });
+    useSuitesStore.getState().selectSuite("s1");
+    useSuitesStore.getState().setAgent({ instructions: "a".repeat(32 * 1024 + 1) });
+
+    await useSuitesStore.getState().save();
+
+    expect(mocked.updateSuite).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/32 KiB/));
   });
 });
 
