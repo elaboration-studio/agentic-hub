@@ -45,7 +45,7 @@ export interface ResourceInventory {
 }
 
 function emptyByKind(): Record<CapabilityKind, number> {
-  return { skill: 0, agent: 0, rule: 0, hook: 0, command: 0 };
+  return { skill: 0, agent: 0, rule: 0, hook: 0, command: 0, mcp: 0 };
 }
 
 export function computeResourceInventory(

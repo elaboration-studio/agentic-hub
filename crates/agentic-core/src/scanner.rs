@@ -128,6 +128,15 @@ fn walk(
                             item.name = m.name.unwrap_or(m.id);
                         }
                     }
+                    if kind == CapabilityKind::Mcp {
+                        match crate::mcp::load_manifest(&path) {
+                            Ok(m) => item.name = m.name,
+                            Err(e) => {
+                                item.valid = false;
+                                item.validation_errors = vec![e.to_string()];
+                            }
+                        }
+                    }
                     out.push(item);
                 }
             }
@@ -365,6 +374,43 @@ mod tests {
             .unwrap();
         assert_eq!(hook.id, "hook:custom-id");
         assert_eq!(hook.name, "Custom Name");
+    }
+
+    #[test]
+    fn scans_mcp_marker_dir_named_by_its_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(
+            &root.join("mcp/github/mcp.json"),
+            r#"{ "name": "GitHub", "transport": "stdio", "command": "github-mcp" }"#,
+        );
+
+        let result = scan(root);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        let mcp = &result.items[0];
+        assert_eq!(mcp.id, "mcp:github");
+        assert_eq!(mcp.kind, CapabilityKind::Mcp);
+        assert_eq!(mcp.name, "GitHub");
+        assert!(mcp.valid);
+        assert!(mcp.source_path.ends_with("mcp/github"));
+    }
+
+    #[test]
+    fn invalid_mcp_manifest_is_listed_but_marked_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir.path().join("mcp/bad/mcp.json"),
+            r#"{ "name": "bad", "transport": "stdio" }"#,
+        );
+
+        let result = scan(dir.path());
+        let mcp = &result.items[0];
+        assert_eq!(mcp.id, "mcp:bad");
+        assert!(!mcp.valid);
+        assert_eq!(
+            mcp.validation_errors,
+            vec!["stdio transport requires a command"]
+        );
     }
 
     #[cfg(unix)]

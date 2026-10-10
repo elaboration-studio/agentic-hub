@@ -8,6 +8,10 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Added
+
+- **Agent bundles and the `ehub` CLI.** A suite can carry an agent block (emoji, instructions, required CLIs) and MCP servers. `ehub bundle` writes an immutable per-harness bundle under `~/.agentic-hub/bundles`, and the app keeps `~/.agentic-hub/bin/ehub` linked to itself. Global suite apply is unchanged.
+
 ## [0.16.5] — 2026-09-08
 
 ### Fixed

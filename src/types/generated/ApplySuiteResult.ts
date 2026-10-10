@@ -7,25 +7,25 @@ import type { SyncRulesResult } from "./SyncRulesResult";
 /**
  * Result of applying a suite to one tool (full reset through the pipeline).
  */
-export type ApplySuiteResult = { applyResult: ApplyResult,
+export type ApplySuiteResult = { applyResult: ApplyResult, 
 /**
  * Managed-block rule sync outcome from the same full-reset transaction.
  */
-ruleSync: SyncRulesResult,
+ruleSync: SyncRulesResult, 
 /**
  * Hook-config sync outcome from the same full-reset transaction.
  */
-hookSync: SyncHooksResult,
+hookSync: SyncHooksResult, 
 /**
  * Suite caps whose source is present (or unqualified) but no scanned item
  * matches — genuinely stale references.
  */
-skippedStale: number,
+skippedStale: number, 
 /**
  * Suite caps whose qualifying source is absent on this machine. Preserved,
  * never deleted; just not applicable to a cross-device clone.
  */
-skippedAbsentSource: number, suite: SuiteDefinition,
+skippedAbsentSource: number, suite: SuiteDefinition, 
 /**
  * Item ids enabled beyond the effective suite after this apply (persisted
  * on the tool binding for the next switch / re-sync).

@@ -641,6 +641,7 @@ mod tests {
             description: None,
             capabilities: vec!["skill:keep".into(), "skill:drop".into()],
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -754,6 +755,7 @@ mod tests {
             description: None,
             capabilities: caps.iter().map(|s| (*s).into()).collect(),
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         }
@@ -1332,6 +1334,7 @@ mod tests {
             description: None,
             capabilities: vec![absent],
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -1362,6 +1365,7 @@ mod tests {
                 source: Some(present),
             }],
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -1430,6 +1434,7 @@ mod tests {
                 source: Some(b_ref),
             }],
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         };

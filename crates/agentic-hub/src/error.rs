@@ -42,6 +42,7 @@ impl From<CoreError> for IpcError {
             CoreError::StateParse(_) => "state_malformed",
             CoreError::SuiteNotFound(_) => "suite_not_found",
             CoreError::SuiteNameConflict(_) => "suite_name_conflict",
+            CoreError::InvalidAgent(_) => "invalid_agent",
             CoreError::InvalidSkillRef(_) => "invalid_skill_ref",
             CoreError::UnknownProvider(_) => "unknown_provider",
             CoreError::SkillCliMissing => "skill_cli_missing",

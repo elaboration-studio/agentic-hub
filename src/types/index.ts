@@ -3,6 +3,7 @@
 // Do not hand-edit files under `generated/`.
 
 export type { AdapterStatus } from "./generated/AdapterStatus";
+export type { AgentSpec } from "./generated/AgentSpec";
 export type { CapabilityItem } from "./generated/CapabilityItem";
 export type { CapabilityKind } from "./generated/CapabilityKind";
 export type { AuthState } from "./generated/AuthState";

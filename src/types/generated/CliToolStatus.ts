@@ -4,7 +4,7 @@ import type { AuthState } from "./AuthState";
 /**
  * Result of probing one tool. Advisory snapshot surfaced in the Tools table.
  */
-export type CliToolStatus = { id: string, installed: boolean, version: string | null, auth: AuthState,
+export type CliToolStatus = { id: string, installed: boolean, version: string | null, auth: AuthState, 
 /**
  * Short human note (e.g. when a probe timed out).
  */

@@ -77,6 +77,7 @@ export const KIND_LABEL: Record<CapabilityKind, string> = {
   rule: "Rules",
   hook: "Hooks",
   command: "Commands",
+  mcp: "MCP · bundle only",
 };
 
 // Current states that are "abnormal" — surfaced as a dot on the toggle.

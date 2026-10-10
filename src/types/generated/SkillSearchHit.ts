@@ -6,35 +6,35 @@
  * URLs: `install_ref` is the `owner/repo` the CLI accepts, `github_url` is the
  * source repo (absent for non-GitHub sources), `page_url` is the skills.sh page.
  */
-export type SkillSearchHit = {
+export type SkillSearchHit = { 
 /**
  * Stable `{source}/{slug}` identifier.
  */
-id: string,
+id: string, 
 /**
  * URL-safe skill slug (the per-skill name within its source).
  */
-skillId: string,
+skillId: string, 
 /**
  * Human-readable name.
  */
-name: string,
+name: string, 
 /**
  * Source repo/provider, e.g. `owner/repo`.
  */
-source: string,
+source: string, 
 /**
  * Total deduplicated install count.
  */
-installs: number,
+installs: number, 
 /**
  * The ref to hand `npx skills add` — the source today.
  */
-installRef: string,
+installRef: string, 
 /**
  * Source repo URL, when the source is a GitHub `owner/repo`.
  */
-githubUrl: string | null,
+githubUrl: string | null, 
 /**
  * The skill's page on skills.sh.
  */

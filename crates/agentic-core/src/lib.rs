@@ -8,8 +8,15 @@
 //! `docs/tech/reference/shared-root-contract.md` for the filesystem contract.
 
 pub mod adapter_registry;
+pub mod agent_spec;
+pub mod agent_version;
 pub mod api;
 pub mod applier;
+pub mod bundle;
+mod bundle_layout;
+pub mod cli;
+#[cfg(unix)]
+pub mod cli_link;
 pub mod cli_tools;
 pub mod client_telemetry;
 pub mod codex_agent;
@@ -20,6 +27,7 @@ pub mod hook_sync;
 pub mod internal_hooks;
 pub mod kiro_hook_sync;
 pub mod managed_copy;
+pub mod mcp;
 pub mod model;
 pub mod open_targets;
 pub mod paths;
@@ -46,6 +54,7 @@ pub mod workspace_target_store;
 pub use adapter_registry::{
     create_workspace_adapter, Layout, ProjectionMode, ResolvedAdapter, WORKSPACE_TOOL_IDS,
 };
+pub use agent_spec::AgentSpec;
 pub use api::{AdapterStatus, InspectResult};
 pub use cli_tools::{
     bundled_catalog, check_tool, merge_catalogs, AuthState, CliTool, CliToolStatus,
