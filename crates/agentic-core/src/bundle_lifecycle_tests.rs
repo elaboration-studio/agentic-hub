@@ -120,6 +120,35 @@ fn gc_deletes_only_stale_sibling_versions() {
 }
 
 #[test]
+fn gc_sweeps_staging_inside_the_current_version_on_reuse() {
+    let f = Fixture::new();
+    let built = f.build(CTO, Harness::Cursor);
+    let version_dir = built.root.parent().unwrap().to_path_buf();
+    let leaked = version_dir.join("claude.tmp-dead");
+    fs::create_dir_all(&leaked).unwrap();
+    set_mtime(&leaked, SystemTime::now() - 8 * DAY);
+
+    // A fresh build of the *same* version (harness not yet built) keeps the
+    // version dir but must sweep the leaked staging dir inside it.
+    f.build(CTO, Harness::Claude);
+    assert!(version_dir.exists(), "current version kept");
+    assert!(!leaked.exists(), "stale staging dir swept");
+}
+
+#[test]
+fn gc_keeps_a_live_builds_own_staging_dir() {
+    let f = Fixture::new();
+    let built = f.build(CTO, Harness::Cursor);
+    let version_dir = built.root.parent().unwrap().to_path_buf();
+    // A staging dir younger than gc_max_age is a build in flight, not a leak.
+    let fresh = version_dir.join("codex.tmp-live");
+    fs::create_dir_all(&fresh).unwrap();
+
+    f.build(CTO, Harness::Claude);
+    assert!(fresh.exists(), "fresh staging dir is not a leak");
+}
+
+#[test]
 fn gc_never_deletes_the_current_version() {
     let f = Fixture::new();
     let current = f.build(CTO, Harness::Cursor).version;

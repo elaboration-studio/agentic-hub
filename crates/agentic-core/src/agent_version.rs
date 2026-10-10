@@ -4,6 +4,7 @@
 //! `docs/tech/modules/agent-bundles.md`.
 
 use std::fs;
+use std::io;
 use std::path::Path;
 
 use serde_json::{json, Value};
@@ -152,9 +153,33 @@ fn hash_dir(h: &mut Sha256, dir: &Path, rel: &str) {
 
 fn hash_file(h: &mut Sha256, path: &Path, rel: &str) {
     frame(h, "file", rel.as_bytes());
-    match fs::read(path) {
-        Ok(bytes) => frame(h, "bytes", &bytes),
-        Err(_) => frame(h, "unreadable", b""),
+    // Stream rather than `fs::read`: a large binary inside a skill dir must
+    // not be held whole in memory on every version computation. The framing
+    // (tag + length + bytes) is identical to `frame(h, "bytes", …)` so the
+    // version for unchanged content does not move.
+    let hashed = fs::metadata(path)
+        .and_then(|meta| {
+            h.update(("bytes".len() as u64).to_be_bytes());
+            h.update(b"bytes");
+            h.update(meta.len().to_be_bytes());
+            fs::File::open(path)
+        })
+        .and_then(|file| io::copy(&mut io::BufReader::new(file), &mut HashWriter(h)));
+    if hashed.is_err() {
+        frame(h, "unreadable", b"");
+    }
+}
+
+/// Feeds every written byte into the hasher; `io::copy` drives it.
+struct HashWriter<'a>(&'a mut Sha256);
+
+impl io::Write for HashWriter<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.update(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 

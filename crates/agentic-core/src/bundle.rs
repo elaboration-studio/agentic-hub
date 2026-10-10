@@ -287,7 +287,38 @@ fn collect_garbage(suite_dir: &Path, current: &str, ctx: &BundleContext<'_>) {
         return;
     };
     for entry in entries.flatten() {
-        if entry.file_name() == current || !entry.file_type().is_ok_and(|t| t.is_dir()) {
+        if entry.file_name() == current {
+            // A crash between staging and publish leaks `<harness>.tmp-*`
+            // inside the current version dir; sweep those by the same age
+            // rule. The version dir itself is never removed.
+            sweep_staging(&entry.path(), ctx);
+            continue;
+        }
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|modified| ctx.now.duration_since(modified).ok())
+            .is_some_and(|age| age > ctx.gc_max_age);
+        if stale {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+/// Remove stale `*.tmp-*` staging dirs a crashed build left in `version_dir`.
+/// A live build's own staging dir is younger than `gc_max_age`, so it stays.
+fn sweep_staging(version_dir: &Path, ctx: &BundleContext<'_>) {
+    let Ok(entries) = fs::read_dir(version_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let is_staging = name.to_str().is_some_and(|n| n.contains(".tmp-"));
+        if !is_staging || !entry.file_type().is_ok_and(|t| t.is_dir()) {
             continue;
         }
         let stale = entry
