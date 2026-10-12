@@ -1,0 +1,19 @@
+docs/tech/reference/ehub-cli-contract.md
+  s_461e6f1b626d87::t_936d0b48a37f7e 6,92-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "9e5a45b20a97c8bb6dc2d2bc90f347c862842ba3",
+  "prompts": {},
+  "sessions": {
+    "s_461e6f1b626d87": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8adf5dba-7a5a-4fcb-b94f-c4003ad2eaa0",
+        "model": "unknown"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    }
+  }
+}
