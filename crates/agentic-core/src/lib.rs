@@ -36,6 +36,7 @@ pub mod reconcile;
 pub mod rule_sync;
 pub mod scaffold;
 pub mod scanner;
+mod skills_list;
 pub mod sessions;
 pub mod settings;
 mod settings_shortcuts;

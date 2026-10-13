@@ -236,6 +236,45 @@ fn bad_id_is_exit_2_before_any_io() {
 }
 
 #[test]
+fn skills_list_rejects_a_relative_or_missing_workspace_before_io() {
+    let h = home();
+    for words in [
+        &[
+            "skills",
+            "list",
+            "--harness",
+            "cursor",
+            "--workspace",
+            "repo",
+        ][..],
+        &[
+            "skills",
+            "list",
+            "--harness",
+            "cursor",
+            "--workspace",
+            "/no/such/ecanvas-workspace",
+        ][..],
+        &["skills", "list"][..],
+        &["agents", "list", "--workspace", "/tmp"][..],
+    ] {
+        let (code, v, loaded) = run_in(h.path(), words);
+        assert_eq!(code, 2, "{words:?} {v}");
+        assert_eq!(error_code(&v), "INVALID_ARGUMENT", "{words:?}");
+        assert!(!loaded, "{words:?}");
+    }
+}
+
+#[test]
+fn skills_list_rejects_an_unknown_harness_before_io() {
+    let h = home();
+    let (code, v, loaded) = run_in(h.path(), &["skills", "list", "--harness", "kiro"]);
+    assert_eq!(code, 4);
+    assert_eq!(error_code(&v), "UNSUPPORTED_HARNESS");
+    assert!(!loaded);
+}
+
+#[test]
 fn malformed_invocations_are_exit_2() {
     let h = home();
     for words in [

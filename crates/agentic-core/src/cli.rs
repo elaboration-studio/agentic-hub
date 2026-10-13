@@ -17,6 +17,7 @@ use crate::error::CoreError;
 use crate::model::{CapabilityItem, CapabilityKind, SuiteDefinition};
 use crate::scanner;
 use crate::settings::Settings;
+use crate::skills_list;
 use crate::suite_store::SuiteStore;
 
 const SCHEMA: u32 = 1;
@@ -114,6 +115,10 @@ enum Command {
     AgentsList,
     AgentsShow(String),
     Bundle(String, Harness),
+    SkillsList {
+        harness: Harness,
+        workspaces: Vec<PathBuf>,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -156,6 +161,7 @@ fn invalid(message: impl Into<String>) -> CliError {
 fn parse(args: &[String]) -> Result<Command, CliError> {
     let mut words: Vec<&str> = Vec::new();
     let mut harness: Option<&str> = None;
+    let mut workspaces: Vec<PathBuf> = Vec::new();
     let mut iter = args.iter().map(String::as_str);
     while let Some(arg) = iter.next() {
         if arg == "--json" {
@@ -168,11 +174,24 @@ fn parse(args: &[String]) -> Result<Command, CliError> {
             );
         } else if let Some(value) = arg.strip_prefix("--harness=") {
             harness = Some(value);
+        } else if arg == "--workspace" {
+            workspaces.push(valid_workspace(
+                iter.next()
+                    .ok_or_else(|| invalid("--workspace needs a value"))?,
+            )?);
+        } else if let Some(value) = arg.strip_prefix("--workspace=") {
+            workspaces.push(valid_workspace(value)?);
         } else if arg.starts_with('-') {
             return Err(invalid(format!("Unknown flag {arg}")));
         } else {
             words.push(arg);
         }
+    }
+    if workspaces.len() > 16 {
+        return Err(invalid("--workspace accepts at most 16 directories"));
+    }
+    if words.as_slice() != ["skills", "list"] && !workspaces.is_empty() {
+        return Err(invalid("--workspace is only valid for skills list"));
     }
     let command = match words.as_slice() {
         ["version"] => Command::Version,
@@ -187,13 +206,36 @@ fn parse(args: &[String]) -> Result<Command, CliError> {
                 Harness::parse(name).ok_or_else(|| CliError::UnsupportedHarness(name.into()))?;
             Command::Bundle(id, harness)
         }
+        ["skills", "list"] => {
+            let name = harness
+                .take()
+                .ok_or_else(|| invalid("skills list needs --harness <cursor|claude|codex|grok>"))?;
+            let harness =
+                Harness::parse(name).ok_or_else(|| CliError::UnsupportedHarness(name.into()))?;
+            Command::SkillsList {
+                harness,
+                workspaces,
+            }
+        }
         [] => return Err(invalid("Missing command")),
         _ => return Err(invalid(format!("Unknown command: {}", words.join(" ")))),
     };
     if harness.is_some() {
-        return Err(invalid("--harness is only valid for bundle"));
+        return Err(invalid(
+            "--harness is only valid for bundle and skills list",
+        ));
     }
     Ok(command)
+}
+
+fn valid_workspace(value: &str) -> Result<PathBuf, CliError> {
+    let path = PathBuf::from(value);
+    if value.contains('\0') || !path.is_absolute() || !path.is_dir() {
+        return Err(invalid(format!(
+            "--workspace must be an absolute existing directory"
+        )));
+    }
+    Ok(path)
 }
 
 fn valid_id(id: &str) -> Result<String, CliError> {
@@ -205,6 +247,13 @@ fn valid_id(id: &str) -> Result<String, CliError> {
 }
 
 fn execute(command: Command, ctx: &CliContext) -> Result<Value, CliError> {
+    if let Command::SkillsList {
+        harness,
+        workspaces,
+    } = &command
+    {
+        return Ok(skills_list::document(&ctx.settings, *harness, workspaces));
+    }
     let suites = SuiteStore::with_path(ctx.settings.resolved_suites_path())
         .list()
         .map_err(|e| CliError::Internal(e.to_string()))?;
@@ -229,6 +278,7 @@ fn execute(command: Command, ctx: &CliContext) -> Result<Value, CliError> {
             };
             Ok(json!({ "schema": SCHEMA, "agent": detail }))
         }
+        Command::SkillsList { .. } => unreachable!("skills list returns before the suite load"),
         Command::Bundle(id, harness) => {
             let bctx = BundleContext {
                 bundles_root: ctx.bundles_root.clone(),
