@@ -3,7 +3,7 @@
 Status: Accepted
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-10-10
+Last Updated: 2026-10-13
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [ARCHITECTURE.projection.md](../../../ARCHITECTURE.projection.md)
 Related Docs: [docs/tech/modules/agent-bundles.md](../modules/agent-bundles.md), [docs/features/agent-bundles.md](../../features/agent-bundles.md), eCanvas `docs/decisions/ADR-057-ehub-agent-profiles.md`
 
@@ -88,6 +88,31 @@ Builds (or reuses) the immutable bundle for the suite's current version and that
 - `pluginDir` is null in prompt mode. `instructionsFile` is null when the agent has no instructions and no rules.
 - Every path in the manifest is absolute and inside `root`.
 - `mcpServers` never carries secret values — only the names of environment variables the server reads.
+
+### `ehub skills list --harness <cursor|claude|codex|grok> [--workspace <abs dir>]…`
+
+Lists skills the harness can see. Order is project, then eHub sources, then the harness's installed skills. The same canonical `SKILL.md` is emitted once, from the earlier scope. At most 2000 rows.
+
+```json
+{
+  "schema": 1,
+  "skills": [
+    {
+      "name": "tdd",
+      "description": "Red-green-refactor",
+      "path": "/Users/me/repo/.cursor/skills/tdd/SKILL.md",
+      "scope": "project",
+      "sourceLabel": "Project · repo",
+      "workspace": "/Users/me/repo"
+    }
+  ]
+}
+```
+
+- `scope` is `project` (that `--workspace`, this harness's project dirs only), `hub` (`scan_all` skills), or `tool` (`scan_installed_tools` for this harness). `cursor`, `codex`, and `grok` also include `~/.agents` skills, labeled `.agents`. `claude` does not.
+- `description` is the `description:` line in the first 16 KiB of `SKILL.md` frontmatter, whitespace collapsed, at most 280 characters. Otherwise null.
+- `path` is the canonical absolute `SKILL.md`. `workspace` is set for `project` and null otherwise.
+- Up to 16 `--workspace` values. Each must be an absolute path to an existing directory, or the command exits `INVALID_ARGUMENT`. `--workspace` is only valid on `skills list`.
 
 ## Errors
 
