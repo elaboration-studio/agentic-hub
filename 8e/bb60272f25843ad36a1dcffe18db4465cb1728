@@ -1,0 +1,34 @@
+crates/agentic-core/src/cli_tests.rs
+  s_1424fc8a0006a9::t_2fe7f0e600b4f7 238-263,265-266,276
+  s_1424fc8a0006a9::t_93e36d716df530 264,267-275
+crates/agentic-core/src/skills_list.rs
+  s_1424fc8a0006a9::t_d100b97dc520a2 1-320
+  s_1424fc8a0006a9::t_5d5e0b353cab50 321-334
+crates/agentic-core/src/cli.rs
+  s_1424fc8a0006a9::t_909035f34c91b6 20
+  s_1424fc8a0006a9::t_e49fdd273dea13 240
+  s_1424fc8a0006a9::t_c018469f379e36 118
+  s_1424fc8a0006a9::t_c854fcdc25c5ad 177-180,192,209-219,224-226,238
+  s_1424fc8a0006a9::t_74747e4acece26 119-121,164,181-183,190-191,193-195,231-237,239,250-256,281
+crates/agentic-core/src/lib.rs
+  s_1424fc8a0006a9::t_06e0733c4f4d55 39
+docs/tech/reference/ehub-cli-contract.md
+  s_1424fc8a0006a9::t_a6e8804499c7f6 92-116
+  s_1424fc8a0006a9::t_dfc3fd0b42987a 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "8ebb60272f25843ad36a1dcffe18db4465cb1728",
+  "prompts": {},
+  "sessions": {
+    "s_1424fc8a0006a9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4895c815-27a8-4271-9cb4-96776cc88651",
+        "model": "grok-4.7"
+      },
+      "human_author": "Arno Ye <arno.ye@zoom.us>"
+    }
+  }
+}
