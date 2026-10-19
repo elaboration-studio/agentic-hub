@@ -27,7 +27,7 @@ mod schema;
 
 use queries::*;
 
-const CURRENT_SCHEMA: u32 = 2;
+const CURRENT_SCHEMA: u32 = 3;
 const TERMINAL_EVENTS: [&str; 6] = [
     "PostToolUse",
     "PostToolUseFailure",
@@ -86,6 +86,31 @@ pub struct UsageEventInput {
     pub dedupe_hash: Option<String>,
     #[serde(default)]
     pub metadata: Value,
+    /// eCanvas chat run id, set by the collector from a trusted header. Never taken from the hook body.
+    #[serde(default)]
+    pub external_run_id: Option<String>,
+    /// eCanvas task id, when the run serves one.
+    #[serde(default)]
+    pub external_task_id: Option<String>,
+    /// eHub suite ref (`cto`) for a hub run. Absent for a device agent.
+    #[serde(default)]
+    pub agent_ref: Option<String>,
+    /// eHub suite version, 12 hex characters.
+    #[serde(default)]
+    pub agent_version: Option<String>,
+}
+
+/// One eCanvas local run announced to the tracker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsageRunScope {
+    pub run_id: String,
+    pub task_id: Option<String>,
+    pub source_tool: String,
+    pub agent_ref: Option<String>,
+    pub agent_version: Option<String>,
+    /// `tracked` or `untracked`.
+    pub status: String,
+    pub reason: Option<String>,
 }
 
 /// Scope-aware identity used to map persisted rows back to Manager row ids.
@@ -240,6 +265,73 @@ impl UsageStore {
         self.insert_event(&input, items)
     }
 
+    /// Record that an eCanvas local run asked to be tracked. A repeat is a no-op.
+    pub fn record_run_scope(&self, scope: &UsageRunScope) -> Result<()> {
+        let conn = self.connect()?;
+        conn.execute(
+            r#"
+            INSERT OR IGNORE INTO usage_run_scopes (
+                run_id, task_id, source_tool, agent_ref, agent_version,
+                started_at, status, reason
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+            params![
+                scope.run_id.trim(),
+                trimmed(scope.task_id.as_deref()),
+                scope.source_tool.trim(),
+                trimmed(scope.agent_ref.as_deref()),
+                trimmed(scope.agent_version.as_deref()),
+                now_iso8601(),
+                scope.status.trim(),
+                trimmed(scope.reason.as_deref()),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn run_scope(&self, run_id: &str) -> Result<Option<UsageRunScope>> {
+        let conn = self.connect()?;
+        conn.query_row(
+            r#"
+            SELECT run_id, task_id, source_tool, agent_ref, agent_version, status, reason
+            FROM usage_run_scopes
+            WHERE run_id = ?1
+            "#,
+            params![run_id],
+            |row| {
+                Ok(UsageRunScope {
+                    run_id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    source_tool: row.get(2)?,
+                    agent_ref: row.get(3)?,
+                    agent_version: row.get(4)?,
+                    status: row.get(5)?,
+                    reason: row.get(6)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
+    /// Skill names stored for one eCanvas run, in insertion order.
+    pub fn skill_names_for_run(&self, run_id: &str) -> Result<Vec<String>> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT skill_name
+            FROM usage_events
+            WHERE external_run_id = ?1
+              AND skill_name IS NOT NULL
+            ORDER BY timestamp, event_id
+            "#,
+        )?;
+        let rows = stmt.query_map(params![run_id], |row| row.get::<_, String>(0))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
     pub fn has_migration(&self, version: u32) -> Result<bool> {
         let conn = self.connect()?;
         let found: Option<u32> = conn
@@ -293,11 +385,13 @@ fn insert_event_row(
             skill_name, capability_id, capability_scope, workspace_root,
             capability_relative_path, invocation_key, attribution_source,
             attribution_rank, workspace, project, success, duration_ms,
-            dedupe_hash, metadata_json
+            dedupe_hash, metadata_json, external_run_id, external_task_id,
+            agent_ref, agent_version
         )
         VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-            ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19
+            ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19,
+            ?20, ?21, ?22, ?23
         )
         "#,
         params![
@@ -320,6 +414,10 @@ fn insert_event_row(
             input.duration_ms.map(|value| value as i64),
             dedupe_hash,
             metadata_json,
+            trimmed(input.external_run_id.as_deref()),
+            trimmed(input.external_task_id.as_deref()),
+            trimmed(input.agent_ref.as_deref()),
+            trimmed(input.agent_version.as_deref()),
         ],
     )?;
 
@@ -332,7 +430,11 @@ fn insert_event_row(
                 success = ?3,
                 duration_ms = COALESCE(?4, duration_ms),
                 attribution_source = ?5,
-                attribution_rank = ?6
+                attribution_rank = ?6,
+                external_run_id = COALESCE(external_run_id, ?8),
+                external_task_id = COALESCE(external_task_id, ?9),
+                agent_ref = COALESCE(agent_ref, ?10),
+                agent_version = COALESCE(agent_version, ?11)
             WHERE invocation_key = ?7
               AND attribution_rank < ?6
             "#,
@@ -344,6 +446,10 @@ fn insert_event_row(
                 attribution_source,
                 i64::from(input.attribution_rank),
                 invocation_key,
+                trimmed(input.external_run_id.as_deref()),
+                trimmed(input.external_task_id.as_deref()),
+                trimmed(input.agent_ref.as_deref()),
+                trimmed(input.agent_version.as_deref()),
             ],
         )?;
     }

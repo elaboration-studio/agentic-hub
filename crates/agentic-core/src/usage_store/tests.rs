@@ -93,6 +93,59 @@ fn ensure_ready_creates_schema_migration() {
 }
 
 #[test]
+fn run_scope_links_skill_events_to_an_ecanvas_run() {
+    let (_dir, store) = store();
+    store
+        .record_run_scope(&UsageRunScope {
+            run_id: "cmrun123".to_string(),
+            task_id: Some("cmtask123".to_string()),
+            source_tool: "grok".to_string(),
+            agent_ref: Some("cto".to_string()),
+            agent_version: Some("0123456789ab".to_string()),
+            status: "tracked".to_string(),
+            reason: None,
+        })
+        .unwrap();
+    store
+        .record_run_scope(&UsageRunScope {
+            run_id: "cmrun123".to_string(),
+            task_id: None,
+            source_tool: "grok".to_string(),
+            agent_ref: None,
+            agent_version: None,
+            status: "untracked".to_string(),
+            reason: Some("hook-not-installed".to_string()),
+        })
+        .unwrap();
+
+    let scope = store.run_scope("cmrun123").unwrap().unwrap();
+    assert_eq!(scope.status, "tracked");
+    assert_eq!(scope.agent_ref.as_deref(), Some("cto"));
+    assert_eq!(scope.task_id.as_deref(), Some("cmtask123"));
+
+    let mut traced = event("feature-dev", "hash-run");
+    traced.external_run_id = Some("cmrun123".to_string());
+    traced.external_task_id = Some("cmtask123".to_string());
+    traced.agent_ref = Some("cto".to_string());
+    traced.agent_version = Some("0123456789ab".to_string());
+    store
+        .insert_events(
+            &[traced],
+            &[skill(
+                "skill:cto/feature-dev",
+                "feature-dev",
+                "cto/feature-dev/SKILL.md",
+            )],
+        )
+        .unwrap();
+
+    assert_eq!(
+        store.skill_names_for_run("cmrun123").unwrap(),
+        vec!["feature-dev".to_string()]
+    );
+}
+
+#[test]
 fn migration_from_v1_adds_scoped_identity_without_losing_history() {
     let (dir, store) = store();
     let conn = Connection::open(dir.path().join("trace.db")).unwrap();

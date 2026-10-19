@@ -100,8 +100,10 @@ fn ensure_tracer_script(_settings: &Settings) -> Result<(), String> {
     }
     // Buffer stdin, POST to the collector, and on failure spool for later drain.
     // Always exit 0 so agentic tools are never blocked by tracing.
-    // Spool layout MUST match `spool.rs`: `{id}.meta` = `token\nsource_tool\n`,
-    // `{id}.body` = raw JSON payload bytes under `~/.agentic-hub/usage/spool/`.
+    // Spool layout MUST match `spool.rs`: `{id}.meta` is
+    // `token\nsource_tool\nrun_id\ntask_id\nagent_ref\nagent_version\n`
+    // (the last four lines may be empty). `{id}.body` is the raw JSON payload.
+    // Identity comes only from the process environment eCanvas sets on the CLI.
     fs::write(
         &path,
         r#"#!/bin/sh
@@ -109,17 +111,49 @@ url="$1"
 token="$2"
 source_tool="$3"
 payload=$(cat)
+safe_id() {
+  v="$1"
+  case "$v" in
+    *[!A-Za-z0-9_-]*|"") printf '' ; return ;;
+  esac
+  if [ "${#v}" -gt 128 ]; then printf '' ; return ; fi
+  printf '%s' "$v"
+}
+safe_ref() {
+  v="$1"
+  case "$v" in
+    *[!A-Za-z0-9._-]*|"") printf '' ; return ;;
+  esac
+  if [ "${#v}" -gt 64 ]; then printf '' ; return ; fi
+  printf '%s' "$v"
+}
+safe_version() {
+  v="$1"
+  case "$v" in
+    *[!0-9a-fA-F]*|"") printf '' ; return ;;
+  esac
+  if [ "${#v}" -ne 12 ]; then printf '' ; return ; fi
+  printf '%s' "$v"
+}
+run_id=$(safe_id "${AGENTIC_HUB_TRACE_RUN_ID:-}")
+task_id=$(safe_id "${AGENTIC_HUB_TRACE_TASK_ID:-}")
+agent_ref=$(safe_ref "${AGENTIC_HUB_TRACE_AGENT_REF:-}")
+agent_version=$(safe_version "${AGENTIC_HUB_TRACE_AGENT_VERSION:-}")
 if printf '%s' "$payload" | /usr/bin/curl -fsS --max-time 1.0 \
   -H "content-type: application/json" \
   -H "x-agentic-hub-token: ${token}" \
   -H "x-agentic-hub-source-tool: ${source_tool}" \
+  -H "x-agentic-hub-run-id: ${run_id}" \
+  -H "x-agentic-hub-task-id: ${task_id}" \
+  -H "x-agentic-hub-agent-ref: ${agent_ref}" \
+  -H "x-agentic-hub-agent-version: ${agent_version}" \
   --data-binary @- "${url}" >/dev/null 2>&1; then
   exit 0
 fi
 spool_dir="${HOME}/.agentic-hub/usage/spool"
 mkdir -p "${spool_dir}" 2>/dev/null || exit 0
 id="${source_tool}-$(date +%s)-$$"
-printf '%s\n%s\n' "$token" "$source_tool" > "${spool_dir}/${id}.meta" 2>/dev/null || exit 0
+printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$token" "$source_tool" "$run_id" "$task_id" "$agent_ref" "$agent_version" > "${spool_dir}/${id}.meta" 2>/dev/null || exit 0
 printf '%s' "$payload" > "${spool_dir}/${id}.body" 2>/dev/null || rm -f "${spool_dir}/${id}.meta"
 exit 0
 "#,

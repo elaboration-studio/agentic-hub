@@ -32,7 +32,8 @@ pub fn ensure_spool_dir() -> io::Result<PathBuf> {
 /// Persist a failed hook delivery for later drain.
 ///
 /// Layout per event (also written by `usage-tracer.sh` on curl failure):
-/// - `{id}.meta` — `token\nsource_tool\n`
+/// - `{id}.meta` — `token\nsource_tool\n` plus optional
+///   `run_id\ntask_id\nagent_ref\nagent_version\n`
 /// - `{id}.body` — raw JSON payload bytes
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn enqueue_failed_delivery(
@@ -113,6 +114,16 @@ fn process_spool_entry(
     let mut lines = meta.lines();
     let token = lines.next().unwrap_or_default();
     let source_tool = lines.next().unwrap_or_default();
+    let run_id = blank_to_none(lines.next());
+    let task_id = blank_to_none(lines.next());
+    let agent_ref = blank_to_none(lines.next());
+    let agent_version = blank_to_none(lines.next());
+    let identity = super::spool_identity(
+        run_id.as_deref(),
+        task_id.as_deref(),
+        agent_ref.as_deref(),
+        agent_version.as_deref(),
+    );
     if token != expected_token {
         // Stale after token rotation — discard without persisting.
         let _ = fs::remove_file(body_path);
@@ -126,7 +137,8 @@ fn process_spool_entry(
     }
     let body = fs::read(body_path).map_err(|error| error.to_string())?;
     let raw: Value = serde_json::from_slice(&body).map_err(|error| error.to_string())?;
-    let batch = attribution.normalize(&raw, source_tool);
+    let mut batch = attribution.normalize(&raw, source_tool);
+    super::apply_run_identity(&mut batch, &identity);
     let attributed = attribute_batch(batch, settings, source_tool);
     store
         .insert_events(&attributed.events, &attributed.catalog_items)
@@ -137,6 +149,15 @@ fn process_spool_entry(
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
+fn blank_to_none(value: Option<&str>) -> Option<String> {
+    let value = value.unwrap_or("").trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
 fn unique_spool_id(source_tool: &str) -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -224,6 +245,61 @@ mod tests {
             assert!(!stale_body.exists());
             assert!(!stale_body.with_extension("meta").exists());
             assert_eq!(store.event_count().unwrap(), 1);
+            let _ = fs::remove_dir_all(&db_dir);
+        });
+    }
+
+    #[test]
+    fn drain_stamps_validated_run_identity_and_drops_a_bad_line() {
+        with_isolated_spool(|dir| {
+            let mut settings = Settings::default();
+            settings.usage_tracing.collector_token = "live-token".to_string();
+            let attribution = AttributionState::default();
+            let db_dir = std::env::temp_dir()
+                .join(format!("agentic-hub-spool-identity-{}", std::process::id()));
+            let _ = fs::create_dir_all(&db_dir);
+            let store = UsageStore::with_path(db_dir.join("trace.db"));
+            store.ensure_ready().unwrap();
+            fs::create_dir_all(dir).unwrap();
+            let skill = json!({
+                "event_type": "postToolUse",
+                "tool_name": "Skill",
+                "tool_input": { "skill": "spool-run-skill" }
+            });
+            fs::write(
+                dir.join("cursor-identity.meta"),
+                "live-token\ncursor\ncmrun123\ncmtask123\ncto\n0123456789AB\n",
+            )
+            .unwrap();
+            fs::write(
+                dir.join("cursor-identity.body"),
+                serde_json::to_vec(&skill).unwrap(),
+            )
+            .unwrap();
+            let bad = json!({
+                "event_type": "postToolUse",
+                "tool_name": "Skill",
+                "tool_input": { "skill": "spool-bad-skill" }
+            });
+            fs::write(
+                dir.join("cursor-bad.meta"),
+                "live-token\ncursor\nbad run\n\n\n\n",
+            )
+            .unwrap();
+            fs::write(
+                dir.join("cursor-bad.body"),
+                serde_json::to_vec(&bad).unwrap(),
+            )
+            .unwrap();
+
+            let drained = drain_spool_into(&settings, &attribution, &store).expect("drain");
+
+            assert_eq!(drained, 2);
+            assert_eq!(
+                store.skill_names_for_run("cmrun123").unwrap(),
+                vec!["spool-run-skill".to_string()]
+            );
+            assert!(store.skill_names_for_run("bad run").unwrap().is_empty());
             let _ = fs::remove_dir_all(&db_dir);
         });
     }

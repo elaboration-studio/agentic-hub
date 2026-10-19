@@ -15,8 +15,8 @@ use agentic_core::model::{
 use agentic_core::settings::Settings;
 use agentic_core::{
     usage_tracer_enabled, usage_tracer_hook_dir, usage_tracer_hook_id, usage_tracer_item,
-    usage_tracer_manifest, usage_tracer_root, HookManifest, UsageStore, USAGE_TRACER_SCRIPT,
-    USAGE_TRACER_TOOLS,
+    usage_tracer_manifest, usage_tracer_root, HookManifest, UsageRunScope, UsageStore,
+    USAGE_TRACER_SCRIPT, USAGE_TRACER_TOOLS,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -33,7 +33,12 @@ const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 256 * 1024;
 const TOKEN_HEADER: &str = "x-agentic-hub-token";
 const SOURCE_TOOL_HEADER: &str = "x-agentic-hub-source-tool";
+const RUN_ID_HEADER: &str = "x-agentic-hub-run-id";
+const TASK_ID_HEADER: &str = "x-agentic-hub-task-id";
+const AGENT_REF_HEADER: &str = "x-agentic-hub-agent-ref";
+const AGENT_VERSION_HEADER: &str = "x-agentic-hub-agent-version";
 const HEALTH_PATH: &str = "/health";
+const RUNS_PATH: &str = "/runs";
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(1);
 const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const HEALTH_RECOVERY_ATTEMPTS: u8 = 3;
@@ -395,6 +400,17 @@ async fn handle_stream(
         let (status, body) = handle_health_request(&request, token.as_str());
         return write_response(&mut stream, status, body).await;
     }
+    if request.method == "POST" && request.path == RUNS_PATH {
+        let body = handle_run_announce(&request, token.as_str());
+        let status = if body == "unauthorized" {
+            401
+        } else if body.starts_with('{') {
+            202
+        } else {
+            400
+        };
+        return write_response(&mut stream, status, &body).await;
+    }
     if request.method != "POST" || request.path != "/events" {
         write_response(&mut stream, 404, "not found").await?;
         return Ok(());
@@ -402,6 +418,181 @@ async fn handle_stream(
     let (status, body) =
         handle_request_with_persist(request, token.as_str(), &attribution, persist_event_batch);
     write_response(&mut stream, status, body).await
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct RunIdentity {
+    run_id: Option<String>,
+    task_id: Option<String>,
+    agent_ref: Option<String>,
+    agent_version: Option<String>,
+}
+
+fn header_value<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
+    let value = headers.get(name).map(String::as_str).unwrap_or("").trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn allow_token(value: &str, min: usize, max: usize, extra: fn(char) -> bool) -> Option<String> {
+    if value.len() < min || value.len() > max {
+        return None;
+    }
+    if value.chars().all(extra) {
+        Some(value.to_string())
+    } else {
+        None
+    }
+}
+
+fn id_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'
+}
+
+fn ref_char(ch: char) -> bool {
+    id_char(ch) || ch == '.'
+}
+
+fn parse_optional_id(value: Option<&str>) -> Result<Option<String>, ()> {
+    match value {
+        None => Ok(None),
+        Some(value) => allow_token(value, 1, 128, id_char).ok_or(()).map(Some),
+    }
+}
+
+fn parse_optional_ref(value: Option<&str>) -> Result<Option<String>, ()> {
+    match value {
+        None => Ok(None),
+        Some(value) => allow_token(value, 1, 64, ref_char).ok_or(()).map(Some),
+    }
+}
+
+fn parse_optional_version(value: Option<&str>) -> Result<Option<String>, ()> {
+    match value {
+        None => Ok(None),
+        Some(value) if value.len() == 12 && value.chars().all(|ch| ch.is_ascii_hexdigit()) => {
+            Ok(Some(value.to_ascii_lowercase()))
+        }
+        Some(_) => Err(()),
+    }
+}
+
+fn identity_from_headers(headers: &HashMap<String, String>) -> Result<RunIdentity, ()> {
+    Ok(RunIdentity {
+        run_id: parse_optional_id(header_value(headers, RUN_ID_HEADER))?,
+        task_id: parse_optional_id(header_value(headers, TASK_ID_HEADER))?,
+        agent_ref: parse_optional_ref(header_value(headers, AGENT_REF_HEADER))?,
+        agent_version: parse_optional_version(header_value(headers, AGENT_VERSION_HEADER))?,
+    })
+}
+
+/// Spool meta is written by the tracer script. A bad line is dropped so the
+/// skill event still lands. The hook body never supplies these fields.
+fn spool_identity(
+    run_id: Option<&str>,
+    task_id: Option<&str>,
+    agent_ref: Option<&str>,
+    agent_version: Option<&str>,
+) -> RunIdentity {
+    RunIdentity {
+        run_id: parse_optional_id(run_id).ok().flatten(),
+        task_id: parse_optional_id(task_id).ok().flatten(),
+        agent_ref: parse_optional_ref(agent_ref).ok().flatten(),
+        agent_version: parse_optional_version(agent_version).ok().flatten(),
+    }
+}
+
+fn apply_run_identity(batch: &mut NormalizedBatch, identity: &RunIdentity) {
+    for occurrence in &mut batch.occurrences {
+        occurrence
+            .event
+            .external_run_id
+            .clone_from(&identity.run_id);
+        occurrence
+            .event
+            .external_task_id
+            .clone_from(&identity.task_id);
+        occurrence.event.agent_ref.clone_from(&identity.agent_ref);
+        occurrence
+            .event
+            .agent_version
+            .clone_from(&identity.agent_version);
+    }
+}
+
+fn tool_id_for_source(source_tool: &str) -> Option<ToolId> {
+    ToolId::ALL
+        .into_iter()
+        .find(|tool| tool.as_str() == source_tool)
+}
+
+fn handle_run_announce(request: &HttpRequest, token: &str) -> String {
+    if request.headers.get(TOKEN_HEADER).map(String::as_str) != Some(token) {
+        return "unauthorized".to_string();
+    }
+    let raw: Value = match serde_json::from_slice(&request.body) {
+        Ok(value) => value,
+        Err(_) => return "invalid json".to_string(),
+    };
+    let source_tool = raw.get("sourceTool").and_then(Value::as_str).unwrap_or("");
+    if !is_traced_source_tool(source_tool) {
+        return "unknown source tool".to_string();
+    }
+    let run_id = match parse_optional_id(raw.get("runId").and_then(Value::as_str)) {
+        Ok(Some(run_id)) => run_id,
+        _ => return "invalid run id".to_string(),
+    };
+    let task_id = match parse_optional_id(raw.get("taskId").and_then(Value::as_str)) {
+        Ok(task_id) => task_id,
+        Err(()) => return "invalid task id".to_string(),
+    };
+    let agent_ref = match parse_optional_ref(raw.get("agentRef").and_then(Value::as_str)) {
+        Ok(agent_ref) => agent_ref,
+        Err(()) => return "invalid agent ref".to_string(),
+    };
+    let agent_version =
+        match parse_optional_version(raw.get("agentVersion").and_then(Value::as_str)) {
+            Ok(agent_version) => agent_version,
+            Err(()) => return "invalid agent version".to_string(),
+        };
+    let settings = match Settings::load() {
+        Ok(settings) => settings,
+        Err(_) => {
+            return json!({ "tracked": false, "reason": "tracing-disabled" }).to_string();
+        }
+    };
+    let installed = tool_id_for_source(source_tool)
+        .is_some_and(|tool| hooks::tracer_hook_installed(&settings, tool));
+    let (status, reason) = if !settings.usage_tracing.enabled {
+        ("untracked", Some("tracing-disabled"))
+    } else if !installed {
+        ("untracked", Some("hook-not-installed"))
+    } else {
+        ("tracked", None)
+    };
+    // A failed insert must not answer tracked. eCanvas treats any non-202 as
+    // tracker-unreachable and shows that on the run log.
+    if UsageStore::new()
+        .record_run_scope(&UsageRunScope {
+            run_id,
+            task_id,
+            source_tool: source_tool.to_string(),
+            agent_ref,
+            agent_version,
+            status: status.to_string(),
+            reason: reason.map(str::to_string),
+        })
+        .is_err()
+    {
+        return "store unavailable".to_string();
+    }
+    match reason {
+        Some(reason) => json!({ "tracked": false, "reason": reason }).to_string(),
+        None => json!({ "tracked": true }).to_string(),
+    }
 }
 
 fn handle_health_request(request: &HttpRequest, token: &str) -> (u16, &'static str) {
@@ -464,7 +655,12 @@ fn handle_request_with_persist(
     if !is_traced_source_tool(source_tool) {
         return (400, "unknown source tool");
     }
-    let batch = attribution.normalize(&raw, source_tool);
+    let identity = match identity_from_headers(&request.headers) {
+        Ok(identity) => identity,
+        Err(()) => return (400, "invalid run identity"),
+    };
+    let mut batch = attribution.normalize(&raw, source_tool);
+    apply_run_identity(&mut batch, &identity);
     let _ = persist(batch, source_tool);
     (202, "accepted")
 }

@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-08-25
+Last Updated: 2026-10-20
 Depends On: [PRODUCT.md](../../PRODUCT.md), [ARCHITECTURE.md](../../ARCHITECTURE.md), [DESIGN.md](../../DESIGN.md)
 Related Docs: [docs/tech/modules/local-usage-tracing.md](../tech/modules/local-usage-tracing.md), [docs/features/hooks-projection.md](./hooks-projection.md)
 
@@ -27,6 +27,10 @@ which capabilities are worth maintaining.
 - Local usage tracing, enabled by default (opt-out via Config).
 - Local SQLite persistence under `~/.agentic-hub/usage/trace.db`.
 - Loopback-only event collection from managed tracer hooks.
+- An eCanvas local run can name itself to the collector (`POST /runs`) so
+  skill events carry that run id, task id, and eHub agent id@version. eCanvas
+  stores the tracked/untracked result only. See the module doc. Cloud agents
+  cannot reach the loopback collector.
 - Skill usage counts joined onto global and repository-local Manager rows.
 - Repository skill discovery for active Cursor, Claude Code, Codex, Kiro, and
   Grok Build workspaces, including repositories that are not saved in Agentic Hub.

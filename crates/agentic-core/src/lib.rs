@@ -91,7 +91,7 @@ pub use suite_binding_store::SuiteBindingStore;
 pub use suite_store::{SuiteCreateInput, SuiteStore, SuiteUpdateInput};
 pub use usage_store::{
     default_path as usage_store_path, hash_usage_correlation, UnresolvedUsageReference,
-    UsageCapabilityQuery, UsageEventInput, UsageStore, UsageToolDiagnosticSummary,
+    UsageCapabilityQuery, UsageEventInput, UsageRunScope, UsageStore, UsageToolDiagnosticSummary,
 };
 pub use workspace_inventory::{
     scan_installed_tools, scan_workspace, InstalledToolInventory, LockedSkill, WorkspaceInventory,
