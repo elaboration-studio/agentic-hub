@@ -231,9 +231,9 @@ fn parse(args: &[String]) -> Result<Command, CliError> {
 fn valid_workspace(value: &str) -> Result<PathBuf, CliError> {
     let path = PathBuf::from(value);
     if value.contains('\0') || !path.is_absolute() || !path.is_dir() {
-        return Err(invalid(format!(
-            "--workspace must be an absolute existing directory"
-        )));
+        return Err(invalid(
+            "--workspace must be an absolute existing directory",
+        ));
     }
     Ok(path)
 }

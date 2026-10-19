@@ -5,18 +5,18 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.17.0] — 2026-10-10
+## [0.18.0] — 2026-10-19
 
 ### Highlights
 
-- **Agent bundles** let a suite ship instructions, required CLIs, and MCP servers as an immutable per-harness bundle under `~/.agentic-hub/bundles`.
-- **`ehub` CLI** — the app links `~/.agentic-hub/bin/ehub` to itself; use `ehub bundle` to build and refresh bundles for eCanvas eHub runs.
+- **Discover skills for a specific harness.** Use `ehub skills list --harness <cursor|claude|codex|grok>` to get a JSON inventory of the skills available to that CLI.
+- Add `--workspace <absolute-directory>` to include project skills alongside eHub and installed tool skills.
 
 ### Added
 
-- Suite agent block (emoji, instructions, required CLIs) and MCP server definitions flow into versioned bundle directories.
-- Streaming hash + staging GC for bundle writes.
+- Skill descriptions, canonical paths, and source scopes in the CLI inventory, with duplicate paths removed.
+- Validation of harness names and workspace directories before listing skills.
 
 ### Pair with eCanvas
 
-- eCanvas **0.8.5** eHub agent profiles expect this build (or newer) on the Mac that mounts bundles.
+- Keeps the agent-bundle and `ehub` CLI contract introduced in 0.17.0, and adds skill discovery for local agent runs.

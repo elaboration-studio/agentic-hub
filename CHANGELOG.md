@@ -8,6 +8,12 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-10-19
+
+### Added
+
+- **List skills for one harness.** `ehub skills list --harness <cursor|claude|codex|grok>` returns the skills visible to that harness, including optional workspace skills, eHub sources, and installed tool skills. Duplicate paths are listed once; invalid harnesses and workspace paths are rejected.
+
 ## [0.17.0] — 2026-10-10
 
 ### Added
