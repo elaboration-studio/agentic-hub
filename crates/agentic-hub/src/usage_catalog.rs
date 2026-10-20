@@ -107,9 +107,23 @@ pub fn attribute_batch(
             )
         };
         event.workspace = event.workspace_root.clone().or(event.workspace);
+        // eCanvas stamps one run id on the bridge event and on later native
+        // Cursor hooks. Count that skill once for the run. A Cursor event
+        // without a run id keeps its generation, and other harnesses keep
+        // their turn correlation even when a run id is present.
+        let correlation = if source_tool == "cursor" {
+            event
+                .external_run_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|run_id| !run_id.is_empty())
+                .map(|run_id| hash_usage_correlation(&format!("cursor\0{run_id}")))
+                .unwrap_or_else(|| occurrence.correlation_hash.clone())
+        } else {
+            occurrence.correlation_hash.clone()
+        };
         event.invocation_key = Some(hash_usage_correlation(&format!(
-            "{}\0{}\0{}",
-            source_tool, occurrence.correlation_hash, identity
+            "{source_tool}\0{correlation}\0{identity}"
         )));
         if let Some(legacy) = event.dedupe_hash.take() {
             event.dedupe_hash = Some(hash_usage_correlation(&format!("{legacy}\0{identity}")));

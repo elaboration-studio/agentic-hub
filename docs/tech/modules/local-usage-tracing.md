@@ -147,7 +147,10 @@ global catalog alone. Uncertain history is preserved unchanged.
 
 ## Turn identity and deduplication
 
-- Cursor correlation uses `generation_id`.
+- Cursor correlation uses `generation_id`. When the validated run-identity
+  header supplies `external_run_id`, Cursor uses that run id instead, so an
+  eCanvas bridge event and a later native hook for the same skill in the same
+  run count once. Events with no run id stay generation-scoped.
 - Codex correlation uses `turn_id`.
 - Claude uses `prompt_id` when present. For installed versions without it, an
   in-memory per-session tracker advances on prompt submission and associates
