@@ -66,6 +66,8 @@ pub fn item_enabled_for_tool(settings: &Settings, item: &CapabilityItem, tool: T
 }
 
 pub fn usage_tracer_enabled(settings: &Settings, tool: ToolId) -> bool {
+    // A disabled tool is not traced, even when it is listed in capture_tools.
+    // eCanvas reports that gap as hook-not-installed; it does not enable the adapter.
     if !settings.usage_tracing.enabled || !settings.tools.for_tool(tool).enabled {
         return false;
     }

@@ -20,6 +20,21 @@ pub(super) fn connect(path: &Path) -> Result<Connection> {
 }
 
 fn migrate(conn: &Connection) -> Result<()> {
+    // Collector tests and the running app can open this file together. Without
+    // a write lock, two migrators both miss a new column and the second ALTER
+    // fails with "duplicate column name".
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let result = migrate_locked(conn);
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT").map_err(Into::into),
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
+}
+
+fn migrate_locked(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -46,7 +61,22 @@ fn migrate(conn: &Connection) -> Result<()> {
             success INTEGER NOT NULL,
             duration_ms INTEGER,
             dedupe_hash TEXT NOT NULL UNIQUE,
-            metadata_json TEXT NOT NULL
+            metadata_json TEXT NOT NULL,
+            external_run_id TEXT,
+            external_task_id TEXT,
+            agent_ref TEXT,
+            agent_version TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS usage_run_scopes (
+            run_id TEXT PRIMARY KEY,
+            task_id TEXT,
+            source_tool TEXT NOT NULL,
+            agent_ref TEXT,
+            agent_version TEXT,
+            started_at TEXT NOT NULL,
+            status TEXT NOT NULL,
+            reason TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_usage_events_capability
@@ -61,12 +91,18 @@ fn migrate(conn: &Connection) -> Result<()> {
     add_column_if_missing(conn, "invocation_key", "TEXT")?;
     add_column_if_missing(conn, "attribution_source", "TEXT")?;
     add_column_if_missing(conn, "attribution_rank", "INTEGER NOT NULL DEFAULT 0")?;
+    add_column_if_missing(conn, "external_run_id", "TEXT")?;
+    add_column_if_missing(conn, "external_task_id", "TEXT")?;
+    add_column_if_missing(conn, "agent_ref", "TEXT")?;
+    add_column_if_missing(conn, "agent_version", "TEXT")?;
     conn.execute_batch(
         r#"
         CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_events_invocation_key
             ON usage_events(invocation_key) WHERE invocation_key IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_usage_events_scoped_capability
             ON usage_events(capability_scope, workspace_root, capability_id, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_usage_events_external_run
+            ON usage_events(external_run_id);
         "#,
     )?;
     conn.execute(
@@ -81,11 +117,16 @@ fn add_column_if_missing(conn: &Connection, name: &str, definition: &str) -> Res
     let names = stmt
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(stmt);
     if names.iter().any(|existing| existing == name) {
         return Ok(());
     }
-    conn.execute_batch(&format!(
+    // A peer can commit the same ALTER between the pragma and this statement.
+    match conn.execute_batch(&format!(
         "ALTER TABLE usage_events ADD COLUMN {name} {definition}"
-    ))?;
-    Ok(())
+    )) {
+        Ok(()) => Ok(()),
+        Err(error) if error.to_string().contains("duplicate column name") => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }

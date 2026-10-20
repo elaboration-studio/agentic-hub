@@ -3,7 +3,7 @@
 Status: Draft
 Mode: Detailed
 Owner: Arno
-Last Updated: 2026-08-25
+Last Updated: 2026-10-20
 Depends On: [ARCHITECTURE.md](../../../ARCHITECTURE.md), [docs/features/local-skill-usage-tracing.md](../../features/local-skill-usage-tracing.md)
 Related Docs: [docs/tech/modules/hook-projection-sync.md](./hook-projection-sync.md), [docs/tech/modules/tauri-ipc-contract.md](./tauri-ipc-contract.md)
 
@@ -40,6 +40,19 @@ Tables:
 | --- | --- |
 | `schema_migrations` | Applied schema versions |
 | `usage_events` | Normalized event records |
+| `usage_run_scopes` | One row per eCanvas local run announced to the tracker |
+
+Schema v3 keeps the v2 event fields and adds nullable identity columns on
+`usage_events`: `external_run_id`, `external_task_id`, `agent_ref`,
+`agent_version`. Those values come from collector headers, never from the hook
+JSON body. `usage_run_scopes` stores the announce itself: `run_id` (primary
+key), optional `task_id`, `source_tool`, optional `agent_ref` and
+`agent_version`, `started_at`, `status` (`tracked` or `untracked`), and
+`reason`. A repeat announce is `INSERT OR IGNORE`, so a later call cannot flip
+a tracked run to untracked. An index `idx_usage_events_external_run` looks up
+the skill events for one run. Old databases gain the columns with
+`ALTER TABLE` and the new table with `CREATE TABLE IF NOT EXISTS`. A two-line
+spool meta from an older tracer still drains; its identity fields stay empty.
 
 Schema v2 keeps all v1 fields and adds:
 
@@ -155,11 +168,20 @@ prompt fallback rather than inserting another count.
 ## Collector flow
 
 ```text
-Agentic tool hook
+eCanvas local run, after the hub bundle is mounted and before the CLI starts
+  -> POST http://127.0.0.1:<collectorPort>/runs
+  -> { runId, taskId?, sourceTool, agentRef?, agentVersion? }
+  -> usage_run_scopes row, tracked or untracked
+  -> 202 { tracked: true } or { tracked: false, reason }
+
+Agentic tool hook (child env AGENTIC_HUB_TRACE_*)
   -> POST http://127.0.0.1:<collectorPort>/events
+  -> identity headers only; the JSON body is not trusted for run identity
   -> on curl failure: spool ~/.agentic-hub/usage/spool/{id}.{meta,body}
+     meta is token, source tool, then run id, task id, agent ref, version
   -> token check
   -> payload parse
+  -> stamp identity from headers (or from validated spool lines)
   -> extract high-confidence references in memory
   -> discover tool-aware global + repository catalog
   -> resolve and build per-skill invocation keys
@@ -169,6 +191,27 @@ Agentic tool hook
 Collector startup + 30s timer
   -> drain spool (drop stale tokens; persist matching entries)
 ```
+
+`POST /runs` is token-authenticated and loopback-only, same as `/events`. A
+missing token is `401`. A bad run id, task id, agent ref, agent version, or
+source tool is `400` and is not stored. `sourceTool` is `cursor`, `claude`,
+`codex`, `kiro`, or `grok`. Run and task ids are 1–128 characters of ASCII
+letters, digits, `_`, and `-`. An agent ref is 1–64 characters and may also
+contain `.`. An agent version is exactly 12 hex characters and is stored
+lowercase. When tracing is off, or the managed tracer hook for that tool is
+not installed, the response is `202` with `tracked: false` and reason
+`tracing-disabled` or `hook-not-installed`, and the scope row is still
+written. Settings that cannot be loaded return `tracing-disabled` without a
+row. A tool whose adapter is disabled (Claude on this machine, when
+`tools.claude.enabled` is false) has no tracer hook; the announce says
+`hook-not-installed`. Enabling the adapter in eHub is what installs the hook.
+eCanvas does not write CLI hook files.
+
+eCanvas treats a connect failure or a non-OK response as `tracker-unreachable`,
+and `404` as `tracker-unsupported` (an eHub build that predates `POST /runs`).
+Those two reasons are recorded on the eCanvas run, not invented by the
+collector. The running Agentic Hub.app serves `/runs` only after it is rebuilt
+with this slice.
 
 The collector binds only to `127.0.0.1`. Requests without the configured token
 return `401`. Malformed JSON returns `400`. Storage failures return `202` after

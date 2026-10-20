@@ -8,6 +8,10 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 ## [Unreleased]
 
+### Added
+
+- **eCanvas local runs can be attributed in the usage tracker.** `POST /runs` records the run, the task, and the suite version. Tracer hooks forward that identity from the process environment into `usage_events` and `usage_run_scopes`. A missing hook or disabled tracing is an explicit untracked reason, not a silent gap.
+
 ## [0.18.0] — 2026-10-19
 
 ### Added
