@@ -63,6 +63,7 @@ mod tests {
             description: None,
             capabilities: caps.iter().map(|cap| (*cap).into()).collect(),
             is_base: false,
+            agent: None,
             created_at: "t".into(),
             updated_at: "t".into(),
         }

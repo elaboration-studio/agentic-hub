@@ -276,14 +276,15 @@ impl ResolvedAdapter {
     }
 
     /// Projection mode for a `(tool, kind)` in global scope. `None` means the
-    /// combination is unsupported (OpenClaw hooks).
+    /// combination is unsupported (OpenClaw hooks) or bundle-only (MCP).
     pub fn projection_mode_for(&self, kind: CapabilityKind) -> Option<ProjectionMode> {
-        use CapabilityKind::{Agent, Command, Hook, Rule, Skill};
+        use CapabilityKind::{Agent, Command, Hook, Mcp, Rule, Skill};
         use ProjectionMode::{
             CodexAgentToml, CopilotHookFile, FileSync, GrokHookFile, JsonSection, KiroHookFile,
             LinkSync, MarkdownSectionSync,
         };
         match (self.tool_id, kind) {
+            (_, Mcp) => None,
             (ToolId::Openclaw, Hook | Command) => None,
             (ToolId::Antigravity, Agent | Command) => None,
             (ToolId::Kiro, Hook) => Some(KiroHookFile),
@@ -319,7 +320,7 @@ impl ResolvedAdapter {
             CapabilityKind::Agent => Some(&self.agents_path),
             CapabilityKind::Rule => Some(&self.rules_path),
             CapabilityKind::Command => self.commands_path.as_ref(),
-            CapabilityKind::Hook => None,
+            CapabilityKind::Hook | CapabilityKind::Mcp => None,
         }
     }
 
@@ -342,7 +343,7 @@ impl ResolvedAdapter {
             CapabilityKind::Agent => &self.agents_path,
             CapabilityKind::Rule => &self.rules_path,
             CapabilityKind::Command => self.commands_path.as_ref()?,
-            CapabilityKind::Hook => return None,
+            CapabilityKind::Hook | CapabilityKind::Mcp => return None,
         };
         let mut rel = match self.layout_for(item.kind) {
             Layout::Nested => item.relative_path.clone(),

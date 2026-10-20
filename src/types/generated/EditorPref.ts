@@ -6,7 +6,7 @@
  * `custom_app`). Kept as a string so the JSON config stays forward-compatible
  * if more presets are added.
  */
-export type EditorPref = { kind: string,
+export type EditorPref = { kind: string, 
 /**
  * Application name or path used when `kind == "custom"`.
  */

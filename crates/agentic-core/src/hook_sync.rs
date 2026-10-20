@@ -328,7 +328,7 @@ pub fn sync_json_hooks(
     };
 
     let mut notes = Vec::new();
-    let desired = build_desired(tool, cursor_shape, enabled, &mut notes);
+    let desired = build_desired(tool, enabled, &mut notes);
 
     // Partition: keep only foreign (unmarked) entries from the existing file.
     let mut next: Map<String, Value> = Map::new();
@@ -434,8 +434,7 @@ pub fn sync_single_json_hook(
 
     let mut notes = Vec::new();
     if enabled {
-        for (event_key, value) in build_desired(tool, cursor_shape, &[(item, manifest)], &mut notes)
-        {
+        for (event_key, value) in build_desired(tool, &[(item, manifest)], &mut notes) {
             next.entry(event_key)
                 .or_insert_with(|| Value::Array(Vec::new()))
                 .as_array_mut()
@@ -480,58 +479,77 @@ fn is_managed_hook(value: &Value, hook_id: &str) -> bool {
 
 fn build_desired(
     tool: ToolId,
-    cursor_shape: bool,
     enabled: &[(&CapabilityItem, &HookManifest)],
     notes: &mut Vec<String>,
 ) -> Vec<(String, Value)> {
     let mut desired = Vec::new();
     for (item, m) in enabled {
-        let hash = projection_source_hash(item, m);
-        for spec in &m.events {
-            if cursor_shape {
-                match spec.name.cursor_key() {
-                    Some(key) => {
-                        desired.push((key.to_string(), cursor_entry(item, m, &hash, spec)))
-                    }
-                    None => notes.push(format!(
-                        "{} is not supported by Cursor; entry skipped.",
-                        spec.name.pascal()
-                    )),
-                }
-            } else {
-                let supported = match tool {
-                    ToolId::Codex => spec.name.codex_supports(),
-                    _ => spec.name.claude_supports(),
-                };
-                if supported {
-                    desired.push((
-                        spec.name.pascal().to_string(),
-                        group_entry(item, m, &hash, spec),
-                    ));
-                } else {
-                    notes.push(format!(
-                        "{} is not supported by {:?}; entry skipped.",
-                        spec.name.pascal(),
-                        tool
-                    ));
-                }
-            }
-        }
+        let marker = marker(&m.id, &projection_source_hash(item, m));
+        desired.extend(hook_entries(
+            tool,
+            m,
+            &item.source_path,
+            Some(&marker),
+            notes,
+        ));
     }
     desired
 }
 
-fn cursor_entry(
-    item: &CapabilityItem,
+/// One hook's `(event key, entry)` pairs in `tool`'s hook-config shape, with
+/// `${HOOK_DIR}` expanded to `hook_dir`. `marker` tags entries the hub manages
+/// in a shared file; run bundles own their whole file and pass `None`.
+/// Unsupported events are skipped with a note.
+pub(crate) fn hook_entries(
+    tool: ToolId,
     m: &HookManifest,
-    hash: &str,
+    hook_dir: &Path,
+    marker: Option<&Value>,
+    notes: &mut Vec<String>,
+) -> Vec<(String, Value)> {
+    let command = expand_hook_dir(&m.command, hook_dir);
+    let mut entries = Vec::new();
+    for spec in &m.events {
+        if tool == ToolId::Cursor {
+            match spec.name.cursor_key() {
+                Some(key) => {
+                    entries.push((key.to_string(), cursor_entry(&command, m, spec, marker)))
+                }
+                None => notes.push(format!(
+                    "{} is not supported by Cursor; entry skipped.",
+                    spec.name.pascal()
+                )),
+            }
+        } else {
+            let supported = match tool {
+                ToolId::Codex => spec.name.codex_supports(),
+                _ => spec.name.claude_supports(),
+            };
+            if supported {
+                entries.push((
+                    spec.name.pascal().to_string(),
+                    group_entry(&command, m, spec, marker),
+                ));
+            } else {
+                notes.push(format!(
+                    "{} is not supported by {:?}; entry skipped.",
+                    spec.name.pascal(),
+                    tool
+                ));
+            }
+        }
+    }
+    entries
+}
+
+fn cursor_entry(
+    command: &str,
+    m: &HookManifest,
     spec: &HookEventSpec,
+    marker: Option<&Value>,
 ) -> Value {
     let mut o = Map::new();
-    o.insert(
-        "command".to_string(),
-        Value::String(expand_hook_dir(&m.command, &item.source_path)),
-    );
+    o.insert("command".to_string(), Value::String(command.to_string()));
     if let Some(matcher) = &spec.matcher {
         o.insert("matcher".to_string(), Value::String(matcher.clone()));
     }
@@ -541,17 +559,21 @@ fn cursor_entry(
     if let Some(ll) = m.loop_limit {
         o.insert("loop_limit".to_string(), json!(ll));
     }
-    o.insert("_agenticHub".to_string(), marker(&m.id, hash));
+    if let Some(marker) = marker {
+        o.insert("_agenticHub".to_string(), marker.clone());
+    }
     Value::Object(o)
 }
 
-fn group_entry(item: &CapabilityItem, m: &HookManifest, hash: &str, spec: &HookEventSpec) -> Value {
+fn group_entry(
+    command: &str,
+    m: &HookManifest,
+    spec: &HookEventSpec,
+    marker: Option<&Value>,
+) -> Value {
     let mut inner = Map::new();
     inner.insert("type".to_string(), json!("command"));
-    inner.insert(
-        "command".to_string(),
-        Value::String(expand_hook_dir(&m.command, &item.source_path)),
-    );
+    inner.insert("command".to_string(), Value::String(command.to_string()));
     if let Some(t) = m.timeout {
         inner.insert("timeout".to_string(), json!(t));
     }
@@ -563,7 +585,9 @@ fn group_entry(item: &CapabilityItem, m: &HookManifest, hash: &str, spec: &HookE
         "hooks".to_string(),
         Value::Array(vec![Value::Object(inner)]),
     );
-    g.insert("_agenticHub".to_string(), marker(&m.id, hash));
+    if let Some(marker) = marker {
+        g.insert("_agenticHub".to_string(), marker.clone());
+    }
     Value::Object(g)
 }
 

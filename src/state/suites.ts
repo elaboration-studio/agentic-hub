@@ -5,12 +5,21 @@
 import { create } from "zustand";
 import { toast } from "sonner";
 import {
+  agentVersion,
   createSuite,
   deleteSuite,
   listSuites,
   setBaseSuite,
   updateSuite,
 } from "../ipc";
+import {
+  EMPTY_AGENT,
+  agentDraftError,
+  agentDraftFrom,
+  agentPayload,
+  toggleRequiredCli,
+  type AgentDraft,
+} from "./agentDraft";
 import type {
   CapabilityItem,
   SuiteCapabilityRef,
@@ -55,6 +64,7 @@ export interface Draft {
   name: string;
   description: string;
   capabilities: SuiteCapabilityRef[];
+  agent: AgentDraft;
 }
 
 interface SuitesState {
@@ -62,6 +72,8 @@ interface SuitesState {
   selectedId: string | undefined;
   isCreating: boolean;
   draft: Draft | undefined;
+  /// Agent version of the selected suite as stored (not the unsaved draft).
+  agentVersion: string | undefined;
   busy: boolean;
 
   reload: () => Promise<void>;
@@ -75,6 +87,9 @@ interface SuitesState {
   selectSuite: (id: string) => void;
   cancelEdit: () => void;
   setDraft: (patch: Partial<Draft>) => void;
+  setAgent: (patch: Partial<AgentDraft>) => void;
+  toggleRequiredCli: (id: string) => void;
+  loadAgentVersion: (id: string) => Promise<void>;
   setCapabilities: (items: CapabilityItem[], on: boolean) => void;
   removeCapabilities: (refs: SuiteCapabilityRef[]) => void;
   save: () => Promise<void>;
@@ -88,6 +103,7 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
   selectedId: undefined,
   isCreating: false,
   draft: undefined,
+  agentVersion: undefined,
   busy: false,
 
   reload: async () => {
@@ -102,7 +118,8 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
     set({
       isCreating: true,
       selectedId: undefined,
-      draft: { name: "", description: "", capabilities: [] },
+      agentVersion: undefined,
+      draft: { name: "", description: "", capabilities: [], agent: EMPTY_AGENT },
     }),
 
   startCreateFromCurrent: (tool, items, states, readOnlyItemIds) => {
@@ -122,16 +139,19 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
     set({
       isCreating: true,
       selectedId: undefined,
-      draft: { name: "", description: "", capabilities },
+      agentVersion: undefined,
+      draft: { name: "", description: "", capabilities, agent: EMPTY_AGENT },
     });
   },
 
   selectSuite: (id) => {
     const suite = get().suites.find((s) => s.id === id);
     if (!suite) return;
+    const switched = get().selectedId !== id;
     set({
       isCreating: false,
       selectedId: id,
+      ...(switched ? { agentVersion: undefined } : {}),
       draft: {
         name: suite.name,
         description: suite.description ?? "",
@@ -139,8 +159,21 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
           cap: ref.cap,
           source: ref.source ? { ...ref.source } : null,
         })),
+        agent: agentDraftFrom(suite.agent),
       },
     });
+    if (switched) void get().loadAgentVersion(id);
+  },
+
+  // Informational only: a failed lookup leaves the line blank, no toast. A
+  // result for a suite that is no longer selected is dropped.
+  loadAgentVersion: async (id) => {
+    try {
+      const version = await agentVersion(id);
+      if (get().selectedId === id) set({ agentVersion: version });
+    } catch {
+      if (get().selectedId === id) set({ agentVersion: undefined });
+    }
   },
 
   cancelEdit: () => {
@@ -158,6 +191,18 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
     const draft = get().draft;
     if (!draft) return;
     set({ draft: { ...draft, ...patch } });
+  },
+
+  setAgent: (patch) => {
+    const draft = get().draft;
+    if (!draft) return;
+    set({ draft: { ...draft, agent: { ...draft.agent, ...patch } } });
+  },
+
+  toggleRequiredCli: (id) => {
+    const draft = get().draft;
+    if (!draft) return;
+    set({ draft: { ...draft, agent: toggleRequiredCli(draft.agent, id) } });
   },
 
   setCapabilities: (items, on) => {
@@ -192,14 +237,20 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
   },
 
   save: async () => {
-    const { draft, isCreating, selectedId, reload, selectSuite } = get();
+    const { draft, isCreating, selectedId, reload, selectSuite, loadAgentVersion } = get();
     if (!draft || !draft.name.trim()) return;
+    const agentError = agentDraftError(draft.agent);
+    if (agentError) {
+      toast.error(agentError);
+      return;
+    }
     set({ busy: true });
     try {
       const payload = {
         name: draft.name.trim(),
         description: draft.description.trim() || null,
         capabilities: draft.capabilities,
+        agent: agentPayload(draft.agent),
       };
       if (isCreating) {
         const created = await createSuite(payload);
@@ -209,6 +260,7 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
       } else if (selectedId) {
         await updateSuite(selectedId, payload);
         await reload();
+        void loadAgentVersion(selectedId);
       }
     } catch (e) {
       toast.error(messageOf(e));
@@ -223,7 +275,7 @@ export const useSuitesStore = create<SuitesState>((set, get) => ({
     set({ busy: true });
     try {
       await deleteSuite(selectedId);
-      set({ selectedId: undefined, draft: undefined });
+      set({ selectedId: undefined, draft: undefined, agentVersion: undefined });
       await reload();
     } catch (e) {
       toast.error(messageOf(e));

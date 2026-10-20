@@ -5,31 +5,18 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.16.5] — 2026-09-08
+## [0.18.0] — 2026-10-19
 
 ### Highlights
 
-- **Search opens where you are working.** `Cmd+Alt+A` now centers the command
-  palette on the display containing the focused app/window.
-- **The hub stays in the window state you left it.** Dismissing search restores
-  an app-hidden or focused hub correctly and does not reorder it when summoned
-  over another app.
+- **Discover skills for a specific harness.** Use `ehub skills list --harness <cursor|claude|codex|grok>` to get a JSON inventory of the skills available to that CLI.
+- Add `--workspace <absolute-directory>` to include project skills alongside eHub and installed tool skills.
 
-### Fixed
+### Added
 
-- Active-display placement now moves the native panel onto the focused screen
-  before AppKit centers it.
-- Palette presentation tracks app-hidden, focused-main, and external-app
-  origins, restoring each state on dismiss without leaving a visible,
-  windowless application.
-- Revision tokens prevent an older blur/dismiss callback from cancelling a
-  newer palette summon.
+- Skill descriptions, canonical paths, and source scopes in the CLI inventory, with duplicate paths removed.
+- Validation of harness names and workspace directories before listing skills.
 
-### Migration
+### Pair with eCanvas
 
-- None.
-
-### Known Issues
-
-- The `r2.dev` feed is edge-cached, so a freshly published release can take up
-  to a minute to appear to update checks.
+- Keeps the agent-bundle and `ehub` CLI contract introduced in 0.17.0, and adds skill discovery for local agent runs.

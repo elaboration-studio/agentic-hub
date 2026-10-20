@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// The five capability kinds the scanner walks under each source root.
+/// The capability kinds the scanner walks under each source root.
 #[cfg_attr(
     feature = "ts-export",
     derive(ts_rs::TS),
@@ -16,16 +16,19 @@ pub enum CapabilityKind {
     Rule,
     Hook,
     Command,
+    /// MCP server declaration. Bundle-only in v1: never projected globally.
+    Mcp,
 }
 
 impl CapabilityKind {
     /// Every kind, in display / scan order.
-    pub const ALL: [CapabilityKind; 5] = [
+    pub const ALL: [CapabilityKind; 6] = [
         CapabilityKind::Skill,
         CapabilityKind::Agent,
         CapabilityKind::Rule,
         CapabilityKind::Hook,
         CapabilityKind::Command,
+        CapabilityKind::Mcp,
     ];
 
     /// Top-level directory under a source root that holds this kind.
@@ -36,6 +39,7 @@ impl CapabilityKind {
             CapabilityKind::Rule => "rules",
             CapabilityKind::Hook => "hooks",
             CapabilityKind::Command => "commands",
+            CapabilityKind::Mcp => "mcp",
         }
     }
 
@@ -47,6 +51,7 @@ impl CapabilityKind {
             CapabilityKind::Rule => "rule",
             CapabilityKind::Hook => "hook",
             CapabilityKind::Command => "command",
+            CapabilityKind::Mcp => "mcp",
         }
     }
 
@@ -56,6 +61,7 @@ impl CapabilityKind {
         match self {
             CapabilityKind::Skill => Some("SKILL.md"),
             CapabilityKind::Hook => Some("hook.json"),
+            CapabilityKind::Mcp => Some(crate::mcp::MCP_MARKER),
             CapabilityKind::Agent | CapabilityKind::Rule | CapabilityKind::Command => None,
         }
     }
@@ -66,7 +72,7 @@ impl CapabilityKind {
             CapabilityKind::Agent => &["md"],
             CapabilityKind::Rule => &["md", "mdc"],
             CapabilityKind::Command => &["md"],
-            CapabilityKind::Skill | CapabilityKind::Hook => &[],
+            CapabilityKind::Skill | CapabilityKind::Hook | CapabilityKind::Mcp => &[],
         }
     }
 }
@@ -456,6 +462,11 @@ pub struct SuiteDefinition {
     /// is base at a time (enforced by the store). Legacy files load as `false`.
     #[serde(default)]
     pub is_base: bool,
+    /// Optional agent identity; a suite with one is listed as an agent by
+    /// `ehub agents list`. Absent on disk when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts-export", ts(optional))]
+    pub agent: Option<crate::agent_spec::AgentSpec>,
     pub created_at: String,
     pub updated_at: String,
 }

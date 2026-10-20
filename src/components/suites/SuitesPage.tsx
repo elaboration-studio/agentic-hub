@@ -7,6 +7,7 @@ import {
   suiteRefMatchesItem,
   useSuitesStore,
 } from "@/state/suites";
+import { agentDraftError } from "@/state/agentDraft";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -32,6 +33,7 @@ import {
 import { TableCell } from "@/components/ui/table";
 import { CapabilityTable } from "@/components/manager/CapabilityTable";
 import { CapabilityRowActions } from "@/components/manager/CapabilityRowActions";
+import { AgentSection } from "./AgentSection";
 
 const SECTION_TITLE = "text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 
@@ -150,7 +152,7 @@ export function SuitesPage() {
           <Input id="suite-description" value={draft.description} placeholder="Optional description" onChange={(event) => setDraft({ description: event.target.value })} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => void save()} disabled={busy || !draft.name.trim()}>Save</Button>
+          <Button onClick={() => void save()} disabled={busy || !draft.name.trim() || agentDraftError(draft.agent) !== null}>Save</Button>
           <Button variant="outline" onClick={cancelEdit} disabled={busy}>Cancel</Button>
           {!isCreating && (
             <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={onDelete} disabled={busy}>Delete</Button>
@@ -179,6 +181,8 @@ export function SuitesPage() {
           </Button>
         </div>
       )}
+
+      <AgentSection titleClassName={SECTION_TITLE} />
 
       {missingRefs.length > 0 && (
         <Alert className="border-warning/40 bg-warning/10">

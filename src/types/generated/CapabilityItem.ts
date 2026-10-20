@@ -6,27 +6,27 @@ import type { SourceRef } from "./SourceRef";
  * A single scanned capability. IDs are source-free so suites resolve against
  * the whole source forest (first-source-wins). See `multi-source-roots.md`.
  */
-export type CapabilityItem = {
+export type CapabilityItem = { 
 /**
  * e.g. `skill:dev/repo-research`, `agent:coding/coding-agent.md`.
  */
-id: string, kind: CapabilityKind,
+id: string, kind: CapabilityKind, 
 /**
  * Display name: folder name for skill/hook, file stem for agent/rule.
  */
-name: string,
+name: string, 
 /**
  * Absolute path. For hooks this is the hook folder (== `${HOOK_DIR}`).
  */
-sourcePath: string,
+sourcePath: string, 
 /**
  * Path relative to `<source>/<kind-dir>/`.
  */
-relativePath: string,
+relativePath: string, 
 /**
  * Which source contributed this item.
  */
-sourceId: string, sourceLabel: string,
+sourceId: string, sourceLabel: string, 
 /**
  * Portable cross-device identity of the contributing source.
  */

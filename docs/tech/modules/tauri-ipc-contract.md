@@ -309,8 +309,15 @@ type SuiteDefinition = {
   description?: string;
   capabilities: SuiteCapabilityRef[];  // source-qualified refs
   isBase: boolean;                     // single base suite; merged into every apply (legacy = false)
+  agent?: AgentSpec;                   // optional agent block; absent on disk when unset
   createdAt: string;                   // ISO 8601
   updatedAt: string;
+};
+
+type AgentSpec = {
+  emoji: string | null;          // ≤ 16 chars
+  instructions: string | null;   // markdown, ≤ 32 KiB
+  requiredClis: string[];        // CLI catalog ids, ≤ 20
 };
 
 type SuiteCapabilityRef = {
@@ -332,10 +339,11 @@ type SuiteCreateInput = {
   name: string;
   description?: string;
   capabilities: SuiteCapabilityRef[];  // bare strings also accepted (legacy)
+  agent?: AgentSpec;
 };
 ```
 
-Errors: `suite_name_collision` if `name` is already in use.
+Errors: `suite_name_collision` if `name` is already in use; `invalid_agent` when the agent block breaks a limit.
 
 ### `cmd_update_suite(id: string, input: SuiteUpdateInput) -> SuiteDefinition`
 
@@ -345,6 +353,7 @@ type SuiteUpdateInput = {
   description?: string;
   capabilities?: SuiteCapabilityRef[];
   isBase?: boolean;   // mark/unmark base; true clears the flag on every other suite
+  agent?: AgentSpec | null;  // null clears the agent block; absent leaves it
 };
 ```
 
@@ -360,6 +369,12 @@ against the live scan and persists the upgrade (source backfill).
 
 Side effect: drops every suite<->tool binding referencing this suite. The
 tools' on-disk projections are left untouched (delete is not a tool wipe).
+
+### `cmd_agent_version(suiteId: string) -> string`
+
+The suite's 12-hex agent version, computed exactly as `ehub agents list` does
+(stored suite plus a fresh scan, no base merge). Read-only. Errors:
+`suite_not_found`. See [agent-bundles.md](./agent-bundles.md).
 
 ### `cmd_apply_suite(input: ApplySuiteInput) -> ApplySuiteResult`
 

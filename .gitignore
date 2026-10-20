@@ -25,3 +25,4 @@ dist
 node_modules
 .vscode-test/
 *.vsix
+.logs/

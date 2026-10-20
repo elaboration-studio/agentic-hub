@@ -8,15 +8,15 @@ import type { ToolCapabilityState } from "./ToolCapabilityState";
  * A read-only snapshot of one workspace's installed agentic resources, keyed
  * the same way the manager matrix consumes a global scan + inspect.
  */
-export type WorkspaceInventory = {
+export type WorkspaceInventory = { 
 /**
  * One row per distinct resource, deduped across tools (sorted by id).
  */
-items: Array<CapabilityItem>,
+items: Array<CapabilityItem>, 
 /**
  * One entry per `(tool, item)` actually present on disk, always `Enabled`.
  */
-states: Array<ToolCapabilityState>, errors: Array<ScanError>,
+states: Array<ToolCapabilityState>, errors: Array<ScanError>, 
 /**
  * Skill items the skills.sh CLI manages (from `skills-lock.json`), so the
  * UI can mark them and offer `npx skills update`. Empty when no lock.

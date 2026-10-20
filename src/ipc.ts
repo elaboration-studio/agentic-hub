@@ -8,6 +8,7 @@ import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AgentSpec,
   ApplyProgressEvent,
   ApplyResult,
   ApplySuiteResult,
@@ -274,6 +275,7 @@ export interface SuiteCreatePayload {
   // Source-qualified refs. The Rust core also tolerates bare-string entries
   // (legacy), upgrading them in place on the next write.
   capabilities: SuiteCapabilityRef[];
+  agent?: AgentSpec | null;
 }
 
 export interface SuiteUpdatePayload {
@@ -282,6 +284,8 @@ export interface SuiteUpdatePayload {
   capabilities?: SuiteCapabilityRef[];
   // Mark/unmark this suite as the single base suite (cleared on every other).
   isBase?: boolean;
+  // `null` clears the agent block; omitted leaves it as stored.
+  agent?: AgentSpec | null;
 }
 
 export const listSuites = (): Promise<SuiteDefinition[]> => invoke("cmd_list_suites");
@@ -299,6 +303,10 @@ export const updateSuite = (
 
 export const deleteSuite = (id: string): Promise<void> =>
   invoke("cmd_delete_suite", { id });
+
+/// The suite's 12-hex agent version, identical to `ehub agents list`.
+export const agentVersion = (suiteId: string): Promise<string> =>
+  invoke("cmd_agent_version", { suiteId });
 
 export const applySuite = (
   toolId: ToolId,

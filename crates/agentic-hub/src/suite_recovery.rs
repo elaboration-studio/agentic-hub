@@ -113,6 +113,7 @@ mod tests {
                 name: "Selected".into(),
                 description: None,
                 capabilities: vec!["skill:selected".into()],
+                agent: None,
             })
             .unwrap();
         let base = suites
@@ -120,6 +121,7 @@ mod tests {
                 name: "Base".into(),
                 description: None,
                 capabilities: vec!["skill:base".into()],
+                agent: None,
             })
             .unwrap();
         suites.set_base(Some(&base.id)).unwrap();
@@ -154,6 +156,7 @@ mod tests {
                 name: "Selected".into(),
                 description: None,
                 capabilities: vec!["skill:selected".into()],
+                agent: None,
             })
             .unwrap();
         bindings

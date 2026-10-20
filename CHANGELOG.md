@@ -12,6 +12,18 @@ For narrative release notes, see [RELEASE.md](RELEASE.md).
 
 - **eCanvas local runs can be attributed in the usage tracker.** `POST /runs` records the run, the task, and the suite version. Tracer hooks forward that identity from the process environment into `usage_events` and `usage_run_scopes`. A missing hook or disabled tracing is an explicit untracked reason, not a silent gap.
 
+## [0.18.0] — 2026-10-19
+
+### Added
+
+- **List skills for one harness.** `ehub skills list --harness <cursor|claude|codex|grok>` returns the skills visible to that harness, including optional workspace skills, eHub sources, and installed tool skills. Duplicate paths are listed once; invalid harnesses and workspace paths are rejected.
+
+## [0.17.0] — 2026-10-10
+
+### Added
+
+- **Agent bundles and the `ehub` CLI.** A suite can carry an agent block (emoji, instructions, required CLIs) and MCP servers. `ehub bundle` writes an immutable per-harness bundle under `~/.agentic-hub/bundles`, and the app keeps `~/.agentic-hub/bin/ehub` linked to itself. Global suite apply is unchanged.
+
 ## [0.16.5] — 2026-09-08
 
 ### Fixed

@@ -27,6 +27,9 @@ pub enum CoreError {
     #[error("a suite named \"{0}\" already exists")]
     SuiteNameConflict(String),
 
+    #[error("invalid agent block: {0}")]
+    InvalidAgent(String),
+
     #[error("invalid skill reference: {0}")]
     InvalidSkillRef(String),
 

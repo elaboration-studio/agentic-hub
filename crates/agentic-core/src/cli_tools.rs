@@ -201,6 +201,12 @@ fn run_with_timeout(command: &CliCommand) -> std::io::Result<Option<ProbeOutput>
     }
 }
 
+/// Installed-only probe: runs `check`, never `auth` (auth checks may touch the
+/// network). Used by headless bundle builds.
+pub fn is_installed(tool: &CliTool) -> bool {
+    matches!(run_with_timeout(&tool.check), Ok(Some(p)) if p.success)
+}
+
 /// Probe one tool: run its `check` (installed + version), then its `auth` when
 /// installed and declared. Impure (shells out); the parsing it relies on is the
 /// unit-tested [`parse_version`].
@@ -477,6 +483,46 @@ mod tests {
         let status = check_tool(&tool);
         assert!(status.installed);
         assert_eq!(status.auth, AuthState::NotAuthed);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_installed_runs_only_the_check_command() {
+        let tool = probe_tool(
+            CliCommand {
+                program: "true".into(),
+                args: vec![],
+            },
+            // Would hang for the full timeout if the auth probe ran.
+            Some(CliCommand {
+                program: "sleep".into(),
+                args: vec!["30".into()],
+            }),
+        );
+        let start = Instant::now();
+        assert!(is_installed(&tool));
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_installed_is_false_when_check_fails_or_cannot_spawn() {
+        let failing = probe_tool(
+            CliCommand {
+                program: "false".into(),
+                args: vec![],
+            },
+            None,
+        );
+        let missing = probe_tool(
+            CliCommand {
+                program: "definitely-not-a-real-binary-xyz-12345".into(),
+                args: vec![],
+            },
+            None,
+        );
+        assert!(!is_installed(&failing));
+        assert!(!is_installed(&missing));
     }
 
     #[cfg(unix)]

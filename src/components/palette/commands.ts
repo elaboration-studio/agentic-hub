@@ -142,6 +142,7 @@ const GROUP_BY_KIND: Record<CapabilityItem["kind"], string> = {
   rule: "Rule",
   hook: "Hook",
   command: "Command",
+  mcp: "MCP",
 };
 
 interface ModeDef {

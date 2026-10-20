@@ -3,23 +3,23 @@
 /**
  * Summary of one scaffold run. Per-file failures are collected, never fatal.
  */
-export type ScaffoldResult = {
+export type ScaffoldResult = { 
 /**
  * Files newly created (target did not exist).
  */
-written: number,
+written: number, 
 /**
  * Files left untouched in `merge` mode because the target already existed.
  */
-skipped: number,
+skipped: number, 
 /**
  * Existing files replaced in `overwrite` mode.
  */
-replaced: number,
+replaced: number, 
 /**
  * Per-file failures (`<relative path>: <reason>`).
  */
-errors: Array<string>,
+errors: Array<string>, 
 /**
  * The resolved destination root the tree was written into.
  */
