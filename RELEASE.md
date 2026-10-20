@@ -5,18 +5,18 @@ file verbatim as the GitHub Release body. For the full version history see
 [CHANGELOG.md](CHANGELOG.md); for how releases are built and published see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## [0.18.0] — 2026-10-19
+## [0.19.0] — 2026-10-20
 
 ### Highlights
 
-- **Discover skills for a specific harness.** Use `ehub skills list --harness <cursor|claude|codex|grok>` to get a JSON inventory of the skills available to that CLI.
-- Add `--workspace <absolute-directory>` to include project skills alongside eHub and installed tool skills.
+- **Local runs can be attributed in the usage tracker.** An eCanvas-assigned Codex, Claude, Cursor, or Grok run records its task, run, and suite version, and skill events from that run attach to it.
+- A missing tracer hook or disabled tracing is an explicit untracked result.
 
 ### Added
 
-- Skill descriptions, canonical paths, and source scopes in the CLI inventory, with duplicate paths removed.
-- Validation of harness names and workspace directories before listing skills.
+- `POST /runs` on the loopback collector, and run identity on usage events.
+- The trace database adds those columns on open. Existing events stay in place.
 
 ### Pair with eCanvas
 
-- Keeps the agent-bundle and `ehub` CLI contract introduced in 0.17.0, and adds skill discovery for local agent runs.
+- eCanvas announces the run and stamps the CLI. That app update ships separately. This build is the collector that accepts it.
