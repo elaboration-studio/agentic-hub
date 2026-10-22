@@ -717,6 +717,105 @@ fn repeated_references_share_one_attributed_occurrence() {
 }
 
 #[test]
+fn cursor_run_identity_deduplicates_generations_without_changing_turn_scopes() {
+    let shared = TestRepo::new();
+    let tools = TestRepo::new();
+    local_skill(shared.path(), "skills", "tdd");
+    let settings = isolated_settings(
+        &[ToolId::Cursor, ToolId::Codex, ToolId::Grok],
+        shared.path(),
+        tools.path(),
+    );
+    let store = UsageStore::with_path(tools.path().join("trace.db"));
+
+    let insert = |raw: serde_json::Value, tool: &str, run_id: Option<&str>| {
+        let mut batch = AttributionState::default().normalize(&raw, tool);
+        for occurrence in &mut batch.occurrences {
+            occurrence.event.external_run_id = run_id.map(str::to_string);
+        }
+        let attributed = attribute_batch(batch, &settings, tool);
+        store
+            .insert_events(&attributed.events, &attributed.catalog_items)
+            .unwrap();
+    };
+
+    insert(
+        json!({
+            "event_type": "beforeSubmitPrompt",
+            "generation_id": "cursor-generation-prompt",
+            "prompt": "$tdd"
+        }),
+        "cursor",
+        Some("ecanvas-run-one"),
+    );
+    insert(
+        json!({
+            "hook_event_name": "PostToolUse",
+            "generation_id": "cursor-generation-skill-tool",
+            "tool_name": "Skill",
+            "tool_input": { "skill": "tdd" },
+            "success": false
+        }),
+        "cursor",
+        Some("ecanvas-run-one"),
+    );
+
+    assert_eq!(store.event_count().unwrap(), 1);
+    let stats = store.query_stats(&["skill:tdd".to_string()]).unwrap();
+    assert_eq!((stats[0].execution_count, stats[0].failure_count), (1, 1));
+
+    insert(
+        json!({
+            "event_type": "beforeSubmitPrompt",
+            "generation_id": "cursor-generation-second-run",
+            "prompt": "$tdd"
+        }),
+        "cursor",
+        Some("ecanvas-run-two"),
+    );
+    assert_eq!(store.event_count().unwrap(), 2);
+
+    for turn_id in ["codex-turn-one", "codex-turn-two"] {
+        insert(
+            json!({
+                "hook_event_name": "UserPromptSubmit",
+                "turn_id": turn_id,
+                "prompt": "$tdd"
+            }),
+            "codex",
+            Some("ecanvas-run-shared"),
+        );
+    }
+    assert_eq!(store.event_count().unwrap(), 4);
+
+    for prompt_id in ["grok-prompt-one", "grok-prompt-two"] {
+        insert(
+            json!({
+                "event_type": "UserPromptSubmit",
+                "promptId": prompt_id,
+                "prompt": "$tdd"
+            }),
+            "grok",
+            Some("ecanvas-run-shared"),
+        );
+    }
+    assert_eq!(store.event_count().unwrap(), 6);
+
+    for generation_id in ["unscoped-generation-one", "unscoped-generation-two"] {
+        insert(
+            json!({
+                "event_type": "beforeSubmitPrompt",
+                "generation_id": generation_id,
+                "prompt": "$tdd"
+            }),
+            "cursor",
+            None,
+        );
+    }
+    assert_eq!(store.event_count().unwrap(), 8);
+}
+
+#[test]
 fn reconcile_existing_usage_resolves_unique_repository_history() {
     let repo = TestRepo::new();
     fs::create_dir(repo.path().join(".git")).unwrap();
